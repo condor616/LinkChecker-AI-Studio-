@@ -25,6 +25,11 @@ interface ScanConfig {
   regexRules?: string[];
   skipSelectors?: string[];
   wildcardExclusions?: string[];
+  isTargeted?: boolean;
+  targetUrls?: string[];
+  skipExternal?: boolean;
+  excludeSubdomains?: boolean;
+  doNotTraverseBackward?: boolean;
 }
 
 export default function NewScanPage() {
@@ -39,6 +44,11 @@ export default function NewScanPage() {
     regexRules: [],
     skipSelectors: [],
     wildcardExclusions: [],
+    isTargeted: false,
+    targetUrls: [],
+    skipExternal: false,
+    excludeSubdomains: false,
+    doNotTraverseBackward: false,
   });
   const [jsonText, setJsonText] = useState(JSON.stringify(config, null, 2));
   const [jsonError, setJsonError] = useState('');
@@ -50,6 +60,7 @@ export default function NewScanPage() {
   const [showAuth, setShowAuth] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showCode, setShowCode] = useState(false);
+  const [targetUrlsRaw, setTargetUrlsRaw] = useState('');
 
   // Ref to track if the change is coming from the JSON editor to avoid circular updates that lose cursor focus
   const isUpdatingFromJson = useRef(false);
@@ -71,6 +82,7 @@ export default function NewScanPage() {
             const merged = { ...config, ...parsed };
             setConfig(merged);
             setJsonText(JSON.stringify(merged, null, 2));
+            if (merged.targetUrls) setTargetUrlsRaw(merged.targetUrls.join('\n'));
             localStorage.removeItem('selected_template_config');
             
             // If the saved config came with an ID (for editing)
@@ -90,6 +102,7 @@ export default function NewScanPage() {
                         const merged = { ...config, ...parsed };
                         setConfig(merged);
                         setJsonText(JSON.stringify(merged, null, 2));
+                        if (merged.targetUrls) setTargetUrlsRaw(merged.targetUrls.join('\n'));
                         setEditingTemplateId(editId);
                     }
                 }
@@ -185,6 +198,11 @@ export default function NewScanPage() {
     setConfig(merged);
     setJsonText(JSON.stringify(merged, null, 2));
     setEditingTemplateId(template.id);
+    if (merged.targetUrls) {
+      setTargetUrlsRaw(merged.targetUrls.join('\n'));
+    } else {
+      setTargetUrlsRaw('');
+    }
   };
 
   const deleteTemplate = async (id: string, e: React.MouseEvent) => {
@@ -238,25 +256,38 @@ export default function NewScanPage() {
         
         <div className="flex flex-col gap-2">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Preset</Label>
-            <div className="relative group min-w-[200px]">
-                <select 
-                    className="w-full h-10 pl-3 pr-10 bg-background border rounded-lg appearance-none cursor-pointer focus:ring-2 ring-primary/20 transition-all outline-none text-sm"
-                    onChange={(e) => {
-                        const template = templates.find(t => t.id === e.target.value);
-                        if (template) loadTemplate(template);
-                    }}
-                    value={editingTemplateId || ""}
+            <div className="flex items-center gap-3">
+                <div 
+                    className={cn(
+                        "flex items-center gap-2 px-3 h-10 border rounded-lg cursor-pointer transition-all",
+                        config.isTargeted ? "bg-primary/10 border-primary text-primary" : "bg-background border-input hover:bg-muted"
+                    )}
+                    onClick={() => setConfig(prev => ({ ...prev, isTargeted: !prev.isTargeted }))}
                 >
-                    <option value="" disabled>Select a template...</option>
-                    {templates
-                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                        .slice(0, 10)
-                        .map(t => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
-                        ))
-                    }
-                </select>
-                <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
+                    <div className={cn("w-3 h-3 rounded-full transition-all", config.isTargeted ? "bg-primary" : "bg-muted-foreground/30")} />
+                    <span className="text-xs font-semibold">Targeted Audit</span>
+                </div>
+
+                <div className="relative group min-w-[200px]">
+                    <select 
+                        className="w-full h-10 pl-3 pr-10 bg-background border rounded-lg appearance-none cursor-pointer focus:ring-2 ring-primary/20 transition-all outline-none text-sm"
+                        onChange={(e) => {
+                            const template = templates.find(t => t.id === e.target.value);
+                            if (template) loadTemplate(template);
+                        }}
+                        value={editingTemplateId || ""}
+                    >
+                        <option value="" disabled>Select a template...</option>
+                        {templates
+                            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                            .slice(0, 10)
+                            .map(t => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                            ))
+                        }
+                    </select>
+                    <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
+                </div>
             </div>
         </div>
       </motion.div>
@@ -384,6 +415,68 @@ export default function NewScanPage() {
                         />
                     </div>
                 </div>
+
+                <div className="flex flex-wrap gap-4 pt-2">
+                    <div 
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 border rounded-lg cursor-pointer transition-all",
+                            config.skipExternal ? "bg-blue-500/10 border-blue-500 text-blue-500" : "bg-background border-input hover:bg-muted"
+                        )}
+                        onClick={() => setConfig(prev => ({ ...prev, skipExternal: !prev.skipExternal }))}
+                    >
+                        <div className={cn("w-2 h-2 rounded-full transition-all", config.skipExternal ? "bg-blue-500" : "bg-muted-foreground/30")} />
+                        <span className="text-[10px] font-bold uppercase">Skip External Links</span>
+                    </div>
+
+                    <div 
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 border rounded-lg cursor-pointer transition-all",
+                            config.excludeSubdomains ? "bg-orange-500/10 border-orange-500 text-orange-500" : "bg-background border-input hover:bg-muted"
+                        )}
+                        onClick={() => setConfig(prev => ({ ...prev, excludeSubdomains: !prev.excludeSubdomains }))}
+                    >
+                        <div className={cn("w-2 h-2 rounded-full transition-all", config.excludeSubdomains ? "bg-orange-500" : "bg-muted-foreground/30")} />
+                        <span className="text-[10px] font-bold uppercase">Exclude Subdomains</span>
+                    </div>
+
+                    <div 
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 border rounded-lg cursor-pointer transition-all",
+                            config.doNotTraverseBackward ? "bg-purple-500/10 border-purple-500 text-purple-500" : "bg-background border-input hover:bg-muted"
+                        )}
+                        onClick={() => setConfig(prev => ({ ...prev, doNotTraverseBackward: !prev.doNotTraverseBackward }))}
+                    >
+                        <div className={cn("w-2 h-2 rounded-full transition-all", config.doNotTraverseBackward ? "bg-purple-500" : "bg-muted-foreground/30")} />
+                        <span className="text-[10px] font-bold uppercase">Stay in Subpath (No Back)</span>
+                    </div>
+                </div>
+
+                <AnimatePresence>
+                    {config.isTargeted && (
+                        <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden space-y-2"
+                        >
+                            <Label className="text-primary font-bold">Target URLs to Audit (Bulk Entry)</Label>
+                            <Textarea 
+                                placeholder="Paste URLs here, one per line. e.g.
+https://mysite.com/report1.pdf
+https://mysite.com/images/logo.png"
+                                value={targetUrlsRaw}
+                                onChange={(e) => {
+                                    const raw = e.target.value;
+                                    setTargetUrlsRaw(raw);
+                                    const urls = raw.split('\n').map(s => s.trim()).filter(s => !!s);
+                                    setConfig({ ...config, targetUrls: urls });
+                                }}
+                                className="min-h-[120px] bg-primary/5 border-primary/20 font-mono text-xs focus-visible:ring-1"
+                            />
+                            <p className="text-[10px] text-muted-foreground italic">Note: The scan results will be focused exclusively on these target URLs.</p>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </CardContent>
         </Card>
       </div>

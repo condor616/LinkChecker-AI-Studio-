@@ -88,6 +88,17 @@ async function processLink(link: any, scan: any, config: any) {
         headers['Authorization'] = `Basic ${auth}`;
     }
 
+    // NEW: Runtime exclusion check for already-queued links
+    const exclusion = shouldExclude(link.url, config);
+    if (exclusion.excluded) {
+      db.update(links).set({
+        status: 'SKIPPED',
+        snippet: `[Runtime Skip: ${exclusion.reason}] ` + (link.snippet || ''),
+        checkedAt: new Date()
+      }).where(eq(links.id, link.id)).run();
+      return;
+    }
+
     const response = await fetch(link.url, {
       signal: controller.signal,
       headers
@@ -139,12 +150,15 @@ async function processLink(link: any, scan: any, config: any) {
             const urlStr = urlObj.toString().replace(/\/$/, '');
             
             // Advanced Filtering (Consolidated Regex & Wildcards)
-            const isExcluded = shouldExclude(urlStr, config);
+            const exclusion = shouldExclude(urlStr, config);
             const snippet = $.html(el).slice(0, 500); 
 
             // Only keep the first occurrence of a URL per page
             if (!foundLinks.has(urlStr)) {
-                foundLinks.set(urlStr, { snippet, isExcluded });
+                foundLinks.set(urlStr, { 
+                    snippet: exclusion.excluded ? `[Skipped: ${exclusion.reason}] ${snippet}` : snippet, 
+                    isExcluded: exclusion.excluded 
+                });
             }
           }
         } catch (e) {}
@@ -154,16 +168,33 @@ async function processLink(link: any, scan: any, config: any) {
       const allUrls = Array.from(foundLinks.keys());
       if (allUrls.length === 0) return;
 
-      const existingLinks = db.select({ url: links.url })
+      const existingLinks = db.select({ url: links.url, parentUrl: links.parentUrl })
         .from(links)
         .where(and(eq(links.scanId, scan.id), inArray(links.url, allUrls)))
         .all();
       
-      const existingSet = new Set(existingLinks.map(l => l.url));
+      const existingSet = new Set(existingLinks.map(l => l.url + '|' + (l.parentUrl || '')));
+      
+      // Parse targets for deduplication logic
+      const targetUrls = (config.targetUrls || []).map((t: string) => t.trim().replace(/\/$/, ''));
+      const isTargeted = config.isTargeted || false;
 
       db.transaction((tx) => {
         for (const [urlStr, info] of foundLinks) {
-          if (existingSet.has(urlStr)) continue;
+          // Precise target match: exact match or deep subpath match to avoid false positives with .includes()
+          const isTarget = isTargeted && targetUrls.some((t: string) => {
+              if (urlStr === t) return true;
+              try {
+                  const u = new URL(urlStr);
+                  const targetU = new URL(t);
+                  return u.hostname === targetU.hostname && u.pathname.startsWith(targetU.pathname);
+              } catch(e) {
+                  return urlStr.includes(t);
+              }
+          });
+          
+          if (!isTarget && existingLinks.some(l => l.url === urlStr)) continue;
+          if (isTarget && existingSet.has(urlStr + '|' + link.url)) continue;
 
           if (info.isExcluded) {
               tx.insert(links).values({
@@ -201,45 +232,88 @@ async function processLink(link: any, scan: any, config: any) {
   }
 }
 
-// Helper for exclusion logic migrated from inline
-function shouldExclude(urlStr: string, config: any): boolean {
+// Helper for exclusion logic
+function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason?: string } {
     const normalizedUrl = urlStr.replace(/^https?:\/\/(www\.)?/, '');
+    
+    // Helper to sanitize regex from user input (handles stray quotes and double-escapes)
+    const sanitizePattern = (p: string) => {
+        if (!p) return null;
+        // Strip trailing quotes (common JSON edit error) and handle double-slashes
+        let cleaned = p.trim().replace(/^["']|["']$/g, '');
+        // If it looks like a double-escaped JSON string, fix it
+        if (cleaned.includes('\\\\')) cleaned = cleaned.replace(/\\\\/g, '\\');
+        return cleaned;
+    };
 
-    // 1. Existing excludeRegex (legacy)
-    if (config.excludeRegex) {
-        try {
-            const re = new RegExp(config.excludeRegex);
-            if (re.test(urlStr) || re.test(normalizedUrl)) return true;
-        } catch (e) {}
-    }
+    // 0. Domain/External Logic
+    try {
+        const startUrlObj = new URL(config.startUrl);
+        const currentUrlObj = new URL(urlStr);
+        
+        const startHost = startUrlObj.hostname.toLowerCase().replace(/^www\./, '');
+        const currentHost = currentUrlObj.hostname.toLowerCase().replace(/^www\./, '');
 
-    // 2. Regex Rules
+        if (config.skipExternal && currentHost !== startHost) {
+            // Special case for Targeted Audit: strictly block non-domain links unless they are explicitly targets
+            // (The isTarget check happens in the loop, but shouldExclude acts as the primary gate)
+            if (config.excludeSubdomains || !currentHost.endsWith('.' + startHost)) {
+                return { excluded: true, reason: 'External Domain' };
+            }
+        }
+
+        if (config.excludeSubdomains && currentHost !== startHost) {
+            return { excluded: true, reason: 'Subdomain Excluded' };
+        }
+
+        // Do Not Traverse Backward (Stay in Subpath)
+        if (config.doNotTraverseBackward) {
+            const normalizedStart = config.startUrl.replace(/\/$/, '');
+            // Check if it starts with the normalized start URL
+            if (!urlStr.startsWith(normalizedStart)) {
+                return { excluded: true, reason: 'Traverse Backward' };
+            }
+            
+            // Ensure it's a proper subpath (either same URL or next char is /)
+            const remaining = urlStr.slice(normalizedStart.length);
+            if (remaining.length > 0 && !remaining.startsWith('/')) {
+                return { excluded: true, reason: 'Traverse Backward' };
+            }
+        }
+    } catch (e) {}
+
+    // 1. Regex Rules
     if (config.regexRules && Array.isArray(config.regexRules)) {
         for (const rule of config.regexRules) {
+            const cleanRule = sanitizePattern(rule);
+            if (!cleanRule) continue;
             try {
-                // Trim stray quotes that might come from JSON copy-paste errors
-                const cleanRule = rule.replace(/^"|"$/g, '');
                 const re = new RegExp(cleanRule);
-                if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+                if (re.test(urlStr) || re.test(normalizedUrl)) {
+                    return { excluded: true, reason: `Regex: ${cleanRule}` };
+                }
             } catch (e) {}
         }
     }
 
-    // 3. Wildcard Exclusions
+    // 2. Wildcard Exclusions
     if (config.wildcardExclusions && Array.isArray(config.wildcardExclusions)) {
         for (const pattern of config.wildcardExclusions) {
+            const cleanPattern = sanitizePattern(pattern);
+            if (!cleanPattern) continue;
             try {
-                // Convert wildcard to regex: * -> .*, ? -> .
-                const regexStr = pattern
-                    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex chars
-                    .replace(/\\\*/g, '.*')               // unescape and convert *
-                    .replace(/\\\?/g, '.');               // unescape and convert ?
+                const regexStr = cleanPattern
+                    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+                    .replace(/\\\*/g, '.*')
+                    .replace(/\\\?/g, '.');
                 
-                const re = new RegExp(regexStr); // No ^ or $ anchoring
-                if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+                const re = new RegExp(regexStr);
+                if (re.test(urlStr) || re.test(normalizedUrl)) {
+                    return { excluded: true, reason: `Wildcard: ${cleanPattern}` };
+                }
             } catch (e) {}
         }
     }
 
-    return false;
+    return { excluded: false };
 }
