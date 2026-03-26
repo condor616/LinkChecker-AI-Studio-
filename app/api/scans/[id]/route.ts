@@ -19,3 +19,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await requireAuth();
+    const { id } = await params;
+
+    // Verify it belongs to the user
+    const scan = db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).get();
+    if (!scan) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    // Delete the scan (links will cascade)
+    db.delete(scans).where(eq(scans.id, id)).run();
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

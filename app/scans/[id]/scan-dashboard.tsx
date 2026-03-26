@@ -14,6 +14,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const [showTerminal, setShowTerminal] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const triageContentRef = useRef<HTMLDivElement>(null);
   const [brokenPage, setBrokenPage] = useState(1);
   const [successPage, setSuccessPage] = useState(1);
   const [skippedPage, setSkippedPage] = useState(1);
@@ -50,6 +51,12 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [logs, showTerminal]);
+
+  useEffect(() => {
+    if (triageContentRef.current) {
+        triageContentRef.current.scrollTop = 0;
+    }
+  }, [brokenPage, successPage, skippedPage]);
 
   const toggleStatus = async () => {
     const newStatus = status === 'RUNNING' ? 'PAUSED' : 'RUNNING';
@@ -153,7 +160,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
         <div className="w-full order-1">
             <Card className="min-h-[500px] flex flex-col shadow-xl border-primary/5">
                 <Tabs defaultValue="broken" className="flex flex-col h-full">
-                    <CardHeader className="py-3 px-4 border-b">
+                    <CardHeader className="py-3 px-4 border-b sticky top-0 bg-background/80 backdrop-blur-md z-10">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-lg">Report Triage</CardTitle>
                             <TabsList>
@@ -163,12 +170,19 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                             </TabsList>
                         </div>
                     </CardHeader>
-                    <CardContent className="flex-1 overflow-auto p-0 flex flex-col">
+                    <CardContent ref={triageContentRef} className="flex-1 overflow-auto p-0 flex flex-col">
                         <TabsContent value="broken" className="m-0 focus-visible:ring-0 flex-1 flex flex-col">
                             {brokenLinks.length === 0 ? (
                                 <EmptyState message="No broken links found. Looking good!" />
                             ) : (
                                 <>
+                                    <PaginationControls 
+                                        currentPage={brokenPage} 
+                                        totalItems={brokenLinks.length} 
+                                        pageSize={pageSize} 
+                                        onPageChange={setBrokenPage} 
+                                        position="top"
+                                    />
                                     <div className="divide-y flex-1">
                                         {paginatedBroken.map((link: any) => (
                                             <TriageItem key={link.id} link={link} onRecheck={handleRecheck} />
@@ -179,12 +193,22 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                         totalItems={brokenLinks.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setBrokenPage} 
+                                        position="bottom"
                                     />
                                 </>
                             )}
                         </TabsContent>
                         <TabsContent value="success" className="m-0 flex-1 flex flex-col">
                              <div className="divide-y text-xs text-muted-foreground/60 flex-1">
+                                {successLinks.length > pageSize && (
+                                    <PaginationControls 
+                                        currentPage={successPage} 
+                                        totalItems={successLinks.length} 
+                                        pageSize={pageSize} 
+                                        onPageChange={setSuccessPage} 
+                                        position="top"
+                                    />
+                                )}
                                 {paginatedSuccess.map((link: any) => (
                                     <div key={link.id} className="p-3 flex items-center justify-between hover:bg-muted/10 transition-colors">
                                         <span className="truncate max-w-md">{link.url}</span>
@@ -203,11 +227,21 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                     totalItems={successLinks.length} 
                                     pageSize={pageSize} 
                                     onPageChange={setSuccessPage} 
+                                    position="bottom"
                                 />
                              )}
                         </TabsContent>
                         <TabsContent value="skipped" className="m-0 flex-1 flex flex-col">
                              <div className="divide-y text-xs text-muted-foreground/60 flex-1">
+                                {skippedLinks.length > pageSize && (
+                                    <PaginationControls 
+                                        currentPage={skippedPage} 
+                                        totalItems={skippedLinks.length} 
+                                        pageSize={pageSize} 
+                                        onPageChange={setSkippedPage} 
+                                        position="top"
+                                    />
+                                )}
                                 {paginatedSkipped.map((link: any) => (
                                     <div key={link.id} className="p-3 flex items-center justify-between hover:bg-muted/10 transition-colors">
                                         <div className="flex flex-col gap-0.5 min-w-0">
@@ -234,6 +268,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                     totalItems={skippedLinks.length} 
                                     pageSize={pageSize} 
                                     onPageChange={setSkippedPage} 
+                                    position="bottom"
                                 />
                              )}
                         </TabsContent>
@@ -296,12 +331,15 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
 }
 
 
-function PaginationControls({ currentPage, totalItems, pageSize, onPageChange }: any) {
+function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, position = 'bottom' }: any) {
     const totalPages = Math.ceil(totalItems / pageSize);
     if (totalPages <= 1) return null;
 
     return (
-        <div className="flex items-center justify-between px-4 py-2 border-t bg-muted/5">
+        <div className={cn(
+            "flex items-center justify-between px-4 py-2 bg-muted/5",
+            position === 'bottom' ? "border-t" : "border-b"
+        )}>
             <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
                 Page {currentPage} of {totalPages} <span className="ml-2 opacity-50">({totalItems} total)</span>
             </div>
