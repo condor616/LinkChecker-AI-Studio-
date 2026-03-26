@@ -6,20 +6,21 @@ import pLimit from 'p-limit';
 
 // Global worker state
 let isWorkerRunning = false;
+const globalLimit = pLimit(10); // System-wide concurrent requests cap
 
 export function startWorker() {
   if (isWorkerRunning) return;
   isWorkerRunning = true;
   console.log('Starting background crawler worker...');
   
-  // Run the loop every 5 seconds
+  // Run the loop every 3 seconds for faster pick-up
   setInterval(async () => {
     try {
       await processNextBatch();
     } catch (error) {
       console.error('Worker error:', error);
     }
-  }, 5000);
+  }, 3000);
 }
 
 async function processNextBatch() {
@@ -27,27 +28,24 @@ async function processNextBatch() {
   const runningScans = db.select().from(scans).where(eq(scans.status, 'RUNNING')).all();
   if (runningScans.length === 0) return;
 
-  // For each scan, get pending links
   for (const scan of runningScans) {
     const user = db.select().from(users).where(eq(users.id, scan.userId)).get();
-    if (!user || user.role !== 'ADMIN' && user.role !== 'USER') {
-      // Pause scan if user is pending or deleted
+    if (!user || (user.role !== 'ADMIN' && user.role !== 'USER')) {
       db.update(scans).set({ status: 'PAUSED' }).where(eq(scans.id, scan.id)).run();
       continue;
     }
 
     const config = JSON.parse(scan.config);
     const maxDepth = config.maxDepth ?? 0; // 0 = unlimited
-    const rateLimit = config.rateLimit ?? 60; // requests per minute
     
     // Get pending links for this scan
     const pendingLinks = db.select().from(links)
       .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
-      .limit(10) // Process in small batches
+      .limit(user.maxJobs * 5) // Batch size relative to user quota
       .all();
 
     if (pendingLinks.length === 0) {
-      // Check if all links are done
+      // Double check if really done (no more pending links in DB)
       const anyPending = db.select().from(links)
         .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
         .get();
@@ -58,43 +56,70 @@ async function processNextBatch() {
       continue;
     }
 
-    // Process links
-    const limit = pLimit(user.maxJobs); // Respect user's max jobs concurrency
+    // Process links using BOTH user limit and global limit
+    const userLimit = pLimit(user.maxJobs);
     
-    await Promise.all(pendingLinks.map(link => limit(() => processLink(link, scan, config))));
+    await Promise.all(pendingLinks.map(link => 
+      userLimit(() => globalLimit(() => processLink(link, scan, config)))
+    ));
   }
 }
 
 async function processLink(link: any, scan: any, config: any) {
+  // Re-check status before starting (in case it was paused during batch wait)
+  const currentScan = db.select().from(scans).where(eq(scans.id, scan.id)).get();
+  if (!currentScan || currentScan.status !== 'RUNNING') return;
+
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
     
+    // HTTP Basic Auth
+    const headers: Record<string, string> = { 'User-Agent': 'BrokenLinkChecker/1.0' };
+    if (config.auth && config.auth.username && config.auth.password) {
+        const auth = Buffer.from(`${config.auth.username}:${config.auth.password}`).toString('base64');
+        headers['Authorization'] = `Basic ${auth}`;
+    }
+
     const response = await fetch(link.url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'BrokenLinkChecker/1.0' }
+      headers
     });
     clearTimeout(timeoutId);
 
     const contentType = response.headers.get('content-type') || '';
     const status = response.ok ? 'SUCCESS' : 'BROKEN';
+    const statusCode = response.status;
     
     db.update(links).set({
       status,
-      statusCode: response.status,
+      statusCode,
       type: contentType.split(';')[0],
       checkedAt: new Date()
     }).where(eq(links.id, link.id)).run();
 
-    // If it's HTML and successful, and we haven't reached max depth, extract more links
-    if (response.ok && contentType.includes('text/html')) {
-      // Calculate depth based on parent chain (simplified: we'd need to track depth in DB, but let's assume depth 1 for now or add depth to schema)
-      // For simplicity, let's just extract links if maxDepth > 0
-      // Actually, we should add depth to the links schema. Let's assume we just extract if it's the starting URL for now, or implement proper depth tracking.
-      
+    // Recursive Extraction logic
+    const maxDepth = config.maxDepth ?? 0;
+    const currentDepth = link.depth || 0;
+
+    if (response.ok && contentType.includes('text/html') && (maxDepth === 0 || currentDepth < maxDepth)) {
       const html = await response.text();
       const $ = cheerio.load(html);
-      const newUrls = new Set<string>();
+      
+      // CSS Selector Skipping
+      if (config.skipSelectors && Array.isArray(config.skipSelectors)) {
+          config.skipSelectors.forEach((selector: string) => {
+              if (selector.trim()) {
+                  try {
+                      $(selector.trim()).remove();
+                  } catch (e) {
+                      console.error(`Invalid selector: ${selector}`, e);
+                  }
+              }
+          });
+      }
+
+      const newUrls = new Map<string, string>(); // URL to Snippet
       
       $('a[href]').each((_, el) => {
         const href = $(el).attr('href');
@@ -102,22 +127,63 @@ async function processLink(link: any, scan: any, config: any) {
         
         try {
           const urlObj = new URL(href, link.url);
-          // Only crawl http/https
           if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
-            // Check exclusions
-            const urlStr = urlObj.toString();
-            const excludeRegex = config.excludeRegex ? new RegExp(config.excludeRegex) : null;
-            if (!excludeRegex || !excludeRegex.test(urlStr)) {
-               newUrls.add(urlStr);
+            urlObj.hash = '';
+            const urlStr = urlObj.toString().replace(/\/$/, '');
+            
+            // Advanced Filtering (Consolidated Regex & Wildcards)
+            const shouldExclude = () => {
+                const normalizedUrl = urlStr.replace(/^https?:\/\/(www\.)?/, '');
+
+                // 1. Existing excludeRegex (legacy)
+                if (config.excludeRegex) {
+                    try {
+                        const re = new RegExp(config.excludeRegex);
+                        if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+                    } catch (e) {}
+                }
+
+                // 2. Regex Rules
+                if (config.regexRules && Array.isArray(config.regexRules)) {
+                    for (const rule of config.regexRules) {
+                        try {
+                            // Trim stray quotes that might come from JSON copy-paste errors
+                            const cleanRule = rule.replace(/^"|"$/g, '');
+                            const re = new RegExp(cleanRule);
+                            if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+                        } catch (e) {}
+                    }
+                }
+
+                // 3. Wildcard Exclusions
+                if (config.wildcardExclusions && Array.isArray(config.wildcardExclusions)) {
+                    for (const pattern of config.wildcardExclusions) {
+                        try {
+                            // Convert wildcard to regex: * -> .*, ? -> .
+                            const regexStr = pattern
+                                .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex chars
+                                .replace(/\\\*/g, '.*')               // unescape and convert *
+                                .replace(/\\\?/g, '.');               // unescape and convert ?
+                            
+                            const re = new RegExp(regexStr); // No ^ or $ anchoring
+                            if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+                        } catch (e) {}
+                    }
+                }
+
+                return false;
+            };
+
+            if (!shouldExclude()) {
+               // Get outer HTML of the anchor tag as snippet
+               const snippet = $.html(el).slice(0, 500); 
+               newUrls.set(urlStr, snippet);
             }
           }
-        } catch (e) {
-          // Invalid URL
-        }
+        } catch (e) {}
       });
 
-      // Insert new links if they don't exist in this scan
-      for (const newUrl of newUrls) {
+      for (const [newUrl, snippet] of newUrls) {
         const exists = db.select().from(links).where(and(eq(links.scanId, scan.id), eq(links.url, newUrl))).get();
         if (!exists) {
           db.insert(links).values({
@@ -126,15 +192,18 @@ async function processLink(link: any, scan: any, config: any) {
             url: newUrl,
             parentUrl: link.url,
             status: 'PENDING',
+            depth: currentDepth + 1,
+            snippet,
           }).run();
         }
       }
     }
 
   } catch (error: any) {
+    const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
     db.update(links).set({
       status: 'BROKEN',
-      error: error.message,
+      error: errorMsg,
       checkedAt: new Date()
     }).where(eq(links.id, link.id)).run();
   }

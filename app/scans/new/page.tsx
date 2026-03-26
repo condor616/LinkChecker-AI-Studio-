@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Play } from 'lucide-react';
+import { Play, Save, Copy, Check, Trash2, LayoutTemplate, Plus, X, Shield, Filter, Globe, Code, ChevronDown, Key } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ScanConfig {
   name: string;
@@ -15,6 +18,13 @@ interface ScanConfig {
   maxDepth: number;
   rateLimit: number;
   excludeRegex: string;
+  auth?: {
+    username?: string;
+    password?: string;
+  };
+  regexRules?: string[];
+  skipSelectors?: string[];
+  wildcardExclusions?: string[];
 }
 
 export default function NewScanPage() {
@@ -25,24 +35,101 @@ export default function NewScanPage() {
     maxDepth: 2,
     rateLimit: 60,
     excludeRegex: '',
+    auth: { username: '', password: '' },
+    regexRules: [],
+    skipSelectors: [],
+    wildcardExclusions: [],
   });
   const [jsonText, setJsonText] = useState(JSON.stringify(config, null, 2));
   const [jsonError, setJsonError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [showCopyFeedback, setShowCopyFeedback] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showCode, setShowCode] = useState(false);
 
-  // Sync UI to JSON
+  // Ref to track if the change is coming from the JSON editor to avoid circular updates that lose cursor focus
+  const isUpdatingFromJson = useRef(false);
+
   useEffect(() => {
-    setJsonText(JSON.stringify(config, null, 2));
-    setJsonError('');
+    fetchTemplates();
+    
+    // Check for edit param in URL
+    const searchParams = new URLSearchParams(window.location.search);
+    const editId = searchParams.get('edit');
+    
+    // Check for selected template from Templates page or edit param
+    const checkTemplates = async () => {
+        const savedConfig = localStorage.getItem('selected_template_config');
+        if (savedConfig) {
+          try {
+            const parsed = JSON.parse(savedConfig);
+            // Ensure all fields exist
+            const merged = { ...config, ...parsed };
+            setConfig(merged);
+            setJsonText(JSON.stringify(merged, null, 2));
+            localStorage.removeItem('selected_template_config');
+            
+            // If the saved config came with an ID (for editing)
+            if (parsed.id) setEditingTemplateId(parsed.id);
+          } catch (err) {
+            console.error('Failed to parse saved template config', err);
+          }
+        } else if (editId) {
+            // Fetch the specific template if we have an ID
+            try {
+                const res = await fetch('/api/templates');
+                if (res.ok) {
+                    const data = await res.json();
+                    const template = data.find((t: any) => t.id === editId);
+                    if (template) {
+                        const parsed = typeof template.config === 'string' ? JSON.parse(template.config) : template.config;
+                        const merged = { ...config, ...parsed };
+                        setConfig(merged);
+                        setJsonText(JSON.stringify(merged, null, 2));
+                        setEditingTemplateId(editId);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to fetch template for editing', err);
+            }
+        }
+    };
+    
+    checkTemplates();
+  }, []);
+
+  const fetchTemplates = async () => {
+    const res = await fetch('/api/templates');
+    if (res.ok) {
+      const data = await res.json();
+      setTemplates(data);
+    }
+  };
+
+  // Sync UI to JSON - only if not currently typing in JSON editor
+  useEffect(() => {
+    if (!isUpdatingFromJson.current) {
+      setJsonText(JSON.stringify(config, null, 2));
+      setJsonError('');
+    }
+    isUpdatingFromJson.current = false;
   }, [config]);
 
   // Sync JSON to UI
   const handleJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setJsonText(val);
+    isUpdatingFromJson.current = true;
     try {
       const parsed = JSON.parse(val);
-      setConfig(parsed);
+      // BUG FIX: Merge with current config to prevent 'undefined' values that cause "controlled to uncontrolled" error
+      // Also ensures we don't crash if the user pastes an incomplete object
+      const merged = { ...config, ...parsed };
+      setConfig(merged);
       setJsonError('');
     } catch (err) {
       setJsonError('Invalid JSON format');
@@ -67,85 +154,437 @@ export default function NewScanPage() {
     }
   };
 
+  const handleSaveTemplate = async () => {
+    setSavingTemplate(true);
+    try {
+      const method = editingTemplateId ? 'PATCH' : 'POST';
+      const url = editingTemplateId ? `/api/templates/${editingTemplateId}` : '/api/templates';
+      
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: config.name, config }),
+      });
+      if (res.ok) {
+        fetchTemplates();
+        if (editingTemplateId) {
+            // Optional: Show success toast or reset editing state
+            alert('Template updated successfully');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const loadTemplate = (template: any) => {
+    const parsedConfig = typeof template.config === 'string' ? JSON.parse(template.config) : template.config;
+    const merged = { ...config, ...parsedConfig };
+    setConfig(merged);
+    setJsonText(JSON.stringify(merged, null, 2));
+    setEditingTemplateId(template.id);
+  };
+
+  const deleteTemplate = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      fetchTemplates();
+    }
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(jsonText);
+    setShowCopyFeedback(true);
+    setTimeout(() => setShowCopyFeedback(false), 2000);
+  };
+
+  const handleAuthChange = (field: string, value: string) => {
+    setConfig(prev => ({
+        ...prev,
+        auth: { ...prev.auth, [field]: value }
+    }));
+  };
+
+  const addListItem = (field: keyof ScanConfig, value: string) => {
+    if (!value) return;
+    setConfig(prev => ({
+        ...prev,
+        [field]: [...(prev[field] as string[] || []), value]
+    }));
+  };
+
+  const removeListItem = (field: keyof ScanConfig, index: number) => {
+    setConfig(prev => ({
+        ...prev,
+        [field]: (prev[field] as string[]).filter((_, i) => i !== index)
+    }));
+  };
+
   return (
-    <div className="p-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">New Scan</h1>
-        <p className="text-muted-foreground mt-1">Configure and start a new broken link scan.</p>
-      </div>
+    <div className="p-8 space-y-8 max-w-4xl mx-auto">
+      {/* Header with Preset Dropdown */}
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row md:items-end justify-between gap-4"
+      >
+        <div>
+            <h1 className="text-3xl font-bold tracking-tight">Initialize Scan</h1>
+            <p className="text-muted-foreground mt-1">Configure your crawling parameters or select a preset.</p>
+        </div>
+        
+        <div className="flex flex-col gap-2">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Preset</Label>
+            <div className="relative group min-w-[200px]">
+                <select 
+                    className="w-full h-10 pl-3 pr-10 bg-background border rounded-lg appearance-none cursor-pointer focus:ring-2 ring-primary/20 transition-all outline-none text-sm"
+                    onChange={(e) => {
+                        const template = templates.find(t => t.id === e.target.value);
+                        if (template) loadTemplate(template);
+                    }}
+                    value={editingTemplateId || ""}
+                >
+                    <option value="" disabled>Select a template...</option>
+                    {templates
+                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                        .slice(0, 10)
+                        .map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                        ))
+                    }
+                </select>
+                <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
+            </div>
+        </div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuration UI</CardTitle>
-            <CardDescription>Set your parameters visually.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Scan Name</Label>
-              <Input
-                value={config.name}
-                onChange={(e) => setConfig({ ...config, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Starting URL</Label>
-              <Input
-                type="url"
-                value={config.startUrl}
-                onChange={(e) => setConfig({ ...config, startUrl: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Max Depth (0 = unlimited)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={config.maxDepth}
-                  onChange={(e) => setConfig({ ...config, maxDepth: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Rate Limit (req/min)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={config.rateLimit}
-                  onChange={(e) => setConfig({ ...config, rateLimit: parseInt(e.target.value) || 60 })}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Exclude Regex (optional)</Label>
-              <Input
-                placeholder="e.g. \.pdf$"
-                value={config.excludeRegex}
-                onChange={(e) => setConfig({ ...config, excludeRegex: e.target.value })}
-              />
-            </div>
-          </CardContent>
+      <div className="space-y-6">
+        <Card className="overflow-hidden border-none shadow-xl bg-card">
+            <CardHeader className="bg-muted/30 pb-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                            <Globe className="h-4 w-4" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-lg">Core Parameters</CardTitle>
+                            <CardDescription>Essential details to start your scan.</CardDescription>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={handleSaveTemplate}
+                            disabled={savingTemplate}
+                            className="text-primary hover:bg-primary/5"
+                        >
+                            <Save className="mr-2 h-4 w-4" />
+                            {savingTemplate ? 'Saving...' : editingTemplateId ? 'Update Preset' : 'Save as Preset'}
+                        </Button>
+                        {editingTemplateId && (
+                            <Button variant="ghost" size="sm" onClick={() => setEditingTemplateId(null)}>
+                                <Plus className="mr-2 h-4 w-4" /> New
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2 md:col-span-1">
+                        <Label>Scan Name</Label>
+                        <Input
+                            placeholder="e.g. Weekly Health Check"
+                            value={config.name}
+                            onChange={(e) => setConfig({ ...config, name: e.target.value })}
+                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
+                        />
+                    </div>
+                    
+                    <div className="space-y-2 md:col-span-1">
+                        <div className="flex items-center justify-between">
+                            <Label>Starting URL</Label>
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className={cn("h-6 px-1.5 text-[10px] gap-1.5", showAuth ? "text-primary bg-primary/10" : "text-muted-foreground")}
+                                onClick={() => setShowAuth(!showAuth)}
+                            >
+                                <Key className="h-3 w-3" /> AUTH
+                            </Button>
+                        </div>
+                        <Input
+                            type="url"
+                            placeholder="https://mysite.com"
+                            value={config.startUrl}
+                            onChange={(e) => setConfig({ ...config, startUrl: e.target.value })}
+                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
+                        />
+                    </div>
+                </div>
+
+                <AnimatePresence>
+                    {showAuth && (
+                        <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                        >
+                            <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-primary/20 grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Username</Label>
+                                    <Input 
+                                        placeholder="user" 
+                                        value={config.auth?.username || ''} 
+                                        onChange={(e) => handleAuthChange('username', e.target.value)}
+                                        className="h-8 text-xs"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Password</Label>
+                                    <Input 
+                                        type="password" 
+                                        placeholder="••••••" 
+                                        value={config.auth?.password || ''} 
+                                        onChange={(e) => handleAuthChange('password', e.target.value)}
+                                        className="h-8 text-xs"
+                                    />
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        <Label>Max Depth (0=∞</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            value={config.maxDepth}
+                            onChange={(e) => setConfig({ ...config, maxDepth: parseInt(e.target.value) || 0 })}
+                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Rate Limit (req/min)</Label>
+                        <Input
+                            type="number"
+                            min={1}
+                            value={config.rateLimit}
+                            onChange={(e) => setConfig({ ...config, rateLimit: parseInt(e.target.value) || 60 })}
+                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
+                        />
+                    </div>
+                </div>
+            </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>JSON Editor</CardTitle>
-            <CardDescription>Advanced configuration via JSON. Syncs bidirectionally.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea
-              className="font-mono h-[300px] bg-muted/50"
-              value={jsonText}
-              onChange={handleJsonChange}
-            />
-            {jsonError && <p className="text-sm text-destructive">{jsonError}</p>}
-            <Button onClick={handleStart} disabled={loading || !!jsonError} className="w-full">
-              <Play className="mr-2 h-4 w-4" />
-              {loading ? 'Starting...' : 'Start Scan'}
+        {/* Advanced Filters Toggle */}
+        <div className="space-y-4">
+            <Button 
+                variant="ghost" 
+                className="w-full justify-between h-12 px-6 rounded-xl hover:bg-muted/50 border border-transparent hover:border-muted-foreground/20 transition-all text-muted-foreground"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+            >
+                <div className="flex items-center gap-3">
+                    <Filter className="h-4 w-4" />
+                    <span className="font-semibold text-sm">Advanced Exclusion Logic</span>
+                </div>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-180")} />
             </Button>
-          </CardContent>
-        </Card>
+
+            <AnimatePresence>
+                {showAdvanced && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <Card className="border-none shadow-lg bg-card/50">
+                            <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-6">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Legacy Exclude Pattern (Regex)</Label>
+                                        <Input
+                                            placeholder="\.pdf$|\.zip$"
+                                            value={config.excludeRegex}
+                                            onChange={(e) => setConfig({ ...config, excludeRegex: e.target.value })}
+                                            className="bg-muted/50 border-none shadow-none focus-visible:ring-1 h-9 text-xs"
+                                        />
+                                    </div>
+                                    <DynamicList 
+                                        title="Regex Filter rules" 
+                                        items={config.regexRules || []} 
+                                        onAdd={(val) => addListItem('regexRules', val)} 
+                                        onRemove={(idx) => removeListItem('regexRules', idx)}
+                                        placeholder="novartis\.com/node.*"
+                                    />
+                                </div>
+                                <div className="space-y-6">
+                                    <DynamicList 
+                                        title="CSS Selectors to skip" 
+                                        items={config.skipSelectors || []} 
+                                        onAdd={(val) => addListItem('skipSelectors', val)} 
+                                        onRemove={(idx) => removeListItem('skipSelectors', idx)}
+                                        placeholder="e.g. .site-footer"
+                                    />
+                                    <DynamicList 
+                                        title="Wildcard Exclusions" 
+                                        items={config.wildcardExclusions || []} 
+                                        onAdd={(val) => addListItem('wildcardExclusions', val)} 
+                                        onRemove={(idx) => removeListItem('wildcardExclusions', idx)}
+                                        placeholder="novartis.com/careers/*"
+                                    />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+
+        {/* Code Engine Toggle */}
+        <div className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowCode(!showCode)}
+                    className="text-xs text-muted-foreground hover:text-foreground gap-2"
+                >
+                    <Code className="h-3 w-3" /> {showCode ? 'Hide Code Engine' : 'Reveal Code Engine'}
+                </Button>
+                <AnimatePresence>
+                    {showCode && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                            <Button variant="ghost" size="sm" onClick={copyToClipboard} className="h-7 w-7 p-0">
+                                <AnimatePresence mode="wait">
+                                    {showCopyFeedback ? (
+                                        <motion.div key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                                            <Check className="h-3 w-3 text-green-500" />
+                                        </motion.div>
+                                    ) : (
+                                        <motion.div key="copy" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                                            <Copy className="h-3 w-3" />
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </Button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            <AnimatePresence>
+                {showCode && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <Card className="bg-slate-950 border-none shadow-inner overflow-hidden">
+                            <CardContent className="p-0">
+                                <Textarea
+                                    className="font-mono h-[200px] bg-transparent text-slate-300 text-[10px] resize-none border-0 focus-visible:ring-0 ring-offset-0 p-4"
+                                    value={jsonText}
+                                    onChange={handleJsonChange}
+                                />
+                                {jsonError && (
+                                    <div className="px-4 pb-4">
+                                        <p className="text-[10px] text-red-500 font-medium">⚠ {jsonError}</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+
+        {/* Ignite Button */}
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="pt-4"
+        >
+            <Button 
+                onClick={handleStart} 
+                disabled={loading || !!jsonError || !config.startUrl} 
+                className="w-full h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-2xl text-lg rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
+            >
+                {loading ? (
+                    <span className="flex items-center gap-3">
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Powering up Engine...
+                    </span>
+                ) : (
+                    <span className="flex items-center gap-2">
+                        <Play className="h-5 w-5 fill-current" /> Ignite Scan
+                    </span>
+                )}
+            </Button>
+        </motion.div>
       </div>
     </div>
   );
+}
+
+function DynamicList({ title, items, onAdd, onRemove, placeholder }: { title: string, items: string[], onAdd: (val: string) => void, onRemove: (idx: number) => void, placeholder?: string }) {
+    const [input, setInput] = useState('');
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{title}</Label>
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-5 w-5 text-blue-500" 
+                    onClick={() => {
+                        onAdd(input);
+                        setInput('');
+                    }}
+                >
+                    <Plus className="h-4 w-4" />
+                </Button>
+            </div>
+            <div className="space-y-2">
+                <div className="flex gap-2">
+                    <Input 
+                        placeholder={placeholder} 
+                        value={input} 
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                onAdd(input);
+                                setInput('');
+                            }
+                        }}
+                        className="h-8 text-xs bg-muted/50 border-none shadow-none focus-visible:ring-1"
+                    />
+                </div>
+                <div className="space-y-1">
+                    {items.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-accent/20 border rounded px-3 py-1.5 group animate-in fade-in slide-in-from-left-2">
+                            <span className="text-[11px] font-mono truncate mr-4">{item}</span>
+                            <button 
+                                onClick={() => onRemove(idx)}
+                                className="text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 }

@@ -13,5 +13,5 @@ if (fs.existsSync(dbPath)) {
 }
 
 // Re-initialize
-require('./lib/db/index');
+require('../lib/db/index');
 console.log('Database reset complete.');

@@ -4,11 +4,12 @@ A professional-grade Broken Link Checker web application built with Next.js, SQL
 
 ## Features
 - **Hybrid Storage**: Local-first SQLite database.
-- **Multi-User & Auth**: Admin approval workflow, JWT authentication.
+- **Onboarding Wizard**: Step-by-step setup at `/setup`.
+- **Multi-User & Auth**: Admin approval workflow, JWT authentication, and user blocking.
 - **Resource Governance**: Per-user concurrent job limits (`maxJobs`).
-- **Crawling Engine**: Recursive crawling, pause/resume, regex exclusion.
-- **Bidirectional Config**: Sync between UI form and JSON editor.
-- **Real-time Dashboard**: Monitor scan progress and view broken link reports.
+- **Crawling Engine**: Recursive crawling with depth tracking, global rate limiting, and pause/resume.
+- **Bidirectional Config**: Sync between UI form and JSON editor with Template support.
+- **Advanced Dashboard**: Real-time progress, live debug console, and report triage with HTML snippets.
 
 ## Getting Started (Local / Self-Hosted)
 

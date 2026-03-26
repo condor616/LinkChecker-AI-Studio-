@@ -7,14 +7,19 @@ import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
-    }
+    const { email, password, checkOnly } = await req.json();
 
     // Check if any users exist
     const allUsers = db.select().from(users).all();
     const isFirstUser = allUsers.length === 0;
+
+    if (checkOnly) {
+        return NextResponse.json({ exists: !isFirstUser });
+    }
+
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
+    }
 
     // Check if user already exists
     const existing = db.select().from(users).where(eq(users.email, email)).get();

@@ -45,8 +45,19 @@ export function initDb() {
       status_code INTEGER,
       error TEXT,
       type TEXT,
+      snippet TEXT,
+      depth INTEGER NOT NULL DEFAULT 0,
       checked_at INTEGER,
       FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS templates (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      config TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
     );
   `);
 }

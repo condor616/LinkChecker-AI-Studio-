@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { getSession } from '@/lib/auth';
-import { Sidebar } from '@/components/sidebar';
+import { Navbar } from '@/components/navbar';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -24,9 +24,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
-      <body className="min-h-screen bg-background font-sans antialiased text-foreground flex">
-        {session && <Sidebar role={session.role} />}
-        <main className="flex-1 overflow-y-auto">
+      <body className="min-h-screen bg-background font-sans antialiased text-foreground">
+        {session && <Navbar user={session} />}
+        <main>
           {children}
         </main>
       </body>

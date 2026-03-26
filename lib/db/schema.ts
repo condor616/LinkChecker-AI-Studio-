@@ -28,5 +28,15 @@ export const links = sqliteTable('links', {
   statusCode: integer('status_code'),
   error: text('error'),
   type: text('type'), // HTML, IMAGE, PDF, etc.
+  snippet: text('snippet'), // HTML snippet where the link was found
+  depth: integer('depth').notNull().default(0),
   checkedAt: integer('checked_at', { mode: 'timestamp' }),
+});
+
+export const templates = sqliteTable('templates', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id),
+  name: text('name').notNull(),
+  config: text('config').notNull(), // JSON string
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
