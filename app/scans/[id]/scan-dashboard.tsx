@@ -90,7 +90,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     config = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
   } catch (e) {}
   
-  const isTargeted = config.isTargeted || false;
+  const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
   const targetUrls = config.targetUrls || [];
 
   // Filter links if targeted

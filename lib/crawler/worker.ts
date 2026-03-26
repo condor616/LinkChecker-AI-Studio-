@@ -177,7 +177,7 @@ async function processLink(link: any, scan: any, config: any) {
       
       // Parse targets for deduplication logic
       const targetUrls = (config.targetUrls || []).map((t: string) => t.trim().replace(/\/$/, ''));
-      const isTargeted = config.isTargeted || false;
+      const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
 
       db.transaction((tx) => {
         for (const [urlStr, info] of foundLinks) {

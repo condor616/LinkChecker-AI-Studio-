@@ -150,12 +150,21 @@ export default function NewScanPage() {
   };
 
   const handleStart = async () => {
+    // Validation
+    if (config.isTargeted && (!config.targetUrls || config.targetUrls.length === 0)) {
+        alert("Please enter target URLs for the targeted audit.");
+        return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify({
+            ...config,
+            isTargeted: !!config.isTargeted // Force boolean
+        }),
       });
       if (!res.ok) throw new Error('Failed to start scan');
       const data = await res.json();
