@@ -35,7 +35,14 @@ async function processNextBatch() {
       continue;
     }
 
-    const config = JSON.parse(scan.config);
+    let config;
+    try {
+        config = typeof scan.config === 'string' ? JSON.parse(scan.config || '{}') : scan.config;
+    } catch (e) {
+        console.error(`Malformed config for scan ${scan.id}`, e);
+        db.update(scans).set({ status: 'FAILED' }).where(eq(scans.id, scan.id)).run();
+        continue;
+    }
     const maxDepth = config.maxDepth ?? 0; // 0 = unlimited
     
     // Get pending links for this scan
@@ -119,7 +126,7 @@ async function processLink(link: any, scan: any, config: any) {
           });
       }
 
-      const newUrls = new Map<string, string>(); // URL to Snippet
+      const foundLinks = new Map<string, { snippet: string, isExcluded: boolean }>();
       
       $('a[href]').each((_, el) => {
         const href = $(el).attr('href');
@@ -132,71 +139,56 @@ async function processLink(link: any, scan: any, config: any) {
             const urlStr = urlObj.toString().replace(/\/$/, '');
             
             // Advanced Filtering (Consolidated Regex & Wildcards)
-            const shouldExclude = () => {
-                const normalizedUrl = urlStr.replace(/^https?:\/\/(www\.)?/, '');
+            const isExcluded = shouldExclude(urlStr, config);
+            const snippet = $.html(el).slice(0, 500); 
 
-                // 1. Existing excludeRegex (legacy)
-                if (config.excludeRegex) {
-                    try {
-                        const re = new RegExp(config.excludeRegex);
-                        if (re.test(urlStr) || re.test(normalizedUrl)) return true;
-                    } catch (e) {}
-                }
-
-                // 2. Regex Rules
-                if (config.regexRules && Array.isArray(config.regexRules)) {
-                    for (const rule of config.regexRules) {
-                        try {
-                            // Trim stray quotes that might come from JSON copy-paste errors
-                            const cleanRule = rule.replace(/^"|"$/g, '');
-                            const re = new RegExp(cleanRule);
-                            if (re.test(urlStr) || re.test(normalizedUrl)) return true;
-                        } catch (e) {}
-                    }
-                }
-
-                // 3. Wildcard Exclusions
-                if (config.wildcardExclusions && Array.isArray(config.wildcardExclusions)) {
-                    for (const pattern of config.wildcardExclusions) {
-                        try {
-                            // Convert wildcard to regex: * -> .*, ? -> .
-                            const regexStr = pattern
-                                .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex chars
-                                .replace(/\\\*/g, '.*')               // unescape and convert *
-                                .replace(/\\\?/g, '.');               // unescape and convert ?
-                            
-                            const re = new RegExp(regexStr); // No ^ or $ anchoring
-                            if (re.test(urlStr) || re.test(normalizedUrl)) return true;
-                        } catch (e) {}
-                    }
-                }
-
-                return false;
-            };
-
-            if (!shouldExclude()) {
-               // Get outer HTML of the anchor tag as snippet
-               const snippet = $.html(el).slice(0, 500); 
-               newUrls.set(urlStr, snippet);
+            // Only keep the first occurrence of a URL per page
+            if (!foundLinks.has(urlStr)) {
+                foundLinks.set(urlStr, { snippet, isExcluded });
             }
           }
         } catch (e) {}
       });
 
-      for (const [newUrl, snippet] of newUrls) {
-        const exists = db.select().from(links).where(and(eq(links.scanId, scan.id), eq(links.url, newUrl))).get();
-        if (!exists) {
-          db.insert(links).values({
-            id: crypto.randomUUID(),
-            scanId: scan.id,
-            url: newUrl,
-            parentUrl: link.url,
-            status: 'PENDING',
-            depth: currentDepth + 1,
-            snippet,
-          }).run();
+      // Filter out links that already exist in this scan in bulk
+      const allUrls = Array.from(foundLinks.keys());
+      if (allUrls.length === 0) return;
+
+      const existingLinks = db.select({ url: links.url })
+        .from(links)
+        .where(and(eq(links.scanId, scan.id), inArray(links.url, allUrls)))
+        .all();
+      
+      const existingSet = new Set(existingLinks.map(l => l.url));
+
+      db.transaction((tx) => {
+        for (const [urlStr, info] of foundLinks) {
+          if (existingSet.has(urlStr)) continue;
+
+          if (info.isExcluded) {
+              tx.insert(links).values({
+                  id: crypto.randomUUID(),
+                  scanId: scan.id,
+                  url: urlStr,
+                  parentUrl: link.url,
+                  status: 'SKIPPED',
+                  depth: currentDepth + 1,
+                  snippet: info.snippet,
+                  checkedAt: new Date()
+              }).run();
+          } else {
+              tx.insert(links).values({
+                  id: crypto.randomUUID(),
+                  scanId: scan.id,
+                  url: urlStr,
+                  parentUrl: link.url,
+                  status: 'PENDING',
+                  depth: currentDepth + 1,
+                  snippet: info.snippet,
+              }).run();
+          }
         }
-      }
+      });
     }
 
   } catch (error: any) {
@@ -207,4 +199,47 @@ async function processLink(link: any, scan: any, config: any) {
       checkedAt: new Date()
     }).where(eq(links.id, link.id)).run();
   }
+}
+
+// Helper for exclusion logic migrated from inline
+function shouldExclude(urlStr: string, config: any): boolean {
+    const normalizedUrl = urlStr.replace(/^https?:\/\/(www\.)?/, '');
+
+    // 1. Existing excludeRegex (legacy)
+    if (config.excludeRegex) {
+        try {
+            const re = new RegExp(config.excludeRegex);
+            if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+        } catch (e) {}
+    }
+
+    // 2. Regex Rules
+    if (config.regexRules && Array.isArray(config.regexRules)) {
+        for (const rule of config.regexRules) {
+            try {
+                // Trim stray quotes that might come from JSON copy-paste errors
+                const cleanRule = rule.replace(/^"|"$/g, '');
+                const re = new RegExp(cleanRule);
+                if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+            } catch (e) {}
+        }
+    }
+
+    // 3. Wildcard Exclusions
+    if (config.wildcardExclusions && Array.isArray(config.wildcardExclusions)) {
+        for (const pattern of config.wildcardExclusions) {
+            try {
+                // Convert wildcard to regex: * -> .*, ? -> .
+                const regexStr = pattern
+                    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex chars
+                    .replace(/\\\*/g, '.*')               // unescape and convert *
+                    .replace(/\\\?/g, '.');               // unescape and convert ?
+                
+                const re = new RegExp(regexStr); // No ^ or $ anchoring
+                if (re.test(urlStr) || re.test(normalizedUrl)) return true;
+            } catch (e) {}
+        }
+    }
+
+    return false;
 }

@@ -116,22 +116,34 @@ export default function TemplatesPage() {
                     <div className="flex justify-between items-center gap-4">
                         <span className="text-muted-foreground font-semibold uppercase text-[10px] tracking-wider">Start URL</span>
                         <span className="truncate flex-1 text-right font-medium">{(() => {
-                            const cfg = typeof template.config === 'string' ? JSON.parse(template.config) : template.config;
-                            return cfg.startUrl || 'N/A';
+                            try {
+                                const cfg = typeof template.config === 'string' ? JSON.parse(template.config || '{}') : template.config;
+                                return cfg.startUrl || 'N/A';
+                            } catch (e) {
+                                return 'N/A';
+                            }
                         })()}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-muted-foreground font-semibold uppercase text-[10px] tracking-wider">Max Depth</span>
                         <span className="font-medium">{(() => {
-                            const cfg = typeof template.config === 'string' ? JSON.parse(template.config) : template.config;
-                            return cfg.maxDepth === 0 ? '∞ (Unlimited)' : cfg.maxDepth;
+                            try {
+                                const cfg = typeof template.config === 'string' ? JSON.parse(template.config || '{}') : template.config;
+                                return cfg.maxDepth === 0 ? '∞ (Unlimited)' : cfg.maxDepth;
+                            } catch (e) {
+                                return 'N/A';
+                            }
                         })()}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-muted-foreground font-semibold uppercase text-[10px] tracking-wider">Rate Limit</span>
                         <span className="font-medium">{(() => {
-                            const cfg = typeof template.config === 'string' ? JSON.parse(template.config) : template.config;
-                            return `${cfg.rateLimit || 60} req/min`;
+                            try {
+                                const cfg = typeof template.config === 'string' ? JSON.parse(template.config || '{}') : template.config;
+                                return `${cfg.rateLimit || 60} req/min`;
+                            } catch (e) {
+                                return '60 req/min';
+                            }
                         })()}</span>
                     </div>
                   </div>
