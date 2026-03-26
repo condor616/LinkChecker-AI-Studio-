@@ -1,55 +1,79 @@
-# Broken Link Checker Pro
+# 🔗 LinkChecker Pro
 
-A professional-grade Broken Link Checker web application built with Next.js, SQLite, and Shadcn UI.
+![LinkChecker Pro Preview](public/preview.png)
 
-## Features
-- **Hybrid Storage**: Local-first SQLite database.
-- **Onboarding Wizard**: Step-by-step setup at `/setup`.
-- **Multi-User & Auth**: Admin approval workflow, JWT authentication, and user blocking.
-- **Resource Governance**: Per-user concurrent job limits (`maxJobs`).
-- **Crawling Engine**: Recursive crawling with depth tracking, global rate limiting, and pause/resume.
-- **Bidirectional Config**: Sync between UI form and JSON editor with Template support.
-- **Advanced Dashboard**: Real-time progress, live debug console, and report triage with HTML snippets.
+**LinkChecker Pro** is a high-performance, professional-grade broken link checker built for reliability and speed. Designed with a premium dark aesthetic, it provides deep recursive crawling, real-time progress monitoring, and advanced report triage.
 
-## Getting Started (Local / Self-Hosted)
+---
+
+## ✨ Features
+
+- 🏎️ **High-Performance Engine**: Optimized concurrent crawling for rapid link verification.
+- 📂 **Hybrid Storage**: Local-first performance powered by SQLite and Drizzle ORM.
+- 🔐 **Secure Auth**: Built-in multi-user support with JWT authentication and Admin approval workflow.
+- 🛠️ **Powerful Dashboard**: Real-time scan progress, live debug console, and comprehensive link analysis.
+- 📋 **Scan Presets**: Save and reuse configurations for frequent audits.
+- 🔍 **Detail-Oriented**: Capture HTML snippets to quickly locate broken links in your source code.
+- 🛡️ **Resource Control**: Per-user job limits to ensure system stability.
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- npm or yarn
+
+- **Node.js**: 18.x or later
+- **npm** or **yarn**
 
 ### Installation
-1. Clone the repository.
-2. Install dependencies:
+
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd LinkChecker-Pro
+   ```
+
+2. **Install dependencies**:
    ```bash
    npm install
    ```
-3. Start the development server:
+
+3. **Launch the application**:
    ```bash
    npm run dev
    ```
 
-### First Run & Admin Setup
-The first user to register will automatically be granted the **ADMIN** role. Subsequent users will be marked as **PENDING** and must be approved by an Admin via the "Users" dashboard.
+Open [http://localhost:3000](http://localhost:3000) to see the application in action.
 
-### System Maintenance
-To reset the database and start fresh:
+---
+
+## 🛠️ Management & Maintenance
+
+### Administrative Setup
+The **first user** to register on a new installation is automatically granted the **ADMIN** role. Subsequent users are marked as **PENDING** and must be approved by an administrator via the **Users** management dashboard.
+
+### Resetting the System
+To wipe all data (scans, users, and templates) and start fresh:
 ```bash
 npm run reset-db
 ```
 
-## Cloud / Enterprise Deployment
-For enterprise deployments, you can swap out the SQLite database for PostgreSQL or Supabase by updating the Drizzle ORM configuration in `lib/db/index.ts` and `drizzle.config.ts`.
+### Development Commands
+- `npm run dev`: Start Next.js in development mode.
+- `npm run build`: Create a production-ready build.
+- `npm start`: Run the production server.
+- `npm run lint`: Run ESLint to check for code quality issues.
 
-### Vercel Deployment
-Note: Vercel's serverless environment is not ideal for long-running background workers or local SQLite. For Vercel, you should:
-1. Use a hosted PostgreSQL database (e.g., Supabase, Vercel Postgres).
-2. Move the crawler worker to a dedicated background service (e.g., Inngest, Upstash QStash, or a separate Node.js worker dyno on Render/Heroku).
+---
 
-### Docker Deployment
-A standard Node.js Dockerfile can be used to deploy this application to a VPS, keeping the SQLite database in a persistent volume.
+## 🏗️ Technical Stack
 
-## Usage
-1. **New Scan**: Go to "New Scan".
-2. **Configure**: Use the UI or the JSON editor to set the starting URL, max depth, rate limit, and exclusion regex.
-3. **Monitor**: View the scan progress on the dashboard. You can pause and resume scans at any time.
-4. **Triage**: Click on a scan to view detailed reports of broken links, including the parent page where the link was found.
+- **Framework**: [Next.js 15+](https://nextjs.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) & [Shadcn UI](https://ui.shadcn.com/)
+- **Database**: [SQLite](https://www.sqlite.org/) with [Drizzle ORM](https://orm.drizzle.team/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Animations**: [Framer Motion](https://www.framer.com/motion/)
+
+---
+
+Developed with ❤️ for the world to use.
