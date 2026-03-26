@@ -262,8 +262,10 @@ export default function NewScanPage() {
       </motion.div>
 
       <div className="space-y-6">
-        <Card className="overflow-hidden border-none shadow-xl bg-card">
-            <CardHeader className="bg-muted/30 pb-4">
+        <div className="animated-border-container shadow-2xl">
+            <div className="animated-border-gradient" />
+            <Card className="animated-border-inner">
+                <CardHeader className="bg-muted/10 pb-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
@@ -276,13 +278,13 @@ export default function NewScanPage() {
                     </div>
                     <div className="flex gap-2">
                         <Button 
-                            variant="ghost" 
+                            variant="glow" 
                             size="sm" 
                             onClick={handleSaveTemplate}
                             disabled={savingTemplate}
-                            className="text-primary hover:bg-primary/5"
+                            className="text-xs px-4"
                         >
-                            <Save className="mr-2 h-4 w-4" />
+                            <Save className="mr-2 h-3.5 w-3.5" />
                             {savingTemplate ? 'Saving...' : editingTemplateId ? 'Update Preset' : 'Save as Preset'}
                         </Button>
                         {editingTemplateId && (
@@ -384,6 +386,7 @@ export default function NewScanPage() {
                 </div>
             </CardContent>
         </Card>
+      </div>
 
         {/* Advanced Filters Toggle */}
         <div className="space-y-4">
@@ -518,7 +521,8 @@ export default function NewScanPage() {
             <Button 
                 onClick={handleStart} 
                 disabled={loading || !!jsonError || !config.startUrl} 
-                className="w-full h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-2xl text-lg rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
+                variant="glow"
+                className="w-full h-16 text-xl rounded-2xl font-black tracking-widest uppercase hover:scale-[1.02] active:scale-[0.98]"
             >
                 {loading ? (
                     <span className="flex items-center gap-3">

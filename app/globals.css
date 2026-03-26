@@ -32,30 +32,32 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  
+  --animate-pulse-slow: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @layer base {
   :root {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --radius: 0.5rem;
+    --background: 270 15% 2%;
+    --foreground: 0 0% 100%;
+    --card: 270 15% 4%;
+    --card-foreground: 0 0% 100%;
+    --popover: 270 15% 4%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 270 100% 66%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 15% 10%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 270 15% 12%;
+    --muted-foreground: 270 10% 65%;
+    --accent: 270 50% 20%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 270 15% 15%;
+    --input: 270 15% 15%;
+    --ring: 270 100% 66%;
+    --radius: 0.75rem;
   }
 }
 
@@ -64,6 +66,53 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground min-h-screen relative overflow-x-hidden;
+    background-image: 
+      radial-gradient(circle at 0% 0%, hsla(270, 100%, 15%, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, hsla(270, 100%, 15%, 0.1) 0%, transparent 50%);
   }
+}
+
+@utility glow-purple {
+  box-shadow: 0 0 15px 2px hsla(270, 100%, 66%, 0.3);
+}
+
+@utility glow-border-purple {
+  border-color: hsla(270, 100%, 66%, 0.5);
+  box-shadow: 0 0 10px 1px hsla(270, 100%, 66%, 0.2);
+}
+
+@utility text-glow-purple {
+  text-shadow: 0 0 10px hsla(270, 100%, 66%, 0.5);
+}
+
+@utility glass {
+  @apply bg-card/60 backdrop-blur-md border-white/5;
+}
+
+@keyframes rotate-gradient {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@utility animated-border-container {
+  @apply relative overflow-hidden p-[1.5px] rounded-[calc(var(--radius)+1px)];
+}
+
+@utility animated-border-gradient {
+  @apply absolute -inset-[200%] z-[0];
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 40%,
+    hsl(270, 100%, 66%) 48%,
+    hsl(190, 100%, 60%) 52%,
+    transparent 60%,
+    transparent 100%
+  );
+  animation: rotate-gradient 3s linear infinite;
+}
+
+@utility animated-border-inner {
+  @apply relative z-[1] h-full w-full rounded-[var(--radius)] bg-card outline-none border-none;
 }

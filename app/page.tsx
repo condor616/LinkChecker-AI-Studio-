@@ -145,28 +145,31 @@ export default async function Dashboard() {
         </div>
 
         {/* Quick Stats Summary */}
-        <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            transition={{ delay: 0.8 }}
-            className="rounded-3xl bg-primary/5 border border-primary/10 p-8 flex flex-col md:flex-row items-center justify-between gap-6"
-        >
-            <div className="space-y-2">
-                <h4 className="text-2xl font-bold">System Status</h4>
-                <p className="text-muted-foreground">You have currently executed {totalScans} verified scans.</p>
-            </div>
-            <div className="flex items-center gap-6">
-                 <div className="flex flex-col items-center">
-                    <span className="text-3xl font-black text-primary">{totalScans}</span>
-                    <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Total Scans</span>
-                 </div>
-                 <div className="h-12 w-px bg-primary/20" />
-                 <div className="flex flex-col items-center">
-                    <span className="text-3xl font-black text-primary">Live</span>
-                    <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Engine</span>
-                 </div>
-            </div>
-        </motion.div>
+        <div className="animated-border-container shadow-2xl">
+            <div className="animated-border-gradient" />
+            <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                transition={{ delay: 0.8 }}
+                className="animated-border-inner p-8 flex flex-col md:flex-row items-center justify-between gap-6"
+            >
+                <div className="space-y-2">
+                    <h4 className="text-2xl font-bold">System Status</h4>
+                    <p className="text-muted-foreground">You have currently executed {totalScans} verified scans.</p>
+                </div>
+                <div className="flex items-center gap-6">
+                    <div className="flex flex-col items-center">
+                        <span className="text-3xl font-black text-primary">{totalScans}</span>
+                        <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Total Scans</span>
+                    </div>
+                    <div className="h-12 w-px bg-primary/20" />
+                    <div className="flex flex-col items-center">
+                        <span className="text-3xl font-black text-primary">Live</span>
+                        <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Engine</span>
+                    </div>
+                </div>
+            </motion.div>
+        </div>
       </div>
     </div>
   );

@@ -57,30 +57,32 @@ export function Navbar({ user }: NavbarProps) {
     <header className="sticky top-0 z-40 w-full border-b bg-card/80 backdrop-blur-md">
       <div className="container flex h-16 items-center justify-between px-4 mx-auto">
         <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold font-mono text-sm">
-                LC
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="w-9 h-9 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <img src="/icon.png" alt="Logo" className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
             </div>
             <span className="text-xl font-bold tracking-tight hidden sm:inline-block">
-                LinkChecker <span className="text-primary">Pro</span>
+                LinkChecker <span className="text-primary text-glow-purple">Pro</span>
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-2">
             {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                  pathname === link.href 
-                    ? "bg-primary text-primary-foreground" 
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                {link.icon}
-                {link.label}
-              </Link>
+              <div key={link.href} className="animated-border-container group/nav h-9 bg-transparent rounded-lg">
+                <div className="animated-border-gradient opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                <Link
+                  href={link.href}
+                  className={cn(
+                    "animated-border-inner flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all h-full bg-transparent group-hover/nav:bg-card border-none outline-none",
+                    pathname === link.href 
+                      ? "text-primary" 
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {link.icon}
+                  <span className="relative z-10">{link.label}</span>
+                </Link>
+              </div>
             ))}
           </nav>
         </div>
