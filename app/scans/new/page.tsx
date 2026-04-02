@@ -32,24 +32,35 @@ interface ScanConfig {
   doNotTraverseBackward?: boolean;
 }
 
+const DEFAULT_CONFIG: ScanConfig = {
+  name: 'My New Scan',
+  startUrl: 'https://example.com',
+  maxDepth: 2,
+  rateLimit: 60,
+  excludeRegex: '',
+  auth: { username: '', password: '' },
+  regexRules: [],
+  skipSelectors: [],
+  wildcardExclusions: [],
+  isTargeted: false,
+  targetUrls: [],
+  skipExternal: false,
+  excludeSubdomains: false,
+  doNotTraverseBackward: false,
+};
+
+const COMMON_SELECTORS = [
+  { label: 'Header', value: 'header' },
+  { label: 'Footer', value: 'footer' },
+  { label: 'Nav', value: 'nav' },
+  { label: 'Sidebar', value: 'aside' },
+  { label: 'Ads', value: '.ads, .advertisement' },
+  { label: 'Social', value: '.social-links' },
+];
+
 export default function NewScanPage() {
   const router = useRouter();
-  const [config, setConfig] = useState<ScanConfig>({
-    name: 'My New Scan',
-    startUrl: 'https://example.com',
-    maxDepth: 2,
-    rateLimit: 60,
-    excludeRegex: '',
-    auth: { username: '', password: '' },
-    regexRules: [],
-    skipSelectors: [],
-    wildcardExclusions: [],
-    isTargeted: false,
-    targetUrls: [],
-    skipExternal: false,
-    excludeSubdomains: false,
-    doNotTraverseBackward: false,
-  });
+  const [config, setConfig] = useState<ScanConfig>(DEFAULT_CONFIG);
   const [jsonText, setJsonText] = useState(JSON.stringify(config, null, 2));
   const [jsonError, setJsonError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -75,6 +86,12 @@ export default function NewScanPage() {
     // Check for selected template from Templates page or edit param
     const checkTemplates = async () => {
         const savedConfig = localStorage.getItem('selected_template_config');
+        const targetParam = searchParams.get('target');
+        
+        if (targetParam === 'true') {
+            setConfig(prev => ({ ...prev, isTargeted: true }));
+        }
+
         if (savedConfig) {
           try {
             const parsed = JSON.parse(savedConfig);
@@ -139,10 +156,18 @@ export default function NewScanPage() {
     isUpdatingFromJson.current = true;
     try {
       const parsed = JSON.parse(val);
-      // BUG FIX: Merge with current config to prevent 'undefined' values that cause "controlled to uncontrolled" error
-      // Also ensures we don't crash if the user pastes an incomplete object
-      const merged = { ...config, ...parsed };
-      setConfig(merged);
+      // BUG FIX: Replace config entirely instead of merging to allow field deletions
+      // We still use the default config if the parsed object is missing core fields
+      const newConfig = { ...DEFAULT_CONFIG, ...parsed };
+      setConfig(newConfig);
+      
+      // Update targetUrlsRaw if it changed in JSON
+      if (parsed.targetUrls && Array.isArray(parsed.targetUrls)) {
+        setTargetUrlsRaw(parsed.targetUrls.join('\n'));
+      } else if (parsed.targetUrls === undefined) {
+        setTargetUrlsRaw('');
+      }
+      
       setJsonError('');
     } catch (err) {
       setJsonError('Invalid JSON format');
@@ -248,6 +273,17 @@ export default function NewScanPage() {
         ...prev,
         [field]: (prev[field] as string[]).filter((_, i) => i !== index)
     }));
+  };
+
+  const updateListItem = (field: keyof ScanConfig, index: number, value: string) => {
+    setConfig(prev => {
+        const newList = [...(prev[field] as string[] || [])];
+        newList[index] = value;
+        return {
+            ...prev,
+            [field]: newList
+        };
+    });
   };
 
   return (
@@ -529,6 +565,7 @@ https://mysite.com/images/logo.png"
                                         items={config.regexRules || []} 
                                         onAdd={(val) => addListItem('regexRules', val)} 
                                         onRemove={(idx) => removeListItem('regexRules', idx)}
+                                        onUpdate={(idx, val) => updateListItem('regexRules', idx, val)}
                                         placeholder="novartis\.com/node.*"
                                     />
                                 </div>
@@ -538,13 +575,32 @@ https://mysite.com/images/logo.png"
                                         items={config.skipSelectors || []} 
                                         onAdd={(val) => addListItem('skipSelectors', val)} 
                                         onRemove={(idx) => removeListItem('skipSelectors', idx)}
+                                        onUpdate={(idx, val) => updateListItem('skipSelectors', idx, val)}
                                         placeholder="e.g. .site-footer"
-                                    />
+                                    >
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                            {COMMON_SELECTORS.map(s => (
+                                                <button
+                                                    key={s.value}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (!config.skipSelectors?.includes(s.value)) {
+                                                            addListItem('skipSelectors', s.value);
+                                                        }
+                                                    }}
+                                                    className="px-2 py-0.5 rounded-full bg-primary/5 hover:bg-primary/10 text-[9px] font-bold text-primary border border-primary/20 transition-colors"
+                                                >
+                                                    + {s.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </DynamicList>
                                     <DynamicList 
                                         title="Wildcard Exclusions" 
                                         items={config.wildcardExclusions || []} 
                                         onAdd={(val) => addListItem('wildcardExclusions', val)} 
                                         onRemove={(idx) => removeListItem('wildcardExclusions', idx)}
+                                        onUpdate={(idx, val) => updateListItem('wildcardExclusions', idx, val)}
                                         placeholder="novartis.com/careers/*"
                                     />
                                 </div>
@@ -643,25 +699,44 @@ https://mysite.com/images/logo.png"
   );
 }
 
-function DynamicList({ title, items, onAdd, onRemove, placeholder }: { title: string, items: string[], onAdd: (val: string) => void, onRemove: (idx: number) => void, placeholder?: string }) {
+function DynamicList({ 
+    title, 
+    items, 
+    onAdd, 
+    onRemove, 
+    onUpdate,
+    placeholder,
+    children
+}: { 
+    title: string, 
+    items: string[], 
+    onAdd: (val: string) => void, 
+    onRemove: (idx: number) => void, 
+    onUpdate: (idx: number, val: string) => void,
+    placeholder?: string,
+    children?: React.ReactNode
+}) {
     const [input, setInput] = useState('');
 
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{title}</Label>
-                <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-5 w-5 text-blue-500" 
-                    onClick={() => {
-                        onAdd(input);
-                        setInput('');
-                    }}
-                >
-                    <Plus className="h-4 w-4" />
-                </Button>
+                <div className="flex flex-col items-end">
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-5 w-5 text-blue-500" 
+                        onClick={() => {
+                            onAdd(input);
+                            setInput('');
+                        }}
+                    >
+                        <Plus className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
+            {children}
             <div className="space-y-2">
                 <div className="flex gap-2">
                     <Input 
@@ -679,11 +754,15 @@ function DynamicList({ title, items, onAdd, onRemove, placeholder }: { title: st
                 </div>
                 <div className="space-y-1">
                     {items.map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between bg-accent/20 border rounded px-3 py-1.5 group animate-in fade-in slide-in-from-left-2">
-                            <span className="text-[11px] font-mono truncate mr-4">{item}</span>
+                        <div key={idx} className="flex items-center justify-between bg-accent/10 border border-muted-foreground/10 rounded px-2 py-1 group animate-in fade-in slide-in-from-left-2">
+                            <input 
+                                className="text-[11px] font-mono bg-transparent border-none outline-none focus:ring-0 w-full mr-2"
+                                value={item}
+                                onChange={(e) => onUpdate(idx, e.target.value)}
+                            />
                             <button 
                                 onClick={() => onRemove(idx)}
-                                className="text-muted-foreground hover:text-destructive transition-colors"
+                                className="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
                             >
                                 <X className="h-3 w-3" />
                             </button>

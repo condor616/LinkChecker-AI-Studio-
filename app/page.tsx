@@ -6,7 +6,7 @@ import { eq, count } from 'drizzle-orm';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Activity, PlusCircle, History, LayoutTemplate, Users, Shield, Zap, BarChart3, Globe } from 'lucide-react';
+import { Activity, PlusCircle, History, LayoutTemplate, Users, Shield, Zap, BarChart3, Globe, Target, ArrowRight, CheckCircle2 } from 'lucide-react';
 import * as motion from 'motion/react-client';
 
 export default async function Dashboard() {
@@ -59,6 +59,91 @@ export default async function Dashboard() {
             </Button>
           </div>
         </motion.div>
+      </section>
+
+      {/* Targeted Scan Highlight */}
+      <section className="px-8 py-12 bg-slate-950 text-white overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_120%,rgba(59,130,246,0.15),transparent)] pointer-events-none" />
+        <div className="max-w-7xl mx-auto relative z-10">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="grid lg:grid-cols-2 gap-12 items-center"
+          >
+            <div className="space-y-8">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-primary text-xs font-bold uppercase tracking-wider">
+                <Zap className="h-3.5 w-3.5 fill-current" /> New Feature
+              </div>
+              
+              <div className="space-y-4">
+                <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">
+                  Precision Auditing with <span className="text-primary">Targeted Scans</span>
+                </h2>
+                <p className="text-lg text-slate-400 max-w-xl leading-relaxed">
+                  Stop wasting resources on full site crawls when you only need to verify specific assets. 
+                  Audit exactly what matters—immediately and reliably.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <HighlightItem 
+                  icon={<Target className="h-5 w-5" />}
+                  title="Asset Focused"
+                  desc="Verify PDFs, images, and specific landing pages."
+                />
+                <HighlightItem 
+                  icon={<CheckCircle2 className="h-5 w-5" />}
+                  title="Deep Verification"
+                  desc="Comprehensive status checks for every single URL."
+                />
+              </div>
+
+              <div className="pt-4">
+                <Button size="lg" asChild className="group px-8 h-14 text-lg rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] transition-all">
+                  <Link href="/scans/new?target=true">
+                    Try Targeted Audit
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className="relative lg:block hidden">
+              <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-full" />
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+                className="relative bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl overflow-hidden"
+              >
+                <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full bg-red-500/50" />
+                    <div className="w-3 h-3 rounded-full bg-yellow-500/50" />
+                    <div className="w-3 h-3 rounded-full bg-green-500/50" />
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">Targeted Engine v2.0</div>
+                </div>
+                
+                <div className="space-y-4 font-mono text-xs">
+                  <div className="flex gap-3 text-slate-500">
+                    <span className="text-primary italic"># Bulk entry mode active</span>
+                  </div>
+                  <div className="p-3 bg-slate-950/50 rounded border border-white/5 text-slate-300">
+                    https://mysite.com/annual-report-2024.pdf<br/>
+                    https://mysite.com/assets/hero-v2.webp<br/>
+                    https://mysite.com/pricing-plans<br/>
+                    <span className="animate-pulse">|</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="text-primary font-bold">SCANNING...</div>
+                    <div className="text-slate-500 italic">Target found: [OK 200]</div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        </div>
       </section>
 
       {/* Main Grid Actions */}
@@ -194,5 +279,19 @@ function FeatureCard({ href, icon, title, description, delay }: { href: string, 
                 </Card>
             </Link>
         </motion.div>
+    );
+}
+
+function HighlightItem({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
+    return (
+        <div className="flex gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+                {icon}
+            </div>
+            <div>
+                <h4 className="font-bold text-slate-100">{title}</h4>
+                <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
+            </div>
+        </div>
     );
 }

@@ -99,6 +99,29 @@ async function processLink(link: any, scan: any, config: any) {
       return;
     }
 
+    // NEW: URL Deduplication check
+    // Check if this URL has already been checked in this scan
+    const existing = db.select().from(links)
+      .where(and(
+        eq(links.scanId, scan.id),
+        eq(links.url, link.url),
+        or(eq(links.status, 'SUCCESS'), eq(links.status, 'BROKEN'), eq(links.status, 'SKIPPED'))
+      ))
+      .limit(1)
+      .get();
+
+    if (existing) {
+      db.update(links).set({
+        status: existing.status,
+        statusCode: existing.statusCode,
+        type: existing.type,
+        error: existing.error,
+        checkedAt: new Date(),
+        snippet: `[Reused Result] ` + (link.snippet || '')
+      }).where(eq(links.id, link.id)).run();
+      return; // Stop here, no need to fetch or re-extract
+    }
+
     const response = await fetch(link.url, {
       signal: controller.signal,
       headers
@@ -181,20 +204,41 @@ async function processLink(link: any, scan: any, config: any) {
 
       db.transaction((tx) => {
         for (const [urlStr, info] of foundLinks) {
-          // Precise target match: exact match or deep subpath match to avoid false positives with .includes()
-          const isTarget = isTargeted && targetUrls.some((t: string) => {
-              if (urlStr === t) return true;
-              try {
-                  const u = new URL(urlStr);
-                  const targetU = new URL(t);
-                  return u.hostname === targetU.hostname && u.pathname.startsWith(targetU.pathname);
-              } catch(e) {
-                  return urlStr.includes(t);
-              }
-          });
+          // 1. Only keep unique (target URL, parent URL) pairs per scan
+          if (existingSet.has(urlStr + '|' + link.url)) continue;
+
+          // 2. Storage Optimization: If URL is already SUCCESS in this scan, limit occurrences
+          // (Unless it's a target URL in a targeted scan, or the user wants all links)
+          const occurrences = db.select({ 
+            id: links.id, 
+            status: links.status,
+            statusCode: links.statusCode,
+            error: links.error,
+            type: links.type
+          })
+            .from(links)
+            .where(and(eq(links.scanId, scan.id), eq(links.url, urlStr)))
+            .all();
           
-          if (!isTarget && existingLinks.some(l => l.url === urlStr)) continue;
-          if (isTarget && existingSet.has(urlStr + '|' + link.url)) continue;
+          const successCount = occurrences.filter(o => o.status === 'SUCCESS').length;
+          const isBrokenLocally = occurrences.some(o => o.status === 'BROKEN');
+          const alreadyRecordedAsSkipped = occurrences.some(o => o.status === 'SKIPPED');
+
+          // STRATEGY:
+          // 1. If EXCLUDED: Record exactly once per scan for transparency, then skip.
+          if (info.isExcluded) {
+            if (alreadyRecordedAsSkipped) continue;
+            // Otherwise, proceed to insert the FIRST occurrence of this skipped link
+          } 
+          // 2. If SUCCESSFUL: 
+          else if (!isBrokenLocally) {
+            // Apply 10-count limit ONLY for non-targeted scans
+            // If it's a Targeted Scan, we record EVERYTHING.
+            if (!isTargeted && successCount >= 10) {
+              continue;
+            }
+          }
+          // 3. If BROKEN: No limits. (Handled by falling through to the insert below)
 
           if (info.isExcluded) {
               tx.insert(links).values({
@@ -208,14 +252,21 @@ async function processLink(link: any, scan: any, config: any) {
                   checkedAt: new Date()
               }).run();
           } else {
+              // Check if we already have a definitive result for this URL to avoid re-queuing
+              const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN');
+              
               tx.insert(links).values({
                   id: crypto.randomUUID(),
                   scanId: scan.id,
                   url: urlStr,
                   parentUrl: link.url,
-                  status: 'PENDING',
+                  status: definitive ? definitive.status : 'PENDING',
+                  statusCode: definitive?.statusCode,
+                  error: definitive?.error,
+                  type: definitive?.type,
                   depth: currentDepth + 1,
                   snippet: info.snippet,
+                  checkedAt: definitive ? new Date() : null
               }).run();
           }
         }
@@ -268,14 +319,17 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
 
         // Do Not Traverse Backward (Stay in Subpath)
         if (config.doNotTraverseBackward) {
-            const normalizedStart = config.startUrl.replace(/\/$/, '');
+            const normalize = (u: string) => u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+            const normalizedStart = normalize(config.startUrl);
+            const normalizedCurrent = normalize(urlStr);
+
             // Check if it starts with the normalized start URL
-            if (!urlStr.startsWith(normalizedStart)) {
+            if (!normalizedCurrent.startsWith(normalizedStart)) {
                 return { excluded: true, reason: 'Traverse Backward' };
             }
             
             // Ensure it's a proper subpath (either same URL or next char is /)
-            const remaining = urlStr.slice(normalizedStart.length);
+            const remaining = normalizedCurrent.slice(normalizedStart.length);
             if (remaining.length > 0 && !remaining.startsWith('/')) {
                 return { excluded: true, reason: 'Traverse Backward' };
             }

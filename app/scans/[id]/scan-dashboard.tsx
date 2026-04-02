@@ -104,9 +104,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
 
   const total = filteredLinks.length;
   const pending = filteredLinks.filter((l: any) => l.status === 'PENDING').length;
-  const successCount = filteredLinks.filter((l: any) => l.status === 'SUCCESS').length;
-  const brokenCount = filteredLinks.filter((l: any) => l.status === 'BROKEN').length;
-  const skippedCount = filteredLinks.filter((l: any) => l.status === 'SKIPPED').length;
+  // Raw counts for internal use if needed, but UI uses unique counts derived below
   
   const progress = links.length > 0 ? ((links.length - links.filter((l: any) => l.status === 'PENDING').length) / links.length) * 100 : 0;
 
@@ -117,22 +115,33 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const groupLinks = (links: any[]) => {
     const grouped: Record<string, any[]> = {};
     links.forEach(link => {
-        if (!grouped[link.url]) {
-            grouped[link.url] = [];
+        // Protocol-insensitive grouping
+        const normalizedUrl = link.url.replace(/^https?:\/\//, '').toLowerCase();
+        if (!grouped[normalizedUrl]) {
+            grouped[normalizedUrl] = [];
         }
-        grouped[link.url].push(link);
+        grouped[normalizedUrl].push(link);
     });
-    return Object.entries(grouped).map(([url, instances]) => ({
-        url,
-        instances,
-        ...instances[0], // status, statusCode, etc.
-        count: instances.length
-    }));
+    return Object.entries(grouped).map(([normalizedKey, instances]) => {
+        // Prioritize https version if available for the display URL
+        const displayUrl = instances.find(inst => inst.url.startsWith('https'))?.url || instances[0].url;
+        return {
+            url: displayUrl,
+            normalizedKey,
+            instances,
+            ...instances[0], // status, statusCode, etc. from first instance
+            count: instances.length
+        };
+    });
   };
 
   const brokenLinks = groupLinks(brokenLinksRaw);
   const successLinks = groupLinks(successLinksRaw);
   const skippedLinks = groupLinks(skippedLinksRaw);
+
+  const brokenCount = brokenLinks.length;
+  const successCount = successLinks.length;
+  const skippedCount = skippedLinks.length;
 
   const paginatedBroken = brokenLinks.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);
   const paginatedSuccess = successLinks.slice((successPage - 1) * pageSize, successPage * pageSize);
@@ -481,8 +490,11 @@ function EmptyState({ message }: { message: string }) {
 
 function TriageItemGeneral({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
+    const [showAll, setShowAll] = useState(false);
     const link = group;
     const isBroken = link.status === 'BROKEN';
+
+    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <motion.div 
@@ -539,16 +551,23 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                         className="overflow-hidden bg-muted/20 border-t"
                     >
                         <div className="p-4 space-y-4">
-                            {group.instances.map((inst: any, i: number) => (
+                            {visibleInstances.map((inst: any, i: number) => (
                                 <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
-                                    {inst.parentUrl && (
-                                        <p className="text-xs text-muted-foreground flex items-center gap-2">
-                                            <span className="font-bold shrink-0 opacity-50">FOUND ON:</span>
-                                            <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
-                                                {inst.parentUrl}
-                                            </a>
-                                        </p>
-                                    )}
+                                    <div className="flex flex-col gap-1">
+                                        {inst.url !== link.url && (
+                                            <div className="text-[10px] font-mono text-primary/80">
+                                                Specific URL: {inst.url}
+                                            </div>
+                                        )}
+                                        {inst.parentUrl && (
+                                            <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                                <span className="font-bold shrink-0 opacity-50 uppercase tracking-tighter">Found on:</span>
+                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
+                                                    {inst.parentUrl}
+                                                </a>
+                                            </p>
+                                        )}
+                                    </div>
                                     {inst.snippet && (
                                         <div>
                                             <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-tight">HTML Snippet:</p>
@@ -559,6 +578,15 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                                     )}
                                 </div>
                             ))}
+                            {group.instances.length > 10 && !showAll && (
+                                <Button 
+                                    variant="ghost" 
+                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
+                                    onClick={() => setShowAll(true)}
+                                >
+                                    Show all {group.count} occurrences
+                                </Button>
+                            )}
                         </div>
                     </motion.div>
                 )}
@@ -569,7 +597,10 @@ function TriageItemGeneral({ group, onRecheck }: any) {
 
 function TriageItem({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
+    const [showAll, setShowAll] = useState(false);
     const link = group; // primary info
+
+    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <motion.div 
@@ -620,16 +651,23 @@ function TriageItem({ group, onRecheck }: any) {
                         className="overflow-hidden bg-muted/20 border-t"
                     >
                         <div className="p-4 space-y-4">
-                            {group.instances.map((inst: any, i: number) => (
+                            {visibleInstances.map((inst: any, i: number) => (
                                 <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
-                                    {inst.parentUrl && (
-                                        <p className="text-xs text-muted-foreground flex items-center gap-2">
-                                            <span className="font-bold shrink-0">FOUND ON:</span>
-                                            <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
-                                                {inst.parentUrl}
-                                            </a>
-                                        </p>
-                                    )}
+                                    <div className="flex flex-col gap-1">
+                                        {inst.url !== link.url && (
+                                            <div className="text-[10px] font-mono text-red-400/80">
+                                                Specific URL: {inst.url}
+                                            </div>
+                                        )}
+                                        {inst.parentUrl && (
+                                            <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                                <span className="font-bold shrink-0 uppercase tracking-tighter">Found on:</span>
+                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
+                                                    {inst.parentUrl}
+                                                </a>
+                                            </p>
+                                        )}
+                                    </div>
                                     {inst.snippet && (
                                         <div>
                                             <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-tight">HTML Snippet:</p>
@@ -640,6 +678,15 @@ function TriageItem({ group, onRecheck }: any) {
                                     )}
                                 </div>
                             ))}
+                            {group.instances.length > 10 && !showAll && (
+                                <Button 
+                                    variant="ghost" 
+                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
+                                    onClick={() => setShowAll(true)}
+                                >
+                                    Show all {group.count} occurrences
+                                </Button>
+                            )}
                         </div>
                     </motion.div>
                 )}
@@ -650,7 +697,10 @@ function TriageItem({ group, onRecheck }: any) {
 
 function TriageItemSuccess({ group }: any) {
     const [expanded, setExpanded] = useState(false);
+    const [showAll, setShowAll] = useState(false);
     const link = group;
+
+    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <div className="border-l-4 border-l-green-500 hover:bg-muted/10 transition-colors">
@@ -689,18 +739,34 @@ function TriageItemSuccess({ group }: any) {
                         className="overflow-hidden bg-muted/20 border-t"
                     >
                         <div className="p-4 space-y-2">
-                             {group.instances.map((inst: any, i: number) => (
+                             {visibleInstances.map((inst: any, i: number) => (
                                 <div key={inst.id} className={cn("flex flex-col gap-1", i > 0 && "pt-2 border-t border-dashed")}>
-                                    {inst.parentUrl && (
-                                        <p className="text-[10px] text-muted-foreground flex items-center gap-2">
-                                            <span className="font-bold opacity-50 shrink-0">LINKED FROM:</span>
-                                            <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
-                                                {inst.parentUrl}
-                                            </a>
-                                        </p>
-                                    )}
+                                    <div className="flex flex-col gap-1">
+                                         {inst.url !== link.url && (
+                                            <div className="text-[10px] font-mono text-green-500/80">
+                                                Specific URL: {inst.url}
+                                            </div>
+                                        )}
+                                        {inst.parentUrl && (
+                                            <p className="text-[10px] text-muted-foreground flex items-center gap-2">
+                                                <span className="font-bold opacity-50 shrink-0 uppercase tracking-tighter">Linked from:</span>
+                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
+                                                    {inst.parentUrl}
+                                                </a>
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
+                            {group.instances.length > 10 && !showAll && (
+                                <Button 
+                                    variant="ghost" 
+                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
+                                    onClick={() => setShowAll(true)}
+                                >
+                                    Show all {group.count} occurrences
+                                </Button>
+                            )}
                         </div>
                     </motion.div>
                 )}
@@ -711,7 +777,10 @@ function TriageItemSuccess({ group }: any) {
 
 function TriageItemSkipped({ group }: any) {
     const [expanded, setExpanded] = useState(false);
+    const [showAll, setShowAll] = useState(false);
     const link = group;
+
+    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <div className="hover:bg-muted/10 transition-colors">
@@ -750,16 +819,32 @@ function TriageItemSkipped({ group }: any) {
                         className="overflow-hidden bg-muted/20 border-t"
                     >
                         <div className="p-3 space-y-2">
-                             {group.instances.map((inst: any, i: number) => (
+                             {visibleInstances.map((inst: any, i: number) => (
                                 <div key={inst.id} className={cn("flex flex-col gap-1", i > 0 && "pt-2 border-t border-dashed")}>
-                                     {inst.snippet?.startsWith('[') && (
-                                        <span className="text-[10px] text-primary/80 font-mono italic">
-                                            {inst.snippet.split(']')[0] + ']'}
-                                        </span>
-                                    )}
-                                    <span className="text-[10px] opacity-100 break-all text-muted-foreground/50">From: {inst.parentUrl || 'Start'}</span>
+                                    <div className="flex flex-col gap-1">
+                                         {inst.snippet?.startsWith('[') && (
+                                            <span className="text-[10px] text-primary/80 font-mono italic">
+                                                {inst.snippet.split(']')[0] + ']'}
+                                            </span>
+                                        )}
+                                         {inst.url !== link.url && (
+                                            <div className="text-[10px] font-mono text-slate-500/80">
+                                                Specific URL: {inst.url}
+                                            </div>
+                                        )}
+                                        <span className="text-[10px] opacity-100 break-all text-muted-foreground/50">From: {inst.parentUrl || 'Start'}</span>
+                                    </div>
                                 </div>
                             ))}
+                            {group.instances.length > 10 && !showAll && (
+                                <Button 
+                                    variant="ghost" 
+                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
+                                    onClick={() => setShowAll(true)}
+                                >
+                                    Show all {group.count} occurrences
+                                </Button>
+                            )}
                         </div>
                     </motion.div>
                 )}

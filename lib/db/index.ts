@@ -4,13 +4,31 @@ import * as schema from './schema';
 import path from 'path';
 import fs from 'fs';
 
-// Ensure the data directory exists
-const dataDir = path.join(process.cwd(), 'data');
+// Resolve the persistent data directory
+// In Next.js standalone mode, process.cwd() might point inside .next/standalone
+// We want to consistently point to the project root's data folder.
+function resolveDataDir() {
+  if (process.env.DATA_DIR) return path.resolve(process.env.DATA_DIR, 'data');
+  
+  const cwd = process.cwd();
+  // If we're running from inside .next/standalone, go up to find the real root
+  if (cwd.includes('.next' + path.sep + 'standalone')) {
+    return path.resolve(cwd, '..', '..', 'data');
+  }
+  return path.resolve(cwd, 'data');
+}
+
+const dataDir = resolveDataDir();
+
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const sqlite = new Database(path.join(dataDir, 'sqlite.db'));
+// Ensure we use the absolute path to the sqlite.db
+const dbPath = path.join(dataDir, 'sqlite.db');
+console.log(`Database initialized at: ${dbPath}`);
+
+const sqlite = new Database(dbPath);
 export const db = drizzle(sqlite, { schema });
 
 // Simple migration runner (for development/local use)
