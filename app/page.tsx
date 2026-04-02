@@ -11,9 +11,8 @@ import * as motion from 'motion/react-client';
 
 export default async function Dashboard() {
   const session = await getSession();
-  if (!session) redirect('/login');
-
-  if (session.role === 'PENDING') {
+  
+  if (session && session.role === 'PENDING') {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
@@ -30,9 +29,15 @@ export default async function Dashboard() {
     );
   }
 
-  // Fetch some stats
-  const [scanStats] = await db.select({ value: count() }).from(scans).where(eq(scans.userId, session.id));
-  const totalScans = scanStats?.value || 0;
+  // Fetch some stats (only if logged in)
+  let totalScans = 0;
+  if (session) {
+    const [scanStats] = await db.select({ value: count() }).from(scans).where(eq(scans.userId, session.id));
+    totalScans = scanStats?.value || 0;
+  }
+
+  const startScanHref = session ? "/scans/new" : "/login";
+  const targetedScanHref = session ? "/scans/new?target=true" : "/login";
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -52,17 +57,19 @@ export default async function Dashboard() {
           </p>
           <div className="flex items-center justify-center gap-4 pt-4">
             <Button size="lg" asChild className="px-8 h-12 text-lg">
-              <Link href="/scans/new">Start New Scan</Link>
+              <Link href={startScanHref}>{session ? 'Start New Scan' : 'Get Started'}</Link>
             </Button>
-            <Button variant="outline" size="lg" asChild className="px-8 h-12 text-lg">
-              <Link href="/scans/history">View History</Link>
-            </Button>
+            {session && (
+              <Button variant="outline" size="lg" asChild className="px-8 h-12 text-lg">
+                <Link href="/scans/history">View History</Link>
+              </Button>
+            )}
           </div>
         </motion.div>
       </section>
 
       {/* Targeted Scan Highlight */}
-      <section className="px-8 py-12 bg-slate-950 text-white overflow-hidden relative">
+      <section className="px-8 py-12 bg-slate-950 text-white overflow-hidden relative border-y border-white/5">
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_120%,rgba(59,130,246,0.15),transparent)] pointer-events-none" />
         <div className="max-w-7xl mx-auto relative z-10">
           <motion.div 
@@ -100,7 +107,7 @@ export default async function Dashboard() {
 
               <div className="pt-4">
                 <Button size="lg" asChild className="group px-8 h-14 text-lg rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] transition-all">
-                  <Link href="/scans/new?target=true">
+                  <Link href={targetedScanHref}>
                     Try Targeted Audit
                     <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
@@ -148,38 +155,40 @@ export default async function Dashboard() {
 
       {/* Main Grid Actions */}
       <div className="p-8 max-w-7xl mx-auto w-full space-y-12">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <FeatureCard 
-                href="/scans/new"
-                icon={<PlusCircle className="h-6 w-6" />}
-                title="New Scan"
-                description="Configure and launch a new link verification job."
-                delay={0.1}
-            />
-            <FeatureCard 
-                href="/scans/history"
-                icon={<History className="h-6 w-6" />}
-                title="History"
-                description="Access all your previous and ongoing scan reports."
-                delay={0.2}
-            />
-            <FeatureCard 
-                href="/templates"
-                icon={<LayoutTemplate className="h-6 w-6" />}
-                title="Templates"
-                description="Manage scan configurations for quick reuse."
-                delay={0.3}
-            />
-            {session.role === 'ADMIN' && (
-                 <FeatureCard 
-                    href="/admin/users"
-                    icon={<Users className="h-6 w-6" />}
-                    title="User Management"
-                    description="Administer system users and permissions."
-                    delay={0.4}
-                />
-            )}
-        </div>
+        {session && (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+              <FeatureCard 
+                  href="/scans/new"
+                  icon={<PlusCircle className="h-6 w-6" />}
+                  title="New Scan"
+                  description="Configure and launch a new link verification job."
+                  delay={0.1}
+              />
+              <FeatureCard 
+                  href="/scans/history"
+                  icon={<History className="h-6 w-6" />}
+                  title="History"
+                  description="Access all your previous and ongoing scan reports."
+                  delay={0.2}
+              />
+              <FeatureCard 
+                  href="/templates"
+                  icon={<LayoutTemplate className="h-6 w-6" />}
+                  title="Templates"
+                  description="Manage scan configurations for quick reuse."
+                  delay={0.3}
+              />
+              {session.role === 'ADMIN' && (
+                   <FeatureCard 
+                      href="/admin/users"
+                      icon={<Users className="h-6 w-6" />}
+                      title="User Management"
+                      description="Administer system users and permissions."
+                      delay={0.4}
+                  />
+              )}
+          </div>
+        )}
 
         {/* Product Highlights / Ads */}
         <div className="grid gap-8 md:grid-cols-3">
@@ -240,12 +249,19 @@ export default async function Dashboard() {
             >
                 <div className="space-y-2">
                     <h4 className="text-2xl font-bold">System Status</h4>
-                    <p className="text-muted-foreground">You have currently executed {totalScans} verified scans.</p>
+                    <p className="text-muted-foreground">
+                      {session 
+                        ? `You have currently executed ${totalScans} verified scans.`
+                        : "Join our platform to start monitoring your website integrity today."
+                      }
+                    </p>
                 </div>
                 <div className="flex items-center gap-6">
                     <div className="flex flex-col items-center">
-                        <span className="text-3xl font-black text-primary">{totalScans}</span>
-                        <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Total Scans</span>
+                        <span className="text-3xl font-black text-primary">{session ? totalScans : '24/7'}</span>
+                        <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">
+                          {session ? 'Total Scans' : 'Uptime'}
+                        </span>
                     </div>
                     <div className="h-12 w-px bg-primary/20" />
                     <div className="flex flex-col items-center">

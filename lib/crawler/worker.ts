@@ -3,10 +3,12 @@ import { scans, links, users } from '../db/schema';
 import { eq, and, or, inArray } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
 import pLimit from 'p-limit';
+import crypto from 'crypto';
 
 // Global worker state
 let isWorkerRunning = false;
 const globalLimit = pLimit(10); // System-wide concurrent requests cap
+const activeCrawls = new Map<string, Promise<void>>(); // Scan-scoped fetch cache
 
 export function startWorker() {
   if (isWorkerRunning) return;
@@ -77,6 +79,19 @@ async function processLink(link: any, scan: any, config: any) {
   const currentScan = db.select().from(scans).where(eq(scans.id, scan.id)).get();
   if (!currentScan || currentScan.status !== 'RUNNING') return;
 
+  const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
+  const crawlKey = `${scan.id}:${link.url}`;
+
+  // NEW: Wait if this URL is already being fetched in this scan
+  if (activeCrawls.has(crawlKey)) {
+    await activeCrawls.get(crawlKey);
+    return;
+  }
+
+  let resolveCrawl: () => void;
+  const crawlPromise = new Promise<void>((resolve) => { resolveCrawl = resolve; });
+  activeCrawls.set(crawlKey, crawlPromise);
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
@@ -88,19 +103,19 @@ async function processLink(link: any, scan: any, config: any) {
         headers['Authorization'] = `Basic ${auth}`;
     }
 
-    // NEW: Runtime exclusion check for already-queued links
+    // Runtime exclusion check
     const exclusion = shouldExclude(link.url, config);
     if (exclusion.excluded) {
       db.update(links).set({
         status: 'SKIPPED',
+        parentUrl: isTargeted ? link.parentUrl : null,
         snippet: `[Runtime Skip: ${exclusion.reason}] ` + (link.snippet || ''),
         checkedAt: new Date()
-      }).where(eq(links.id, link.id)).run();
+      }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING'))).run();
       return;
     }
 
-    // NEW: URL Deduplication check
-    // Check if this URL has already been checked in this scan
+    // URL Deduplication check (for already COMPLETED links)
     const existing = db.select().from(links)
       .where(and(
         eq(links.scanId, scan.id),
@@ -118,7 +133,7 @@ async function processLink(link: any, scan: any, config: any) {
         error: existing.error,
         checkedAt: new Date(),
         snippet: `[Reused Result] ` + (link.snippet || '')
-      }).where(eq(links.id, link.id)).run();
+      }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING'))).run();
       return; // Stop here, no need to fetch or re-extract
     }
 
@@ -128,16 +143,31 @@ async function processLink(link: any, scan: any, config: any) {
     });
     clearTimeout(timeoutId);
 
-    const contentType = response.headers.get('content-type') || '';
+    const contentType = (response.headers.get('content-type') || '').split(';')[0];
     const status = response.ok ? 'SUCCESS' : 'BROKEN';
     const statusCode = response.status;
     
-    db.update(links).set({
+    // Bulk update all pending instances of this URL in this scan
+    const updateData: any = {
       status,
       statusCode,
-      type: contentType.split(';')[0],
+      type: contentType,
       checkedAt: new Date()
-    }).where(eq(links.id, link.id)).run();
+    };
+    
+    // Optional: snippet update only if it was redefined by result (rare)
+    // We keep individual snippets as they represent where the link was found
+    
+    if (status === 'SUCCESS' && !isTargeted) {
+        updateData.parentUrl = null; // Performance optimization for successful links
+    }
+
+    db.update(links).set(updateData)
+      .where(and(
+        eq(links.scanId, scan.id),
+        eq(links.url, link.url),
+        eq(links.status, 'PENDING')
+      )).run();
 
     // Recursive Extraction logic
     const maxDepth = config.maxDepth ?? 0;
@@ -191,12 +221,25 @@ async function processLink(link: any, scan: any, config: any) {
       const allUrls = Array.from(foundLinks.keys());
       if (allUrls.length === 0) return;
 
-      const existingLinks = db.select({ url: links.url, parentUrl: links.parentUrl })
+      const existingLinks = db.select({ 
+        id: links.id,
+        url: links.url, 
+        parentUrl: links.parentUrl,
+        status: links.status,
+        statusCode: links.statusCode,
+        error: links.error,
+        type: links.type
+      })
         .from(links)
         .where(and(eq(links.scanId, scan.id), inArray(links.url, allUrls)))
         .all();
       
-      const existingSet = new Set(existingLinks.map(l => l.url + '|' + (l.parentUrl || '')));
+      // Group existing links by URL for faster lookup
+      const linksByUrl = new Map<string, any[]>();
+      existingLinks.forEach(l => {
+          if (!linksByUrl.has(l.url)) linksByUrl.set(l.url, []);
+          linksByUrl.get(l.url)!.push(l);
+      });
       
       // Parse targets for deduplication logic
       const targetUrls = (config.targetUrls || []).map((t: string) => t.trim().replace(/\/$/, ''));
@@ -204,63 +247,47 @@ async function processLink(link: any, scan: any, config: any) {
 
       db.transaction((tx) => {
         for (const [urlStr, info] of foundLinks) {
-          // 1. Only keep unique (target URL, parent URL) pairs per scan
-          if (existingSet.has(urlStr + '|' + link.url)) continue;
-
-          // 2. Storage Optimization: If URL is already SUCCESS in this scan, limit occurrences
-          // (Unless it's a target URL in a targeted scan, or the user wants all links)
-          const occurrences = db.select({ 
-            id: links.id, 
-            status: links.status,
-            statusCode: links.statusCode,
-            error: links.error,
-            type: links.type
-          })
-            .from(links)
-            .where(and(eq(links.scanId, scan.id), eq(links.url, urlStr)))
-            .all();
+          const occurrences = linksByUrl.get(urlStr) || [];
           
-          const successCount = occurrences.filter(o => o.status === 'SUCCESS').length;
-          const isBrokenLocally = occurrences.some(o => o.status === 'BROKEN');
-          const alreadyRecordedAsSkipped = occurrences.some(o => o.status === 'SKIPPED');
-
-          // STRATEGY:
-          // 1. If EXCLUDED: Record exactly once per scan for transparency, then skip.
-          if (info.isExcluded) {
-            if (alreadyRecordedAsSkipped) continue;
-            // Otherwise, proceed to insert the FIRST occurrence of this skipped link
-          } 
-          // 2. If SUCCESSFUL: 
-          else if (!isBrokenLocally) {
-            // Apply 10-count limit ONLY for non-targeted scans
-            // If it's a Targeted Scan, we record EVERYTHING.
-            if (!isTargeted && successCount >= 10) {
-              continue;
-            }
+          if (isTargeted) {
+              // Targeted Scan: Deduplicate by exact (url, parent) pair
+              if (occurrences.some(o => o.parentUrl === link.url)) continue;
+          } else {
+              // Performance Optimized Scan:
+              // 1. If it's a known SUCCESS or SKIPPED result, don't record another occurrence.
+              if (occurrences.some(o => o.status === 'SUCCESS' || o.status === 'SKIPPED')) continue;
+              
+              // 2. If it's PENDING and NOT known broken, don't record another occurrence
+              // (This prevents redundant fetches for the same URL before it finishes)
+              const anyBroken = occurrences.some(o => o.status === 'BROKEN');
+              if (!anyBroken && occurrences.length > 0) continue;
+              
+              // Note: If anyBroken is true, we proceed to record the new occurrence to show where it's broken.
           }
-          // 3. If BROKEN: No limits. (Handled by falling through to the insert below)
 
           if (info.isExcluded) {
               tx.insert(links).values({
                   id: crypto.randomUUID(),
                   scanId: scan.id,
                   url: urlStr,
-                  parentUrl: link.url,
+                  parentUrl: isTargeted ? link.url : null, // Remove parent for performance if not targeted
                   status: 'SKIPPED',
                   depth: currentDepth + 1,
                   snippet: info.snippet,
                   checkedAt: new Date()
               }).run();
           } else {
-              // Check if we already have a definitive result for this URL to avoid re-queuing
+              // Check if we already have a definitive result for this URL
               const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN');
+              const finalStatus = definitive ? definitive.status : 'PENDING';
               
               tx.insert(links).values({
                   id: crypto.randomUUID(),
                   scanId: scan.id,
                   url: urlStr,
-                  parentUrl: link.url,
-                  status: definitive ? definitive.status : 'PENDING',
+                  // Use null for successful links in non-targeted scans
+                  parentUrl: (finalStatus === 'SUCCESS' && !isTargeted) ? null : link.url,
+                  status: finalStatus,
                   statusCode: definitive?.statusCode,
                   error: definitive?.error,
                   type: definitive?.type,
@@ -279,7 +306,10 @@ async function processLink(link: any, scan: any, config: any) {
       status: 'BROKEN',
       error: errorMsg,
       checkedAt: new Date()
-    }).where(eq(links.id, link.id)).run();
+    }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING'))).run();
+  } finally {
+    activeCrawls.delete(crawlKey);
+    resolveCrawl!();
   }
 }
 

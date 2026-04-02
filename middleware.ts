@@ -11,7 +11,9 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public paths
-  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth')) {
+  const isPublicPath = pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/api/auth') || pathname === '/icon.png';
+
+  if (isPublicPath) {
     return NextResponse.next();
   }
 
