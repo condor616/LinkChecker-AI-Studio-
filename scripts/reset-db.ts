@@ -1,17 +1,24 @@
-import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 import path from 'path';
-import fs from 'fs';
 
-const dataDir = path.join(process.cwd(), 'data');
-const dbPath = path.join(dataDir, 'sqlite.db');
+const connectionString = process.env.DATABASE_URL || 'postgres://linkchecker:localpass@localhost:5432/linkchecker';
 
-if (fs.existsSync(dbPath)) {
-  fs.unlinkSync(dbPath);
-  console.log('Database deleted.');
-} else {
-  console.log('Database does not exist.');
+const pool = new Pool({ connectionString });
+const db = drizzle(pool);
+
+async function resetDb() {
+  try {
+    console.log('Resetting public schema...');
+    await db.execute('DROP SCHEMA public CASCADE;');
+    await db.execute('CREATE SCHEMA public;');
+    console.log('✅ PostgreSQL database reset complete (public schema recreated).');
+    console.log('Run migrations (`npx drizzle-kit push`) to rebuild your tables.');
+  } catch (error) {
+    console.error('Failed to reset database:', error);
+  } finally {
+    await pool.end();
+  }
 }
 
-// Re-initialize
-require('../lib/db/index');
-console.log('Database reset complete.');
+resetDb();

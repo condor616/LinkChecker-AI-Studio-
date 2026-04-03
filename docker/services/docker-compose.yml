@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Persistent Postgres Database
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-linkchecker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-linkchecker}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkchecker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for BullMQ (Added now so it's ready for Phase 2)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+
+  # Drizzle Studio directly embedded in the Docker Compose Stack
+  drizzle-studio:
+    image: node:latest
+    working_dir: /app
+    volumes:
+      - ../../:/app
+      - /app/node_modules # Prevents your macOS node_modules from conflicting with Alpine Linux
+    depends_on:
+      - db
+    ports:
+      - "4983:4983"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-linkchecker}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-linkchecker}
+    command: /bin/sh -c "npm install && npx drizzle-kit studio --host 0.0.0.0"
+
+volumes:
+  postgres_data:
+  redis_data:
