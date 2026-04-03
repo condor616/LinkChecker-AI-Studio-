@@ -10,23 +10,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
 
     // Get the link to check scan ownership
-    const link = db.select().from(links).where(eq(links.id, id)).get();
+    const link = await db.select().from(links).where(eq(links.id, id)).then(res => res[0]);
     if (!link) return NextResponse.json({ error: 'Link not found' }, { status: 404 });
 
-    const scan = db.select().from(scans).where(and(eq(scans.id, link.scanId), eq(scans.userId, session.id))).get();
+    const scan = await db.select().from(scans).where(and(eq(scans.id, link.scanId), eq(scans.userId, session.id))).then(res => res[0]);
     if (!scan) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
-    // Reset link status to PENDING
-    db.update(links).set({
+    // Reset all instances of this URL in this scan to PENDING and mark as rechecked
+    await db.update(links).set({
       status: 'PENDING',
       statusCode: null,
       error: null,
       checkedAt: null,
-    }).where(eq(links.id, id)).run();
+      isRechecked: true,
+    }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url)));
 
     // Ensure scan is also RUNNING if it was COMPLETED
     if (scan.status === 'COMPLETED') {
-        db.update(scans).set({ status: 'RUNNING' }).where(eq(scans.id, scan.id)).run();
+        await db.update(scans).set({ status: 'RUNNING' }).where(eq(scans.id, scan.id));
     }
 
     return NextResponse.json({ success: true });

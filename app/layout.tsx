@@ -3,6 +3,9 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { getSession } from '@/lib/auth';
 import { Navbar } from '@/components/navbar';
+import { db } from '@/lib/db';
+import { sql } from 'drizzle-orm';
+import { DatabaseOffline } from '@/components/database-offline';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -15,19 +18,26 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Broken Link Checker Pro',
-  description: 'Professional-grade broken link checker',
+  title: 'Lynx Scan',
+  description: 'High-performance digital integrity and link monitoring',
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
+
+  let isDbOnline = true;
+  try {
+    await db.execute(sql`SELECT 1`);
+  } catch (error) {
+    isDbOnline = false;
+  }
 
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
       <body className="min-h-screen bg-background font-sans antialiased text-foreground">
         <Navbar user={session} />
         <main>
-          {children}
+          {isDbOnline ? children : <DatabaseOffline />}
         </main>
       </body>
     </html>

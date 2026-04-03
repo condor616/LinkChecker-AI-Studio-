@@ -18,6 +18,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const [brokenPage, setBrokenPage] = useState(1);
   const [successPage, setSuccessPage] = useState(1);
   const [skippedPage, setSkippedPage] = useState(1);
+  const [recheckedPage, setRecheckedPage] = useState(1);
   const pageSize = 30;
 
   const fetchData = async () => {
@@ -56,7 +57,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     if (triageContentRef.current) {
         triageContentRef.current.scrollTop = 0;
     }
-  }, [brokenPage, successPage, skippedPage]);
+  }, [brokenPage, successPage, skippedPage, recheckedPage]);
 
   const toggleStatus = async () => {
     const newStatus = status === 'RUNNING' ? 'PAUSED' : 'RUNNING';
@@ -109,8 +110,9 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const progress = links.length > 0 ? ((links.length - links.filter((l: any) => l.status === 'PENDING').length) / links.length) * 100 : 0;
 
   const brokenLinksRaw = filteredLinks.filter((l: any) => l.status === 'BROKEN');
-  const successLinksRaw = filteredLinks.filter((l: any) => l.status === 'SUCCESS');
-  const skippedLinksRaw = filteredLinks.filter((l: any) => l.status === 'SKIPPED');
+  const successLinksRaw = filteredLinks.filter((l: any) => l.status === 'SUCCESS' && !l.isRechecked);
+  const skippedLinksRaw = filteredLinks.filter((l: any) => l.status === 'SKIPPED' && !l.isRechecked);
+  const recheckedLinksRaw = filteredLinks.filter((l: any) => l.isRechecked);
 
   const groupLinks = (links: any[]) => {
     const grouped: Record<string, any[]> = {};
@@ -142,10 +144,13 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const brokenCount = brokenLinks.length;
   const successCount = successLinks.length;
   const skippedCount = skippedLinks.length;
+  const recheckedLinks = groupLinks(recheckedLinksRaw);
+  const recheckedCount = recheckedLinks.length;
 
   const paginatedBroken = brokenLinks.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);
   const paginatedSuccess = successLinks.slice((successPage - 1) * pageSize, successPage * pageSize);
   const paginatedSkipped = skippedLinks.slice((skippedPage - 1) * pageSize, skippedPage * pageSize);
+  const paginatedRechecked = recheckedLinks.slice((recheckedPage - 1) * pageSize, recheckedPage * pageSize);
 
   // Stats specific to the crawl progress (unfiltered)
   const pagesCrawled = links.filter((l: any) => l.type?.includes('html') && l.status !== 'PENDING').length;
@@ -252,6 +257,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                             {!isTargeted && (
                                 <TabsList>
                                     <TabsTrigger value="broken" className="text-red-500 data-[state=active]:bg-red-500/10">Broken ({brokenCount})</TabsTrigger>
+                                    <TabsTrigger value="rechecked" className="text-blue-500 data-[state=active]:bg-blue-500/10">Re-checked ({recheckedCount})</TabsTrigger>
                                     <TabsTrigger value="success">Success ({successCount})</TabsTrigger>
                                     <TabsTrigger value="skipped">Skipped ({skippedCount})</TabsTrigger>
                                 </TabsList>
@@ -301,6 +307,39 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                     />
                                 </>
                             )}
+                        </TabsContent>
+                        <TabsContent value="rechecked" className="m-0 flex-1 flex flex-col">
+                             <div className="divide-y text-xs text-muted-foreground/60 flex-1">
+                                {recheckedLinks.length === 0 ? (
+                                    <div className="p-12 text-center text-sm italic text-muted-foreground">
+                                        No links have been manually re-checked yet.
+                                    </div>
+                                ) : (
+                                    <>
+                                        {recheckedLinks.length > pageSize && (
+                                            <PaginationControls 
+                                                currentPage={recheckedPage} 
+                                                totalItems={recheckedLinks.length} 
+                                                pageSize={pageSize} 
+                                                onPageChange={setRecheckedPage} 
+                                                position="top"
+                                            />
+                                        )}
+                                        {paginatedRechecked.map((group: any) => (
+                                            <TriageItemRechecked key={group.url} group={group} onRecheck={handleRecheck} />
+                                        ))}
+                                        {recheckedLinks.length > pageSize && (
+                                            <PaginationControls 
+                                                currentPage={recheckedPage} 
+                                                totalItems={recheckedLinks.length} 
+                                                pageSize={pageSize} 
+                                                onPageChange={setRecheckedPage} 
+                                                position="bottom"
+                                            />
+                                        )}
+                                    </>
+                                )}
+                             </div>
                         </TabsContent>
                         <TabsContent value="success" className="m-0 flex-1 flex flex-col">
                              <div className="divide-y text-xs text-muted-foreground/60 flex-1">
@@ -852,3 +891,120 @@ function TriageItemSkipped({ group }: any) {
         </div>
     );
 }
+
+function TriageItemRechecked({ group, onRecheck }: any) {
+    const [expanded, setExpanded] = useState(false);
+    const [showAll, setShowAll] = useState(false);
+    const link = group;
+    const isBroken = link.status === 'BROKEN';
+    const isSuccess = link.status === 'SUCCESS';
+    const isPending = link.status === 'PENDING';
+
+    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
+
+    return (
+        <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={cn(
+                "border-l-4 transition-colors",
+                isBroken ? "border-l-red-500 hover:bg-red-500/5 text-slate-800 dark:text-slate-200" : 
+                isSuccess ? "border-l-green-500 hover:bg-green-500/5" :
+                "border-l-blue-500 hover:bg-blue-500/5"
+            )}
+        >
+            <div className="p-4 flex items-start justify-between gap-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+                <div className="space-y-1 flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                        {group.count > 1 && (
+                            <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                                {group.count} PLACES
+                            </span>
+                        )}
+                        <a 
+                            href={link.url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className={cn(
+                                "font-medium text-sm break-all hover:underline",
+                                isBroken ? "text-red-500" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
+                            )}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {link.url}
+                        </a>
+                        <ExternalLink className={cn("h-3 w-3 shrink-0", isBroken ? "text-red-400" : "text-muted-foreground")} />
+                    </div>
+                    {link.error && isBroken && <p className="text-[10px] font-mono bg-destructive/5 p-2 rounded border border-destructive/20 text-destructive">{link.error}</p>}
+                </div>
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                         <span className={cn(
+                             "text-[10px] font-bold px-2 py-1 rounded uppercase tracking-tighter",
+                             isPending ? "bg-blue-500 text-white flex items-center gap-1" :
+                             isBroken ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
+                         )}>
+                            {isPending && <RefreshCw className="h-3 w-3 animate-spin inline mr-1" />}
+                            {isPending ? 'CHECKING' : link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
+                        </span>
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </div>
+                    <Button variant="outline" size="sm" className="h-8 text-[10px] px-2" onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }} disabled={isPending}>
+                        <RefreshCw className={cn("mr-1 h-3 w-3", isPending && "animate-spin")} /> RE-CHECK
+                    </Button>
+                </div>
+            </div>
+
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-muted/20 border-t"
+                    >
+                        <div className="p-4 space-y-4">
+                            {visibleInstances.map((inst: any, i: number) => (
+                                <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
+                                    <div className="flex flex-col gap-1">
+                                        {inst.url !== link.url && (
+                                            <div className={cn("text-[10px] font-mono", isBroken ? "text-red-400/80" : "text-muted-foreground")}>
+                                                Specific URL: {inst.url}
+                                            </div>
+                                        )}
+                                        {inst.parentUrl && (
+                                            <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                                <span className="font-bold shrink-0 uppercase tracking-tighter opacity-50">Found on:</span>
+                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
+                                                    {inst.parentUrl}
+                                                </a>
+                                            </p>
+                                        )}
+                                    </div>
+                                    {inst.snippet && (
+                                        <div>
+                                            <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-tight">HTML Snippet:</p>
+                                            <pre className="text-[9px] font-mono bg-slate-900 text-slate-300 p-2 rounded-md overflow-x-auto border border-slate-800">
+                                                {inst.snippet}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            {group.instances.length > 10 && !showAll && (
+                                <Button 
+                                    variant="ghost" 
+                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
+                                    onClick={() => setShowAll(true)}
+                                >
+                                    Show all {group.count} occurrences
+                                </Button>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
+    );
+}
+

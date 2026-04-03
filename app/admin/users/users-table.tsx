@@ -83,10 +83,11 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                 <select
                   value={user.role}
                   onChange={(e) => updateUser(user.id, { role: e.target.value })}
-                  className={`bg-background border rounded-md px-2 py-1 text-xs font-semibold focus:ring-2 focus:ring-primary/20 outline-none
-                    ${user.role === 'ADMIN' ? 'text-blue-500' : 
-                      user.role === 'BLOCKED' ? 'text-red-500' : 'text-foreground'}
-                  `}
+                  className={cn(
+                    "bg-[#1a1a1e]/90 backdrop-blur-md border border-white/10 hover:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer shadow-xl",
+                    user.role === 'ADMIN' ? 'text-blue-400' : 
+                    user.role === 'BLOCKED' ? 'text-red-400' : 'text-emerald-400'
+                  )}
                 >
                   <option value="ADMIN">ADMIN</option>
                   <option value="USER">USER</option>

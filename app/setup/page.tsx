@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Database, UserPlus, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Database, UserPlus, CheckCircle2, ArrowRight, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function SetupPage() {
@@ -59,12 +59,12 @@ export default function SetupPage() {
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
       <div className="w-full max-w-[500px] space-y-8">
         <div className="flex justify-center">
-            <div className="flex items-center gap-2 font-bold text-2xl tracking-tighter">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
-                    LC
+            <h1 className="text-2xl font-black tracking-tighter flex items-center gap-2">
+                <div className="relative overflow-hidden rounded-xl border border-white/10 shadow-emerald-500/10 shadow-lg h-10 w-10 flex items-center justify-center bg-background">
+                  <img src="/logo.png" alt="Lynx Scan" className="h-full w-full object-cover p-[2px]" />
                 </div>
-                <span>LinkChecker <span className="text-primary">Pro</span></span>
-            </div>
+                <span>Lynx <span className="text-primary">Scan</span></span>
+            </h1>
         </div>
 
         <AnimatePresence mode="wait">

@@ -23,10 +23,10 @@ export async function PATCH(req: Request) {
     // Following existing pattern for hashing (base64)
     const passwordHash = Buffer.from(password).toString('base64');
 
-    db.update(users)
+    await db.update(users)
       .set({ passwordHash })
       .where(eq(users.id, session.id))
-      .run();
+      ;
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

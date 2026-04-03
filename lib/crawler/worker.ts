@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { scans, links, users } from '../db/schema';
-import { eq, and, or, inArray } from 'drizzle-orm';
+import { eq, and, or, inArray, desc } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
 import pLimit from 'p-limit';
 import crypto from 'crypto';
@@ -27,13 +27,13 @@ export function startWorker() {
 
 async function processNextBatch() {
   // Find running scans
-  const runningScans = db.select().from(scans).where(eq(scans.status, 'RUNNING')).all();
+  const runningScans = await db.select().from(scans).where(eq(scans.status, 'RUNNING'));
   if (runningScans.length === 0) return;
 
   for (const scan of runningScans) {
-    const user = db.select().from(users).where(eq(users.id, scan.userId)).get();
+    const user = await db.select().from(users).where(eq(users.id, scan.userId)).then(res => res[0]);
     if (!user || (user.role !== 'ADMIN' && user.role !== 'USER')) {
-      db.update(scans).set({ status: 'PAUSED' }).where(eq(scans.id, scan.id)).run();
+      await db.update(scans).set({ status: 'PAUSED' }).where(eq(scans.id, scan.id));
       continue;
     }
 
@@ -42,25 +42,26 @@ async function processNextBatch() {
         config = typeof scan.config === 'string' ? JSON.parse(scan.config || '{}') : scan.config;
     } catch (e) {
         console.error(`Malformed config for scan ${scan.id}`, e);
-        db.update(scans).set({ status: 'FAILED' }).where(eq(scans.id, scan.id)).run();
+        await db.update(scans).set({ status: 'FAILED' }).where(eq(scans.id, scan.id));
         continue;
     }
     const maxDepth = config.maxDepth ?? 0; // 0 = unlimited
     
-    // Get pending links for this scan
-    const pendingLinks = db.select().from(links)
+    // Get pending links for this scan, prioritizing re-checked links
+    const pendingLinks = await db.select().from(links)
       .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
+      .orderBy(desc(links.isRechecked))
       .limit(user.maxJobs * 5) // Batch size relative to user quota
-      .all();
+      ;
 
     if (pendingLinks.length === 0) {
       // Double check if really done (no more pending links in DB)
-      const anyPending = db.select().from(links)
+      const anyPending = await db.select().from(links)
         .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
-        .get();
+        .then(res => res[0]);
       
       if (!anyPending) {
-        db.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scan.id)).run();
+        await db.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scan.id));
       }
       continue;
     }
@@ -76,7 +77,7 @@ async function processNextBatch() {
 
 async function processLink(link: any, scan: any, config: any) {
   // Re-check status before starting (in case it was paused during batch wait)
-  const currentScan = db.select().from(scans).where(eq(scans.id, scan.id)).get();
+  const currentScan = await db.select().from(scans).where(eq(scans.id, scan.id)).then(res => res[0]);
   if (!currentScan || currentScan.status !== 'RUNNING') return;
 
   const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
@@ -97,7 +98,7 @@ async function processLink(link: any, scan: any, config: any) {
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
     
     // HTTP Basic Auth
-    const headers: Record<string, string> = { 'User-Agent': 'BrokenLinkChecker/1.0' };
+    const headers: Record<string, string> = { 'User-Agent': 'LynxScan/1.0' };
     if (config.auth && config.auth.username && config.auth.password) {
         const auth = Buffer.from(`${config.auth.username}:${config.auth.password}`).toString('base64');
         headers['Authorization'] = `Basic ${auth}`;
@@ -106,34 +107,34 @@ async function processLink(link: any, scan: any, config: any) {
     // Runtime exclusion check
     const exclusion = shouldExclude(link.url, config);
     if (exclusion.excluded) {
-      db.update(links).set({
+      await db.update(links).set({
         status: 'SKIPPED',
         parentUrl: isTargeted ? link.parentUrl : null,
         snippet: `[Runtime Skip: ${exclusion.reason}] ` + (link.snippet || ''),
         checkedAt: new Date()
-      }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING'))).run();
+      }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING')));
       return;
     }
 
     // URL Deduplication check (for already COMPLETED links)
-    const existing = db.select().from(links)
+    const existing = await db.select().from(links)
       .where(and(
         eq(links.scanId, scan.id),
         eq(links.url, link.url),
         or(eq(links.status, 'SUCCESS'), eq(links.status, 'BROKEN'), eq(links.status, 'SKIPPED'))
       ))
       .limit(1)
-      .get();
+      .then(res => res[0]);
 
     if (existing) {
-      db.update(links).set({
+      await db.update(links).set({
         status: existing.status,
         statusCode: existing.statusCode,
         type: existing.type,
         error: existing.error,
         checkedAt: new Date(),
         snippet: `[Reused Result] ` + (link.snippet || '')
-      }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING'))).run();
+      }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING')));
       return; // Stop here, no need to fetch or re-extract
     }
 
@@ -162,12 +163,12 @@ async function processLink(link: any, scan: any, config: any) {
         updateData.parentUrl = null; // Performance optimization for successful links
     }
 
-    db.update(links).set(updateData)
+    await db.update(links).set(updateData)
       .where(and(
         eq(links.scanId, scan.id),
         eq(links.url, link.url),
         eq(links.status, 'PENDING')
-      )).run();
+      ));
 
     // Recursive Extraction logic
     const maxDepth = config.maxDepth ?? 0;
@@ -221,7 +222,7 @@ async function processLink(link: any, scan: any, config: any) {
       const allUrls = Array.from(foundLinks.keys());
       if (allUrls.length === 0) return;
 
-      const existingLinks = db.select({ 
+      const existingLinks = await db.select({ 
         id: links.id,
         url: links.url, 
         parentUrl: links.parentUrl,
@@ -231,8 +232,7 @@ async function processLink(link: any, scan: any, config: any) {
         type: links.type
       })
         .from(links)
-        .where(and(eq(links.scanId, scan.id), inArray(links.url, allUrls)))
-        .all();
+        .where(and(eq(links.scanId, scan.id), inArray(links.url, allUrls)));
       
       // Group existing links by URL for faster lookup
       const linksByUrl = new Map<string, any[]>();
@@ -245,7 +245,7 @@ async function processLink(link: any, scan: any, config: any) {
       const targetUrls = (config.targetUrls || []).map((t: string) => t.trim().replace(/\/$/, ''));
       const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
 
-      db.transaction((tx) => {
+      await db.transaction(async (tx) => {
         for (const [urlStr, info] of foundLinks) {
           const occurrences = linksByUrl.get(urlStr) || [];
           
@@ -266,7 +266,7 @@ async function processLink(link: any, scan: any, config: any) {
           }
 
           if (info.isExcluded) {
-              tx.insert(links).values({
+              await tx.insert(links).values({
                   id: crypto.randomUUID(),
                   scanId: scan.id,
                   url: urlStr,
@@ -275,13 +275,13 @@ async function processLink(link: any, scan: any, config: any) {
                   depth: currentDepth + 1,
                   snippet: info.snippet,
                   checkedAt: new Date()
-              }).run();
+              });
           } else {
               // Check if we already have a definitive result for this URL
               const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN');
               const finalStatus = definitive ? definitive.status : 'PENDING';
               
-              tx.insert(links).values({
+              await tx.insert(links).values({
                   id: crypto.randomUUID(),
                   scanId: scan.id,
                   url: urlStr,
@@ -294,7 +294,7 @@ async function processLink(link: any, scan: any, config: any) {
                   depth: currentDepth + 1,
                   snippet: info.snippet,
                   checkedAt: definitive ? new Date() : null
-              }).run();
+              });
           }
         }
       });
@@ -302,11 +302,11 @@ async function processLink(link: any, scan: any, config: any) {
 
   } catch (error: any) {
     const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
-    db.update(links).set({
+    await db.update(links).set({
       status: 'BROKEN',
       error: errorMsg,
       checkedAt: new Date()
-    }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING'))).run();
+    }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING')));
   } finally {
     activeCrawls.delete(crawlKey);
     resolveCrawl!();

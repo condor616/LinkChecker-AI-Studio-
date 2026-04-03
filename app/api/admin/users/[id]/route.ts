@@ -10,7 +10,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const updates = await req.json();
     const { id } = await params;
 
-    db.update(users).set(updates).where(eq(users.id, id)).run();
+    await db.update(users).set(updates).where(eq(users.id, id));
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -23,11 +23,11 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const { id } = await params;
 
     // Delete associated data first (since we don't have cascade on scans/templates in schema)
-    db.delete(scans).where(eq(scans.userId, id)).run();
-    db.delete(templates).where(eq(templates.userId, id)).run();
+    await db.delete(scans).where(eq(scans.userId, id));
+    await db.delete(templates).where(eq(templates.userId, id));
     
     // Delete the user
-    db.delete(users).where(eq(users.id, id)).run();
+    await db.delete(users).where(eq(users.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

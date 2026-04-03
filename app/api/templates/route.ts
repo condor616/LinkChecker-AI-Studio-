@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 export async function GET() {
   try {
     const session = await requireAuth();
-    const userTemplates = db.select().from(templates).where(eq(templates.userId, session.id)).all();
+    const userTemplates = await db.select().from(templates).where(eq(templates.userId, session.id));
     return NextResponse.json(userTemplates);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 401 });
@@ -24,13 +24,13 @@ export async function POST(req: Request) {
     }
 
     const id = crypto.randomUUID();
-    db.insert(templates).values({
+    await db.insert(templates).values({
       id,
       userId: session.id,
       name,
       config: typeof config === 'string' ? config : JSON.stringify(config),
       createdAt: new Date(),
-    }).run();
+    });
 
     return NextResponse.json({ id, name });
   } catch (error: any) {

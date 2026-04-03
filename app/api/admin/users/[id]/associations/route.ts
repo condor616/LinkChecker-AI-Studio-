@@ -9,8 +9,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     await requireAdmin();
     const { id } = await params;
 
-    const scanCount = db.select({ count: sql`count(*)` }).from(scans).where(eq(scans.userId, id)).get() as { count: number };
-    const templateCount = db.select({ count: sql`count(*)` }).from(templates).where(eq(templates.userId, id)).get() as { count: number };
+    const scanCount = await db.select({ count: sql`count(*)` }).from(scans).where(eq(scans.userId, id)).then(res => res[0]) as { count: number };
+    const templateCount = await db.select({ count: sql`count(*)` }).from(templates).where(eq(templates.userId, id)).then(res => res[0]) as { count: number };
 
     return NextResponse.json({
       scans: scanCount?.count || 0,

@@ -1,36 +1,33 @@
-# 🔗 LinkChecker Pro
+# 🔗 Lynx Scan
 
-![LinkChecker Pro Preview](public/preview.png)
+![Lynx Scan Preview](public/preview.png)
 
-**LinkChecker Pro** is a high-performance, professional-grade broken link checker built for reliability and speed. Designed with a premium dark aesthetic, it provides deep recursive crawling, real-time progress monitoring, and advanced report triage.
+**Lynx Scan** is a high-performance, professional-grade digital integrity and link monitoring platform built for reliability and speed. Designed with a premium, multi-accented dark aesthetic, it provides deep recursive crawling, real-time progress monitoring, and advanced report triage.
 
----
+## 🚀 Key Features
 
-## ✨ Features
+- **Blazing Fast Crawling**: Parallelized scanning engine designed for large-scale websites.
+- **Deep Recursive Audits**: Analyzes every corner of your domain to find broken links, protocol errors, and redirect loops.
+- **Targeted Monitoring**: Isolate specific assets (PDFs, landing pages, images) for high-precision audits without the noise of a full site crawl.
+- **Multi-Accent Design System**: Modern, vibrant UI using Purple, Cyan, and Emerald for clear visual hierarchy and component differentiation.
+- **Enterprise-Ready**: Support for custom user agents, advanced exclusion logic (regex), and subpath restriction.
+- **Local-First Architecture**: Runs in your own infrastructure using SQLite for lightweight use or Docker/PostgreSQL for multi-user environments.
 
-- 🏎️ **High-Performance Engine**: Optimized concurrent crawling for rapid link verification.
-- 📂 **Hybrid Storage**: Local-first performance powered by SQLite and Drizzle ORM.
-- 🔐 **Secure Auth**: Built-in multi-user support with JWT authentication and Admin approval workflow.
-- 🛠️ **Powerful Dashboard**: Real-time scan progress, live debug console, and comprehensive link analysis.
-- 📋 **Scan Presets**: Save and reuse configurations for frequent audits.
-- 🔍 **Detail-Oriented**: Capture HTML snippets to quickly locate broken links in your source code.
-- 🛡️ **Resource Control**: Per-user job limits to ensure system stability.
+## 🛠 Tech Stack
 
----
+- **Framework**: Next.js 15 (App Router)
+- **Styling**: Tailwind CSS v4
+- **Database**: PostgreSQL / Drizzle ORM
+- **Queue System**: BullMQ / Redis
+- **Icons**: Lucide React
+- **Animations**: Framer Motion / Motion (client-side)
 
-## 🚀 Getting Started
-
-### Prerequisites
-
-- **Node.js**: 18.x or later
-- **npm** or **yarn**
-
-### Installation
+## 📦 Getting Started
 
 1. **Clone the repository**:
    ```bash
-   git clone <repository-url>
-   cd LinkChecker-Pro
+   git clone https://github.com/your-username/lynx-scan.git
+   cd lynx-scan
    ```
 
 2. **Install dependencies**:
@@ -42,6 +39,7 @@
    ```bash
    npm run dev
    ```
+   *(Note: This command will automatically attempt to start the required PostgreSQL and Redis Docker containers via `docker-compose`.)*
 
 Open [http://localhost:3000](http://localhost:3000) to see the application in action.
 
@@ -70,7 +68,8 @@ npm run reset-db
 
 - **Framework**: [Next.js 15+](https://nextjs.org/)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/) & [Shadcn UI](https://ui.shadcn.com/)
-- **Database**: [SQLite](https://www.sqlite.org/) with [Drizzle ORM](https://orm.drizzle.team/)
+- **Database**: [PostgreSQL](https://www.postgresql.org/) (via Docker) with [Drizzle ORM](https://orm.drizzle.team/)
+- **Message Queue**: [BullMQ](https://docs.bullmq.io/) & [Redis](https://redis.io/)
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **Animations**: [Framer Motion](https://www.framer.com/motion/)
 

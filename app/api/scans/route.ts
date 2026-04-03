@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const config = await req.json();
     const id = crypto.randomUUID();
 
-    db.insert(scans).values({
+    await db.insert(scans).values({
       id,
       userId: session.id,
       name: config.name || 'Untitled Scan',
@@ -22,16 +22,16 @@ export async function POST(req: Request) {
       config: JSON.stringify(config),
       createdAt: new Date(),
       updatedAt: new Date(),
-    }).run();
+    });
 
     // Insert the starting URL
     if (config.startUrl) {
-      db.insert(links).values({
+      await db.insert(links).values({
         id: crypto.randomUUID(),
         scanId: id,
         url: config.startUrl,
         status: 'PENDING',
-      }).run();
+      });
     }
 
     // Ensure worker is running

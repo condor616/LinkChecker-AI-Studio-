@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const { email, password, checkOnly } = await req.json();
 
     // Check if any users exist
-    const allUsers = db.select().from(users).all();
+    const allUsers = await db.select().from(users);
     const isFirstUser = allUsers.length === 0;
 
     if (checkOnly) {
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     }
 
     // Check if user already exists
-    const existing = db.select().from(users).where(eq(users.email, email)).get();
+    const existing = await db.select().from(users).where(eq(users.email, email)).then(res => res[0]);
     if (existing) {
       return NextResponse.json({ error: 'User already exists' }, { status: 400 });
     }
@@ -32,14 +32,14 @@ export async function POST(req: Request) {
     const id = crypto.randomUUID();
     const role = isFirstUser ? 'ADMIN' : 'PENDING';
 
-    db.insert(users).values({
+    await db.insert(users).values({
       id,
       email,
       passwordHash,
       role,
       maxJobs: 1,
       createdAt: new Date(),
-    }).run();
+    });
 
     const token = await createToken({ id, role, email });
     const cookieStore = await cookies();

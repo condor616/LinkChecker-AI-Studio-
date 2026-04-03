@@ -11,10 +11,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const { status } = await req.json();
 
-    const scan = db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).get();
+    const scan = await db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).then(res => res[0]);
     if (!scan) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    db.update(scans).set({ status, updatedAt: new Date() }).where(eq(scans.id, id)).run();
+    await db.update(scans).set({ status, updatedAt: new Date() }).where(eq(scans.id, id));
 
     if (status === 'RUNNING') {
       startWorker();

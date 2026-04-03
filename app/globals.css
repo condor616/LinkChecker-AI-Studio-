@@ -38,26 +38,31 @@
 
 @layer base {
   :root {
-    --background: 270 15% 2%;
-    --foreground: 0 0% 100%;
-    --card: 270 15% 4%;
-    --card-foreground: 0 0% 100%;
-    --popover: 270 15% 4%;
-    --popover-foreground: 0 0% 100%;
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 6%;
+    --popover-foreground: 0 0% 98%;
     --primary: 270 100% 66%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 270 15% 10%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 270 15% 12%;
-    --muted-foreground: 270 10% 65%;
+    --secondary: 240 10% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 10% 15%;
+    --muted-foreground: 240 5% 64.9%;
     --accent: 270 50% 20%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 270 15% 15%;
-    --input: 270 15% 15%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 10% 18%;
+    --input: 240 10% 18%;
     --ring: 270 100% 66%;
     --radius: 0.75rem;
+
+    /* Extra colors for vibrancy */
+    --vibrant-cyan: 190 100% 50%;
+    --vibrant-indigo: 250 100% 60%;
+    --vibrant-emerald: 150 100% 50%;
   }
 }
 
@@ -68,8 +73,9 @@
   body {
     @apply bg-background text-foreground min-h-screen relative overflow-x-hidden;
     background-image: 
-      radial-gradient(circle at 0% 0%, hsla(270, 100%, 15%, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 100% 100%, hsla(270, 100%, 15%, 0.1) 0%, transparent 50%);
+      radial-gradient(circle at 0% 0%, hsla(270, 100%, 15% , 0.2) 0%, transparent 40%),
+      radial-gradient(circle at 100% 100%, hsla(150, 100%, 15%, 0.15) 0%, transparent 40%),
+      radial-gradient(circle at 50% 50%, hsla(250, 100%, 10%, 0.1) 0%, transparent 80%);
   }
 }
 
@@ -77,17 +83,41 @@
   box-shadow: 0 0 15px 2px hsla(270, 100%, 66%, 0.3);
 }
 
-@utility glow-border-purple {
-  border-color: hsla(270, 100%, 66%, 0.5);
-  box-shadow: 0 0 10px 1px hsla(270, 100%, 66%, 0.2);
+@utility glow-cyan {
+  box-shadow: 0 0 15px 2px hsla(190, 100%, 50%, 0.3);
 }
 
-@utility text-glow-purple {
-  text-shadow: 0 0 10px hsla(270, 100%, 66%, 0.5);
+@utility glow-emerald {
+  box-shadow: 0 0 15px 2px hsla(150, 100%, 50%, 0.3);
 }
 
-@utility glass {
-  @apply bg-card/60 backdrop-blur-md border-white/5;
+@utility glow-border-vibrant {
+  border-color: hsla(270, 100%, 66%, 0.4);
+  box-shadow: 0 0 10px 1px hsla(270, 100%, 66%, 0.15), 0 0 5px 0 hsla(150, 100%, 50%, 0.1);
+}
+
+@utility text-glow-vibrant {
+  text-shadow: 0 0 10px hsla(270, 100%, 66%, 0.4), 0 0 20px hsla(150, 100%, 50%, 0.2);
+}
+
+@utility glass-vibrant {
+  @apply bg-card/70 backdrop-blur-xl border border-white/10 shadow-2xl;
+}
+
+@utility glass-cyan {
+  @apply bg-cyan-950/20 backdrop-blur-md border border-cyan-500/20;
+}
+
+@utility glass-emerald {
+  @apply bg-emerald-950/20 backdrop-blur-md border border-emerald-500/20;
+}
+
+@utility glass-dropdown {
+  @apply bg-[#151518]/98 backdrop-blur-2xl border border-white/20 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.9),0_0_20px_rgba(150,100,50,0.1)] rounded-xl;
+}
+
+@utility section-divider {
+  @apply h-px w-full bg-gradient-to-r from-transparent via-primary/30 to-transparent my-12 opacity-50;
 }
 
 @keyframes rotate-gradient {

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { 
   LayoutDashboard, 
@@ -13,7 +14,12 @@ import {
   History, 
   User as UserIcon,
   ChevronDown,
-  Settings
+  Settings,
+  Database,
+  RefreshCw,
+  Activity,
+  Menu,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -28,17 +34,8 @@ export function Navbar({ user }: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -54,119 +51,136 @@ export function Navbar({ user }: NavbarProps) {
   ] : [];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-card/80 backdrop-blur-md">
-      <div className="container flex h-16 items-center justify-between px-4 mx-auto">
+    <>
+      <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-card/40 backdrop-blur-xl shadow-2xl">
+      <div className="max-w-[1600px] flex h-16 items-center justify-between px-6 mx-auto">
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-9 h-9 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <img src="/icon.png" alt="Logo" className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
+            <div className="relative group overflow-hidden rounded-xl border border-white/10 shadow-emerald-500/10 shadow-lg group-hover:border-emerald-500/30 transition-all duration-300">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-blue-500/20 to-emerald-400/20 opacity-0 group-hover:opacity-100 transition duration-500"></div>
+              <img 
+                src="/logo.png" 
+                alt="Lynx Scan" 
+                className="relative h-10 w-10 object-cover p-[2px] mix-blend-screen"
+              />
             </div>
-            <span className="text-xl font-bold tracking-tight hidden sm:inline-block">
-                LinkChecker <span className="text-primary text-glow-purple">Pro</span>
+            <span className="text-xl font-black tracking-tighter text-white">
+              Lynx <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-cyan-400 to-emerald-400">Scan</span>
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-2">
+          <nav className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => (
-              <div key={link.href} className="animated-border-container group/nav h-9 bg-transparent rounded-lg">
-                <div className="animated-border-gradient opacity-0 group-hover/nav:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                <Link
-                  href={link.href}
-                  className={cn(
-                    "animated-border-inner flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all h-full bg-transparent group-hover/nav:bg-card border-none outline-none",
-                    pathname === link.href 
-                      ? "text-primary" 
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {link.icon}
-                  <span className="relative z-10">{link.label}</span>
-                </Link>
-              </div>
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all rounded-lg relative group",
+                  pathname === link.href 
+                    ? "text-primary bg-primary/10 border border-primary/20" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                )}
+              >
+                {link.icon}
+                <span className="relative z-10">{link.label}</span>
+              </Link>
             ))}
           </nav>
         </div>
 
         <div className="flex items-center gap-4">
+
           {user ? (
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-lg border bg-background/50 text-sm font-medium transition-all hover:bg-accent hover:border-primary/50",
-                  isDropdownOpen && "border-primary ring-2 ring-primary/20 bg-accent"
-                )}
-              >
-                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <UserIcon className="h-3.5 w-3.5" />
-                </div>
-                <span className="hidden sm:inline-block">Account</span>
-                <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", isDropdownOpen && "rotate-180")} />
-              </button>
+            <>
+              {(user.role?.toUpperCase() === 'ADMIN' || user.role?.toUpperCase() === 'USER') && (
+                <button
+                  onClick={() => router.push('/settings')}
+                  className={cn(
+                    "flex items-center justify-center p-2 rounded-lg border bg-background/30 backdrop-blur-md text-muted-foreground transition-all hover:bg-accent hover:text-foreground hover:border-primary/50",
+                    pathname === '/settings' && "text-primary border-primary/50 bg-primary/10"
+                  )}
+                  title="System Settings"
+                >
+                  <Settings className="h-5 w-5" />
+                </button>
+              )}
 
-              <AnimatePresence>
-                {isDropdownOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="absolute right-0 mt-2 w-64 origin-top-right rounded-xl border bg-card p-2 shadow-xl ring-1 ring-black/5"
-                  >
-                    <div className="px-3 py-3 border-b mb-1">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Account</p>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-semibold truncate">{user.email}</span>
-                        <span className="text-[10px] w-fit px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
-                          {user.role}
-                        </span>
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className={cn(
+                    "flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary to-blue-500 text-white shadow-lg transition-all hover:scale-110 active:scale-95",
+                    isDropdownOpen && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  )}
+                  title="Account Settings"
+                >
+                  <UserIcon className="h-4 w-4" />
+                </button>
+
+                <AnimatePresence>
+                  {isDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="absolute right-0 mt-3 w-72 origin-top-right glass-dropdown p-2 z-[100] border-white/20 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8),0_0_20px_rgba(168,85,247,0.15)]"
+                    >
+                      <div className="px-3 py-3 border-b mb-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Account</p>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-semibold truncate">{user.email}</span>
+                          <span className="text-[10px] w-fit px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                            {user.role}
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => {
-                          router.push('/profile');
-                          setIsDropdownOpen(false);
-                        }}
-                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                      >
-                        <Settings className="h-4 w-4" />
-                        Profile Settings
-                      </button>
-                      
-                      {user.role?.toUpperCase() === 'ADMIN' && (
+                      <div className="space-y-1">
                         <button
                           onClick={() => {
-                            router.push('/admin/users');
+                            router.push('/profile');
                             setIsDropdownOpen(false);
                           }}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                            pathname === '/admin/users' 
-                              ? "bg-primary/10 text-primary" 
-                              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                          )}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                         >
-                          <Users className="h-4 w-4" />
-                          User Management
+                          <Settings className="h-4 w-4" />
+                          Profile Settings
                         </button>
-                      )}
-                    </div>
+                        
+                        {user.role?.toUpperCase() === 'ADMIN' && (
+                          <button
+                            onClick={() => {
+                              router.push('/admin/users');
+                              setIsDropdownOpen(false);
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                              pathname === '/admin/users' 
+                                ? "bg-primary/10 text-primary" 
+                                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            )}
+                          >
+                            <Users className="h-4 w-4" />
+                            User Management
+                          </button>
+                        )}
+                      </div>
 
-                    <div className="mt-1 border-t pt-1">
-                      <button
-                        onClick={handleLogout}
-                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
-                      >
-                        <LogOut className="h-4 w-4" />
-                        Logout
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                      <div className="mt-1 border-t pt-1">
+                        <button
+                          onClick={handleLogout}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Logout
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </>
           ) : (
             <div className="flex items-center gap-3">
               <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
@@ -177,8 +191,58 @@ export function Navbar({ user }: NavbarProps) {
               </Link>
             </div>
           )}
+
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="md:hidden p-2 text-muted-foreground hover:text-foreground transition-all hover:bg-white/5 rounded-lg active:scale-95"
+            title={isMenuOpen ? "Close Menu" : "Open Menu"}
+          >
+            {isMenuOpen ? <X className="h-6 w-6 text-primary" /> : <Menu className="h-6 w-6" />}
+          </button>
         </div>
       </div>
-    </header>
+      </header>
+
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed inset-x-0 top-16 z-30 md:hidden bg-card/95 backdrop-blur-2xl border-b border-white/10 shadow-2xl p-6"
+          >
+            <nav className="flex flex-col gap-4">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setIsMenuOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-xl",
+                    pathname === link.href 
+                      ? "text-primary bg-primary/10 border border-primary/20" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                  )}
+                >
+                  {link.icon}
+                  <span>{link.label}</span>
+                </Link>
+              ))}
+              
+              {!user && (
+                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/5">
+                  <Button variant="ghost" asChild onClick={() => setIsMenuOpen(false)}>
+                    <Link href="/login">Sign In</Link>
+                  </Button>
+                  <Button asChild onClick={() => setIsMenuOpen(false)}>
+                    <Link href="/login">Get Started</Link>
+                  </Button>
+                </div>
+              )}
+            </nav>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

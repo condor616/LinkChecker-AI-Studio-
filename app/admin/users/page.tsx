@@ -6,7 +6,7 @@ import { UsersTable } from './users-table';
 
 export default async function AdminUsersPage() {
   await requireAdmin();
-  const allUsers = db.select().from(users).all();
+  const allUsers = await db.select().from(users);
 
   return (
     <div className="p-8 space-y-8">

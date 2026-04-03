@@ -9,10 +9,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const session = await requireAuth();
     const { id } = await params;
 
-    const scan = db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).get();
+    const scan = await db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).then(res => res[0]);
     if (!scan) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const scanLinks = db.select().from(links).where(eq(links.scanId, id)).all();
+    const scanLinks = await db.select().from(links).where(eq(links.scanId, id));
 
     return NextResponse.json({ scan, links: scanLinks });
   } catch (error: any) {
@@ -26,11 +26,11 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const { id } = await params;
 
     // Verify it belongs to the user
-    const scan = db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).get();
+    const scan = db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).then(res => res[0]);
     if (!scan) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     // Delete the scan (links will cascade)
-    db.delete(scans).where(eq(scans.id, id)).run();
+    await db.delete(scans).where(eq(scans.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

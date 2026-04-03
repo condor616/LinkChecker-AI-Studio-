@@ -313,9 +313,9 @@ export default function NewScanPage() {
                     <span className="text-xs font-semibold">Targeted Audit</span>
                 </div>
 
-                <div className="relative group min-w-[200px]">
+                <div className="relative group min-w-[220px]">
                     <select 
-                        className="w-full h-10 pl-3 pr-10 bg-background border rounded-lg appearance-none cursor-pointer focus:ring-2 ring-primary/20 transition-all outline-none text-sm"
+                        className="w-full h-11 pl-4 pr-10 bg-[#1a1a1e]/90 backdrop-blur-xl border border-white/10 group-hover:border-emerald-500/50 rounded-xl appearance-none cursor-pointer focus:ring-2 ring-emerald-500/20 transition-all outline-none text-sm font-medium shadow-xl"
                         onChange={(e) => {
                             const template = templates.find(t => t.id === e.target.value);
                             if (template) loadTemplate(template);

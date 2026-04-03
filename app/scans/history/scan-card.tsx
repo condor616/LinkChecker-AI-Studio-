@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Activity, CheckCircle, AlertCircle, Clock, ChevronRight, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import * as motion from 'motion/react-client';
 import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 export function ScanCard({ scan, i }: { scan: any, i: number }) {
     const [isDeleting, setIsDeleting] = useState(false);
@@ -42,33 +43,51 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
           <div className="group relative">
             <Link href={`/scans/${scan.id}`}>
-              <Card className="hover:bg-muted/50 transition-all hover:shadow-md cursor-pointer border-l-4 border-l-transparent dark:hover:border-l-primary/50 h-full">
+              <Card className="hover:bg-white/[0.04] transition-all duration-300 cursor-pointer border border-white/5 hover:border-primary/30 group/card relative overflow-hidden h-full glass-vibrant hover:shadow-[0_0_20px_rgba(168,85,247,0.1)]">
+                <div className={cn(
+                  "absolute left-0 top-0 bottom-0 w-1 transition-all duration-300 group-hover/card:w-1.5",
+                  scan.status === 'RUNNING' ? "bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]" :
+                  scan.status === 'COMPLETED' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" :
+                  scan.status === 'FAILED' ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" :
+                  "bg-slate-500"
+                )} />
                 <CardContent className="p-6 flex items-center justify-between">
-                  <div className="space-y-1 min-w-0 pr-8">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-lg truncate">{scan.name}</h3>
+                  <div className="space-y-2 min-w-0 pr-8">
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-bold text-lg truncate text-white group-hover/card:text-primary transition-colors">{scan.name}</h3>
                       {scan.status === 'RUNNING' && (
-                         <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                           Live
+                         <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                           Processing
                          </span>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {startUrl} • Started {new Date(scan.createdAt).toLocaleString()}
-                    </p>
+                    <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
+                      <Clock className="h-3 w-3" />
+                      <span>{new Date(scan.createdAt).toLocaleDateString()} at {new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span className="text-slate-600">•</span>
+                      <span className="truncate max-w-[200px] md:max-w-md">{startUrl}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-6 shrink-0">
-                  <div className="text-right hidden sm:block">
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Status</p>
-                      <div className="flex items-center gap-2 mt-1">
-                          {scan.status === 'RUNNING' && <Activity className="h-4 w-4 text-blue-500 animate-pulse" />}
-                          {scan.status === 'COMPLETED' && <CheckCircle className="h-4 w-4 text-emerald-500" />}
-                          {scan.status === 'FAILED' && <AlertCircle className="h-4 w-4 text-red-500" />}
-                          {scan.status === 'IDLE' && <Clock className="h-4 w-4 text-muted-foreground" />}
-                          <span className="text-sm font-medium capitalize">{scan.status.toLowerCase()}</span>
+                  <div className="flex items-center gap-8 shrink-0">
+                  <div className="text-right hidden md:block">
+                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-[0.2em] mb-1.5">Engine Status</p>
+                      <div className={cn(
+                          "flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold",
+                          scan.status === 'RUNNING' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                          scan.status === 'COMPLETED' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                          scan.status === 'FAILED' ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                          "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                      )}>
+                          {scan.status === 'RUNNING' && <Activity className="h-3 w-3 animate-spin" />}
+                          {scan.status === 'COMPLETED' && <CheckCircle className="h-3 w-3" />}
+                          {scan.status === 'FAILED' && <AlertCircle className="h-3 w-3" />}
+                          {scan.status === 'IDLE' && <Clock className="h-3 w-3" />}
+                          <span className="tracking-wide uppercase text-[10px]">{scan.status}</span>
                       </div>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center group-hover/card:bg-primary/20 group-hover/card:text-primary transition-all">
+                    <ChevronRight className="h-5 w-5" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -78,10 +97,10 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500 hover:bg-red-50 h-8 w-8"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400 hover:bg-red-500/10 h-8 w-8 rounded-lg"
                 onClick={handleDelete}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4 w-4 text-slate-500 group-hover:text-red-400" />
               </Button>
           )}
           </div>
