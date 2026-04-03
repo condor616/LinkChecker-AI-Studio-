@@ -47,3 +47,11 @@ export async function requireAdmin() {
   }
   return session;
 }
+
+export async function requireApprovedUser() {
+  const session = await requireAuth();
+  if (session.role !== 'ADMIN' && session.role !== 'USER') {
+    throw new Error('Forbidden: Your account is pending approval.');
+  }
+  return session;
+}
