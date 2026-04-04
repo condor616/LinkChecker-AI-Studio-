@@ -1,22 +1,25 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
-import { db } from '@/lib/db';
-import { scans } from '@/lib/db/schema';
+import { requireApprovedUser } from '@/lib/auth';
+import { getDb, db as centralDb } from '@/lib/db';
+import { scans, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { startWorker } from '@/lib/crawler/worker';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await requireAuth();
+    const session = await requireApprovedUser();
     const { id } = await params;
     const { status } = await req.json();
+    const userDb = getDb(session.id);
 
-    const scan = await db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).then(res => res[0]);
+    const scan = await userDb.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).then(res => res[0]);
     if (!scan) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    await db.update(scans).set({ status, updatedAt: new Date() }).where(eq(scans.id, id));
+    await userDb.update(scans).set({ status, updatedAt: new Date() }).where(eq(scans.id, id));
 
     if (status === 'RUNNING') {
+      // Mark user as having an active scan in central DB
+      await centralDb.update(users).set({ hasActiveScan: true }).where(eq(users.id, session.id));
       startWorker();
     }
 

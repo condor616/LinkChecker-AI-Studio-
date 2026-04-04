@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { templates } from '@/lib/db/schema';
-import { requireAuth } from '@/lib/auth';
-import { eq } from 'drizzle-orm';
+import { requireApprovedUser } from '@/lib/auth';
+import { eq, and } from 'drizzle-orm';
 
 export async function GET() {
   try {
-    const session = await requireAuth();
-    const userTemplates = await db.select().from(templates).where(eq(templates.userId, session.id));
+    const session = await requireApprovedUser();
+    const userDb = getDb(session.id);
+    const userTemplates = await userDb.select().from(templates).where(eq(templates.userId, session.id));
     return NextResponse.json(userTemplates);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 401 });
@@ -16,15 +17,16 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await requireAuth();
+    const session = await requireApprovedUser();
     const { name, config } = await req.json();
+    const userDb = getDb(session.id);
 
     if (!name || !config) {
       return NextResponse.json({ error: 'Name and config required' }, { status: 400 });
     }
 
     const id = crypto.randomUUID();
-    await db.insert(templates).values({
+    await userDb.insert(templates).values({
       id,
       userId: session.id,
       name,

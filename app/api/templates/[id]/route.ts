@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { templates } from '@/lib/db/schema';
-import { requireAuth } from '@/lib/auth';
+import { requireApprovedUser } from '@/lib/auth';
 import { eq, and } from 'drizzle-orm';
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await requireAuth();
+    const session = await requireApprovedUser();
     const { id } = await params;
+    const userDb = getDb(session.id);
 
-    await db.delete(templates)
+    await userDb.delete(templates)
       .where(and(eq(templates.id, id), eq(templates.userId, session.id)))
       ;
 
@@ -21,15 +22,16 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await requireAuth();
+    const session = await requireApprovedUser();
     const { id } = await params;
     const { name, config } = await req.json();
+    const userDb = getDb(session.id);
 
     if (!name || !config) {
       return NextResponse.json({ error: 'Name and config required' }, { status: 400 });
     }
 
-    await db.update(templates)
+    await userDb.update(templates)
       .set({ 
         name, 
         config: typeof config === 'string' ? config : JSON.stringify(config) 

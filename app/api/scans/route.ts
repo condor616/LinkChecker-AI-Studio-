@@ -1,20 +1,19 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
-import { db } from '@/lib/db';
-import { scans, links } from '@/lib/db/schema';
+import { requireApprovedUser } from '@/lib/auth';
+import { getDb, db as centralDb } from '@/lib/db';
+import { scans, links, users } from '@/lib/db/schema';
 import { startWorker } from '@/lib/crawler/worker';
+import { eq } from 'drizzle-orm';
 
 export async function POST(req: Request) {
   try {
-    const session = await requireAuth();
-    if (session.role === 'PENDING') {
-      return NextResponse.json({ error: 'Account pending approval' }, { status: 403 });
-    }
+    const session = await requireApprovedUser();
 
     const config = await req.json();
     const id = crypto.randomUUID();
+    const userDb = getDb(session.id);
 
-    await db.insert(scans).values({
+    await userDb.insert(scans).values({
       id,
       userId: session.id,
       name: config.name || 'Untitled Scan',
@@ -24,9 +23,12 @@ export async function POST(req: Request) {
       updatedAt: new Date(),
     });
 
+    // Mark user as having an active scan in central DB
+    await centralDb.update(users).set({ hasActiveScan: true }).where(eq(users.id, session.id));
+
     // Insert the starting URL
     if (config.startUrl) {
-      await db.insert(links).values({
+      await userDb.insert(links).values({
         id: crypto.randomUUID(),
         scanId: id,
         url: config.startUrl,
@@ -39,6 +41,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ id });
   } catch (error: any) {
+    console.error('Failed to start scan:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
