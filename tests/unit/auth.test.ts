@@ -16,6 +16,12 @@ vi.mock('@/lib/db/provisioning', () => ({
   provisionUserDb: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock createToken
+vi.mock('@/lib/auth', () => ({
+  createToken: vi.fn().mockResolvedValue('mocked-token'),
+}));
+
+
 describe('Auth Registration', () => {
   beforeEach(async () => {
     // Clean up users table before each test
@@ -34,7 +40,12 @@ describe('Auth Registration', () => {
     const response = await POST(req);
     const data = await response.json();
 
+    if (response.status !== 200) {
+      expect.fail(`Registration failed (Test 1): ${JSON.stringify(data)}`);
+    }
+
     expect(response.status).toBe(200);
+
     expect(data.user.role).toBe('ADMIN');
 
     const dbUser = await db.select().from(users).where(eq(users.email, 'admin@example.com')).then(res => res[0]);
@@ -62,8 +73,13 @@ describe('Auth Registration', () => {
     const response = await POST(req);
     const data = await response.json();
 
+    if (response.status !== 200) {
+      expect.fail(`Registration failed (Test 2): ${JSON.stringify(data)}`);
+    }
+
     expect(response.status).toBe(200);
     expect(data.user.role).toBe('PENDING');
+
 
     const dbUser = await db.select().from(users).where(eq(users.email, 'user@example.com')).then(res => res[0]);
     expect(dbUser?.role).toBe('PENDING');

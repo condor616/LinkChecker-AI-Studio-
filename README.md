@@ -67,6 +67,67 @@ To browse all user databases, use **pgAdmin 4**, which is included in the Docker
 - `npm run build`: Create a production-ready build.
 - `npm start`: Run the production server.
 - `npm run lint`: Run ESLint to check for code quality issues.
+- `npm run test`: Run unit and integration tests.
+- `npm run test:e2e`: Run end-to-end tests with Playwright.
+
+---
+
+## 🧪 Testing
+
+Lynx Scan uses a robust testing suite combining **Vitest** for unit/integration logic and **Playwright** for end-to-end browser testing.
+
+### ⚙️ Test Environment Setup
+Tests run against an isolated database to ensure your development data remains untouched.
+
+1. **Prerequisites**: Ensure Docker is running (PostgreSQL & Redis).
+2. **Environment File**: The system uses `.env.test`. Ensure it contains:
+   ```env
+   DATABASE_URL=postgres://lynx_scan:localpass@localhost:5432/lynx_scan_test
+   REDIS_URL=redis://localhost:6379
+   JWT_SECRET=your-test-secret
+   NODE_ENV=test
+   ```
+3. **Database Initialization**: The test database is automatically created and migrated during test runs, but you can manually trigger it:
+   ```bash
+   npm run test:setup
+   ```
+
+### Unit & Integration Testing (Vitest)
+Used for testing core logic, database operations, and crawler mechanics.
+- **Run all tests**: `npm run test`
+- **Watch mode**: `npm run test:watch`
+- **UI Mode**: `npm run test:ui` (opens a beautiful interactive dashboard)
+
+### End-to-End (E2E) Testing (Playwright)
+Used for testing the full user journey in a real browser.
+- **Run all E2E tests**: `npm run test:e2e`
+- **UI Mode (Highly Recommended)**:
+  ```bash
+  npx playwright test --ui
+  ```
+  This opens the Playwright Test Runner, allowing you to step through tests, see snapshots, and debug in real-time.
+- **Debug Mode**: `npx playwright test --debug`
+- **Specific Test**: `npx playwright test tests/e2e/scan.spec.ts`
+
+### 🗺️ Mock Testing Grounds
+To verify advanced features like subpath traversal and CSS exclusions, Lynx Scan includes a multi-country mock site generator.
+
+1. **Generate the site**:
+   ```bash
+   npx tsx scripts/generate-mock-site.ts
+   ```
+   This creates a persistent testing ground at `tests/mock-site/` with 500+ links across various regional subpaths (`/it-it/`, `/de-de/`, etc.).
+
+2. **Serve the site**:
+   The integration tests (`npm run test`) automatically start a server for this site, but you can also serve it manually for inspection:
+   ```bash
+   npx tsx scripts/serve-mock-site.ts
+   ```
+   It will be available at `http://localhost:3002`.
+
+> [!TIP]
+
+> When running E2E tests manually with `npx playwright test`, ensure the test database is ready by running `npm run test:setup` first if you haven't already. `npm run test:e2e` handles this automatically.
 
 ---
 
