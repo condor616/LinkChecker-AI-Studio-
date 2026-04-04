@@ -68,7 +68,7 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
                       <span className="truncate max-w-[200px] md:max-w-md">{startUrl}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-8 shrink-0">
+                  <div className="flex items-center gap-4 shrink-0">
                   <div className="text-right hidden md:block">
                       <p className="text-[10px] text-slate-500 uppercase font-black tracking-[0.2em] mb-1.5">Engine Status</p>
                       <div className={cn(
@@ -85,24 +85,25 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
                           <span className="tracking-wide uppercase text-[10px]">{scan.status}</span>
                       </div>
                   </div>
-                  <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center group-hover/card:bg-primary/20 group-hover/card:text-primary transition-all">
+                  
+                  {scan.status !== 'RUNNING' && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="opacity-0 group-hover:opacity-100 transition-all hover:text-red-400 hover:bg-red-500/10 h-10 w-10 rounded-full border border-transparent hover:border-red-500/20 shrink-0"
+                        onClick={handleDelete}
+                      >
+                        <Trash2 className="h-5 w-5 text-slate-500 group-hover:text-red-400" />
+                      </Button>
+                  )}
+
+                  <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center group-hover/card:bg-primary/20 group-hover/card:text-primary transition-all shrink-0">
                     <ChevronRight className="h-5 w-5" />
                   </div>
                 </div>
               </CardContent>
             </Card>
           </Link>
-          
-          {scan.status !== 'RUNNING' && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400 hover:bg-red-500/10 h-8 w-8 rounded-lg"
-                onClick={handleDelete}
-              >
-                <Trash2 className="h-4 w-4 text-slate-500 group-hover:text-red-400" />
-              </Button>
-          )}
           </div>
         </motion.div>
 

@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { scans } from '@/lib/db/schema';
 import { eq, count } from 'drizzle-orm';
 import Link from 'next/link';
@@ -33,7 +33,8 @@ export default async function Dashboard() {
   // Fetch some stats (only if logged in)
   let totalScans = 0;
   if (session) {
-    const [scanStats] = await db.select({ value: count() }).from(scans).where(eq(scans.userId, session.id));
+    const userDb = getDb(session.id);
+    const [scanStats] = await userDb.select({ value: count() }).from(scans).where(eq(scans.userId, session.id));
     totalScans = scanStats?.value || 0;
   }
 

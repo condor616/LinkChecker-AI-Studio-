@@ -1,5 +1,5 @@
 import { requireAuth } from '@/lib/auth';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { scans, links } from '@/lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
@@ -10,8 +10,9 @@ import { cn } from '@/lib/utils';
 export default async function ScanDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   const { id } = await params;
+  const userDb = getDb(session.id);
 
-  const scan = await db.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).then(res => res[0]);
+  const scan = await userDb.select().from(scans).where(and(eq(scans.id, id), eq(scans.userId, session.id))).then(res => res[0]);
   if (!scan) notFound();
 
   return (

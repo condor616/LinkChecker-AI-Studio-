@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { scans } from '@/lib/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import Link from 'next/link';
@@ -16,7 +16,8 @@ export default async function HistoryPage() {
   if (!session) redirect('/login');
 
   // Fetch user's scans
-  const userScans = await db.select().from(scans).where(eq(scans.userId, session.id)).orderBy(desc(scans.createdAt));
+  const userDb = getDb(session.id);
+  const userScans = await userDb.select().from(scans).where(eq(scans.userId, session.id)).orderBy(desc(scans.createdAt));
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-12 min-h-screen">
