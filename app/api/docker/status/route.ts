@@ -12,9 +12,18 @@ export async function GET() {
   }
 
   try {
+    // We check for any running containers that match our stack components
+    // The names usually start with the directory name or 'services-'
     const { stdout } = await execAsync('docker ps --format "{{.Names}}"');
-    const isRunning = stdout.includes('db') || stdout.includes('postgres') || stdout.includes('linkchecker');
-    return NextResponse.json({ running: isRunning });
+    const containers = stdout.split('\n').filter(name => name.trim().length > 0);
+    
+    // Look for db, redis or drizzle-studio associated with this project
+    const isRunning = containers.some(name => 
+      (name.includes('db') || name.includes('postgres') || name.includes('redis') || name.includes('linkchecker')) &&
+      (name.includes('services') || name.includes('linkchecker'))
+    );
+    
+    return NextResponse.json({ running: isRunning, containers });
   } catch (error) {
     return NextResponse.json({ running: false, error: 'Could not check Docker status' });
   }
