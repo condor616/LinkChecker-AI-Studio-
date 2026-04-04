@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { requireApprovedUser } from '@/lib/auth';
+import { db as centralDb } from '@/lib/db';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 function getFunny404Html() {
   return `
@@ -132,10 +135,29 @@ export async function GET(
   try {
     const { filename } = await params;
     const session = await requireApprovedUser();
-    const username = session.email.split('@')[0];
+    const searchParams = request.nextUrl.searchParams;
+    const targetUserId = searchParams.get('userId') || session.id;
+
+    // Security check: Only admins can download other users' backups
+    if (targetUserId !== session.id && session.role !== 'ADMIN') {
+      return new NextResponse(getFunny404Html(), {
+        status: 404,
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+
+    // Get the username for the target user (for ownership check)
+    const targetUser = await centralDb.select().from(users).where(eq(users.id, targetUserId)).then(res => res[0]);
+    if (!targetUser) {
+        return new NextResponse(getFunny404Html(), {
+            status: 404,
+            headers: { 'Content-Type': 'text/html' },
+        });
+    }
+    const targetUsername = targetUser.email.split('@')[0];
 
     // Security check: Ownership (Obfuscated 404 with HTML Page)
-    if (!filename.startsWith(`${username}-`)) {
+    if (!filename.startsWith(`${targetUsername}-`)) {
       return new NextResponse(getFunny404Html(), {
         status: 404,
         headers: { 'Content-Type': 'text/html' },
@@ -149,7 +171,7 @@ export async function GET(
     const normalizedPath = path.normalize(filePath);
     if (!normalizedPath.startsWith(backupDir) || !filename.endsWith('.zip')) {
       return new NextResponse(getFunny404Html(), {
-        status: 404, // Use 404 for consistency
+        status: 404,
         headers: { 'Content-Type': 'text/html' },
       });
     }

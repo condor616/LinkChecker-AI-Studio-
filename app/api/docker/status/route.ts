@@ -19,8 +19,8 @@ export async function GET() {
     
     // Look for db, redis or drizzle-studio associated with this project
     const isRunning = containers.some(name => 
-      (name.includes('db') || name.includes('postgres') || name.includes('redis') || name.includes('linkchecker')) &&
-      (name.includes('services') || name.includes('linkchecker'))
+      (name.includes('db') || name.includes('postgres') || name.includes('redis') || name.includes('lynx_scan')) &&
+      (name.includes('services') || name.includes('lynx_scan'))
     );
     
     return NextResponse.json({ running: isRunning, containers });

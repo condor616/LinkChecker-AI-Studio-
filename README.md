@@ -51,10 +51,16 @@ Open [http://localhost:3000](http://localhost:3000) to see the application in ac
 The **first user** to register on a new installation is automatically granted the **ADMIN** role. Subsequent users are marked as **PENDING** and must be approved by an administrator via the **Users** management dashboard.
 
 ### Resetting the System
-To wipe all data (scans, users, and templates) and start fresh:
+To wipe all data (scans, users, templates, and backups) and start fresh:
 ```bash
-npm run reset-db
+npm run reset-all
 ```
+
+### Database Management
+To browse all user databases, use **pgAdmin 4**, which is included in the Docker stack:
+- **URL**: `http://localhost:5050`
+- **Default Credentials**: `admin@linkchecker.com` / `admin`
+- **Setup**: Once logged in, add a new server connecting to host `db` with your database credentials.
 
 ### Development Commands
 - `npm run dev`: Start Next.js in development mode.
