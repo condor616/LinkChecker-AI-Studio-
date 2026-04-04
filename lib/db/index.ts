@@ -2,9 +2,20 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
 import { parseDatabaseUrl } from '../utils/db-command';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Force load .env.test if NODE_ENV is test
+if (process.env.NODE_ENV === 'test') {
+    dotenv.config({ path: path.join(process.cwd(), '.env.test'), override: true });
+} else {
+    dotenv.config();
+}
 
 const baseConnectionString = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan';
 const info = parseDatabaseUrl(baseConnectionString);
+
+
 
 // Cache for connection pools: dbName -> Pool
 const pools: Map<string, Pool> = new Map();

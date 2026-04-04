@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 *.db
+tests/mock-site/
+playwright-report/
+test-results/
+
