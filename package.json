@@ -11,8 +11,7 @@
     "stop-docker": "npx tsx scripts/stop-docker.ts",
     "lint": "eslint .",
     "clean": "next clean",
-    "reset-db": "npx tsx scripts/reset-db.ts && npx drizzle-kit push --force",
-    "studio": "drizzle-kit studio"
+    "reset-all": "npx tsx scripts/reset-all.ts && npx drizzle-kit push --force"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",

@@ -5,13 +5,14 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').notNull().default('PENDING'), // ADMIN, PENDING, USER
+  hasActiveScan: boolean('has_active_scan').notNull().default(false),
   maxJobs: integer('max_jobs').notNull().default(1),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull(),
 });
 
 export const scans = pgTable('scans', {
   id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id),
+  userId: text('user_id').notNull(), // FK removed for multi-db
   name: text('name').notNull(),
   status: text('status').notNull().default('IDLE'), // IDLE, RUNNING, PAUSED, COMPLETED, FAILED
   config: text('config').notNull(), // JSON string
@@ -36,7 +37,7 @@ export const links = pgTable('links', {
 
 export const templates = pgTable('templates', {
   id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id),
+  userId: text('user_id').notNull(), // FK removed for multi-db
   name: text('name').notNull(),
   config: text('config').notNull(), // JSON string
   createdAt: timestamp('created_at', { mode: 'date' }).notNull(),

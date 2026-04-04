@@ -41,11 +41,11 @@ export function parseDatabaseUrl(url: string): DbConnectionInfo {
     console.error('Failed to parse DATABASE_URL:', error);
     // Return defaults as last resort
     return {
-      user: 'linkchecker',
+      user: 'lynx_scan',
       pass: 'localpass',
       host: 'localhost',
       port: '5432',
-      db: 'linkchecker',
+      db: 'lynx_scan',
     };
   }
 }
