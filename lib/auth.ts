@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { db } from './db';
 import { users } from './db/schema';
 import { eq } from 'drizzle-orm';
+import { provisionUserDb } from './db/provisioning';
 
 const SECRET_KEY = new TextEncoder().encode(
   process.env.JWT_SECRET || 'super-secret-key-for-local-dev-only-change-in-prod'
@@ -45,6 +46,10 @@ export async function requireAdmin() {
   if (session.role !== 'ADMIN') {
     throw new Error('Forbidden');
   }
+  // Provision DB for admin too (they have their own scans)
+  await provisionUserDb(session.id).catch(err => {
+    console.error(`Admin DB Provisioning failed for ${session.id}:`, err);
+  });
   return session;
 }
 
@@ -53,5 +58,9 @@ export async function requireApprovedUser() {
   if (session.role !== 'ADMIN' && session.role !== 'USER') {
     throw new Error('Forbidden: Your account is pending approval.');
   }
+  // Trigger DB provisioning for the user
+  await provisionUserDb(session.id).catch(err => {
+    console.error(`User DB Provisioning failed for ${session.id}:`, err);
+  });
   return session;
 }

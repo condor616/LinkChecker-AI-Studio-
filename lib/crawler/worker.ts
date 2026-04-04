@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { getDb, db as centralDb } from '../db';
 import { scans, links, users } from '../db/schema';
 import { eq, and, or, inArray, desc } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
@@ -26,58 +26,72 @@ export function startWorker() {
 }
 
 async function processNextBatch() {
-  // Find running scans
-  const runningScans = await db.select().from(scans).where(eq(scans.status, 'RUNNING'));
-  if (runningScans.length === 0) return;
+  // 1. Find users who have active scans (from central DB)
+  const activeUsers = await centralDb.select().from(users).where(eq(users.hasActiveScan, true));
+  if (activeUsers.length === 0) return;
 
-  for (const scan of runningScans) {
-    const user = await db.select().from(users).where(eq(users.id, scan.userId)).then(res => res[0]);
-    if (!user || (user.role !== 'ADMIN' && user.role !== 'USER')) {
-      await db.update(scans).set({ status: 'PAUSED' }).where(eq(scans.id, scan.id));
+  for (const user of activeUsers) {
+    if (user.role !== 'ADMIN' && user.role !== 'USER') {
+      // Safety: If user is no longer approved, stop their scans
+      const userDb = getDb(user.id);
+      await userDb.update(scans).set({ status: 'PAUSED' }).where(eq(scans.status, 'RUNNING'));
+      await centralDb.update(users).set({ hasActiveScan: false }).where(eq(users.id, user.id));
       continue;
     }
 
-    let config;
-    try {
-        config = typeof scan.config === 'string' ? JSON.parse(scan.config || '{}') : scan.config;
-    } catch (e) {
-        console.error(`Malformed config for scan ${scan.id}`, e);
-        await db.update(scans).set({ status: 'FAILED' }).where(eq(scans.id, scan.id));
-        continue;
-    }
-    const maxDepth = config.maxDepth ?? 0; // 0 = unlimited
+    const userDb = getDb(user.id);
     
-    // Get pending links for this scan, prioritizing re-checked links
-    const pendingLinks = await db.select().from(links)
-      .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
-      .orderBy(desc(links.isRechecked))
-      .limit(user.maxJobs * 5) // Batch size relative to user quota
-      ;
+    // Find running scans for THIS user in THEIR database
+    const runningScans = await userDb.select().from(scans).where(eq(scans.status, 'RUNNING'));
+    
+    if (runningScans.length === 0) {
+      // Optimization: No more running scans for this user, mark them as inactive in central DB
+      await centralDb.update(users).set({ hasActiveScan: false }).where(eq(users.id, user.id));
+      continue;
+    }
 
-    if (pendingLinks.length === 0) {
-      // Double check if really done (no more pending links in DB)
-      const anyPending = await db.select().from(links)
-        .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
-        .then(res => res[0]);
-      
-      if (!anyPending) {
-        await db.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scan.id));
+    for (const scan of runningScans) {
+      let config;
+      try {
+          config = typeof scan.config === 'string' ? JSON.parse(scan.config || '{}') : scan.config;
+      } catch (e) {
+          console.error(`Malformed config for scan ${scan.id} (User: ${user.id})`, e);
+          await userDb.update(scans).set({ status: 'FAILED' }).where(eq(scans.id, scan.id));
+          continue;
       }
-      continue;
-    }
+      
+      // Get pending links for this scan, prioritizing re-checked links
+      const pendingLinks = await userDb.select().from(links)
+        .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
+        .orderBy(desc(links.isRechecked))
+        .limit(user.maxJobs * 5) // Batch size relative to user quota
+        ;
 
-    // Process links using BOTH user limit and global limit
-    const userLimit = pLimit(user.maxJobs);
-    
-    await Promise.all(pendingLinks.map(link => 
-      userLimit(() => globalLimit(() => processLink(link, scan, config)))
-    ));
+      if (pendingLinks.length === 0) {
+        // Double check if really done (no more pending links in user DB)
+        const anyPending = await userDb.select().from(links)
+          .where(and(eq(links.scanId, scan.id), eq(links.status, 'PENDING')))
+          .then((res: any[]) => res[0]);
+        
+        if (!anyPending) {
+          await userDb.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scan.id));
+        }
+        continue;
+      }
+
+      // Process links using BOTH user limit and global limit
+      const userLimit = pLimit(user.maxJobs);
+      
+      await Promise.all(pendingLinks.map(link => 
+        userLimit(() => globalLimit(() => processLink(userDb, link, scan, config)))
+      ));
+    }
   }
 }
 
-async function processLink(link: any, scan: any, config: any) {
+async function processLink(userDb: any, link: any, scan: any, config: any) {
   // Re-check status before starting (in case it was paused during batch wait)
-  const currentScan = await db.select().from(scans).where(eq(scans.id, scan.id)).then(res => res[0]);
+  const currentScan = await userDb.select().from(scans).where(eq(scans.id, scan.id)).then((res: any[]) => res[0]);
   if (!currentScan || currentScan.status !== 'RUNNING') return;
 
   const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
@@ -107,7 +121,7 @@ async function processLink(link: any, scan: any, config: any) {
     // Runtime exclusion check
     const exclusion = shouldExclude(link.url, config);
     if (exclusion.excluded) {
-      await db.update(links).set({
+      await userDb.update(links).set({
         status: 'SKIPPED',
         parentUrl: isTargeted ? link.parentUrl : null,
         snippet: `[Runtime Skip: ${exclusion.reason}] ` + (link.snippet || ''),
@@ -117,17 +131,17 @@ async function processLink(link: any, scan: any, config: any) {
     }
 
     // URL Deduplication check (for already COMPLETED links)
-    const existing = await db.select().from(links)
+    const existing = await userDb.select().from(links)
       .where(and(
         eq(links.scanId, scan.id),
         eq(links.url, link.url),
         or(eq(links.status, 'SUCCESS'), eq(links.status, 'BROKEN'), eq(links.status, 'SKIPPED'))
       ))
       .limit(1)
-      .then(res => res[0]);
+      .then((res: any[]) => res[0]);
 
     if (existing) {
-      await db.update(links).set({
+      await userDb.update(links).set({
         status: existing.status,
         statusCode: existing.statusCode,
         type: existing.type,
@@ -163,7 +177,7 @@ async function processLink(link: any, scan: any, config: any) {
         updateData.parentUrl = null; // Performance optimization for successful links
     }
 
-    await db.update(links).set(updateData)
+    await userDb.update(links).set(updateData)
       .where(and(
         eq(links.scanId, scan.id),
         eq(links.url, link.url),
@@ -222,7 +236,7 @@ async function processLink(link: any, scan: any, config: any) {
       const allUrls = Array.from(foundLinks.keys());
       if (allUrls.length === 0) return;
 
-      const existingLinks = await db.select({ 
+      const existingLinks = await userDb.select({ 
         id: links.id,
         url: links.url, 
         parentUrl: links.parentUrl,
@@ -236,7 +250,7 @@ async function processLink(link: any, scan: any, config: any) {
       
       // Group existing links by URL for faster lookup
       const linksByUrl = new Map<string, any[]>();
-      existingLinks.forEach(l => {
+      existingLinks.forEach((l: any) => {
           if (!linksByUrl.has(l.url)) linksByUrl.set(l.url, []);
           linksByUrl.get(l.url)!.push(l);
       });
@@ -245,7 +259,7 @@ async function processLink(link: any, scan: any, config: any) {
       const targetUrls = (config.targetUrls || []).map((t: string) => t.trim().replace(/\/$/, ''));
       const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
 
-      await db.transaction(async (tx) => {
+      await userDb.transaction(async (tx: any) => {
         for (const [urlStr, info] of foundLinks) {
           const occurrences = linksByUrl.get(urlStr) || [];
           
@@ -302,7 +316,7 @@ async function processLink(link: any, scan: any, config: any) {
 
   } catch (error: any) {
     const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
-    await db.update(links).set({
+    await userDb.update(links).set({
       status: 'BROKEN',
       error: errorMsg,
       checkedAt: new Date()
@@ -395,7 +409,9 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
                 if (re.test(urlStr) || re.test(normalizedUrl)) {
                     return { excluded: true, reason: `Wildcard: ${cleanPattern}` };
                 }
-            } catch (e) {}
+            } catch (res: any) {
+                if (res.status === 404) return { excluded: false };
+            }
         }
     }
 

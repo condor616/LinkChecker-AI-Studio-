@@ -4,6 +4,7 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { createToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
+import { provisionUserDb } from '@/lib/db/provisioning';
 
 export async function POST(req: Request) {
   try {
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
 
     // Simple hash for local dev (in prod use bcrypt/argon2)
     const passwordHash = Buffer.from(password).toString('base64');
-    const id = crypto.randomUUID();
+    const id = email.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const role = isFirstUser ? 'ADMIN' : 'PENDING';
 
     await db.insert(users).values({
@@ -40,6 +41,13 @@ export async function POST(req: Request) {
       maxJobs: 1,
       createdAt: new Date(),
     });
+
+    // Provision the user's private database immediately ONLY if they are the first user (ADMIN)
+    if (role === 'ADMIN') {
+        await provisionUserDb(id).catch(err => {
+            console.error(`Failed to provision DB for ${id}:`, err);
+        });
+    }
 
     const token = await createToken({ id, role, email });
     const cookieStore = await cookies();
