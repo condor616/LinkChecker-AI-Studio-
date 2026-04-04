@@ -89,7 +89,8 @@ async function processNextBatch() {
   }
 }
 
-async function processLink(userDb: any, link: any, scan: any, config: any) {
+export async function processLink(userDb: any, link: any, scan: any, config: any) {
+
   // Re-check status before starting (in case it was paused during batch wait)
   const currentScan = await userDb.select().from(scans).where(eq(scans.id, scan.id)).then((res: any[]) => res[0]);
   if (!currentScan || currentScan.status !== 'RUNNING') return;

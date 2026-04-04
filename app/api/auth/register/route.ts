@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     const allUsers = await db.select().from(users);
     const isFirstUser = allUsers.length === 0;
 
+
     if (checkOnly) {
         return NextResponse.json({ exists: !isFirstUser });
     }
