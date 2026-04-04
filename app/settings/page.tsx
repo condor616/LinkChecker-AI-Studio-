@@ -20,7 +20,8 @@ import {
   Server,
   Activity,
   Plus,
-  UploadCloud
+  UploadCloud,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -31,9 +32,18 @@ interface Backup {
   createdAt: string;
 }
 
+interface User {
+  id: string;
+  email: string;
+  role: string;
+}
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('backup');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [targetUserId, setTargetUserId] = useState<string>('');
+  const [users, setUsers] = useState<User[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Backup state
@@ -58,12 +68,16 @@ export default function SettingsPage() {
       if (sessionRes.ok) {
         const data = await sessionRes.json();
         const role = data.user?.role?.toUpperCase();
+        const uid = data.user?.id;
+        setCurrentUserId(uid);
+        setTargetUserId(uid);
+
         if (role === 'ADMIN' || role === 'USER') {
           if (role === 'ADMIN') {
             setIsAdmin(true);
             fetchDockerStatus();
+            fetchUsers();
           }
-          fetchBackups();
         } else {
           window.location.href = '/';
         }
@@ -71,6 +85,13 @@ export default function SettingsPage() {
     }
     init();
   }, []);
+
+  // Re-fetch backups when target user changes
+  useEffect(() => {
+    if (targetUserId) {
+        fetchBackups();
+    }
+  }, [targetUserId]);
 
   useEffect(() => {
     if (showNamingModal) {
@@ -88,11 +109,23 @@ export default function SettingsPage() {
     }
   };
 
+  async function fetchUsers() {
+      try {
+          const res = await fetch('/api/admin/users');
+          if (res.ok) {
+              const data = await res.json();
+              setUsers(data.users || []);
+          }
+      } catch (e) {
+          console.error('Failed to fetch users:', e);
+      }
+  }
+
   // --- Backup Logic ---
   async function fetchBackups() {
     setBackupsLoading(true);
     try {
-      const res = await fetch('/api/database');
+      const res = await fetch(`/api/database?userId=${targetUserId}`);
       const text = await res.text();
       try {
         const data = JSON.parse(text);
@@ -119,7 +152,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/database', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', customFilename: filenameValue }),
+        body: JSON.stringify({ action: 'create', customFilename: filenameValue, userId: targetUserId }),
       });
       
       const text = await res.text();
@@ -150,14 +183,14 @@ export default function SettingsPage() {
   }
 
   async function handleRestore(filename: string) {
-    if (!confirm('WARNING: This will overwrite your current database and settings! Are you sure?')) return;
+    if (!confirm('WARNING: This will overwrite data for the selected user! Are you sure?')) return;
     setBackupOpLoading(`restore-${filename}`);
     setBackupStatus(null);
     try {
       const res = await fetch('/api/database', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'restore', filename }),
+        body: JSON.stringify({ action: 'restore', filename, userId: targetUserId }),
       });
       if (res.ok) {
         setBackupStatus({ type: 'success', message: 'Database restored successfully!' });
@@ -176,7 +209,7 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!confirm('WARNING: This will upload and restore the database from this file. IT WILL OVERWRITE ALL CURRENT DATA. Are you sure?')) {
+    if (!confirm('WARNING: This will upload and restore the database from this file. IT WILL OVERWRITE ALL DATA FOR THE SELECTED USER. Are you sure?')) {
       e.target.value = '';
       return;
     }
@@ -186,6 +219,7 @@ export default function SettingsPage() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('action', 'upload-restore');
+    formData.append('userId', targetUserId);
 
     try {
       const res = await fetch('/api/database', {
@@ -213,7 +247,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/database', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename }),
+        body: JSON.stringify({ filename, userId: targetUserId }),
       });
       if (res.ok) fetchBackups();
     } catch (e) {
@@ -267,9 +301,11 @@ export default function SettingsPage() {
             <h1 className="text-3xl font-bold tracking-tight text-white">System Settings</h1>
             <p className="text-muted-foreground mt-1">Manage infrastructure, data snapshots, and global configurations.</p>
           </div>
-          <div className="px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
-            <ShieldCheck className="h-3.5 w-3.5" /> Admin Panel
-          </div>
+          {isAdmin && (
+            <div className="px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
+                <ShieldCheck className="h-3.5 w-3.5" /> Admin Panel
+            </div>
+          )}
         </div>
       </motion.div>
 
@@ -289,11 +325,34 @@ export default function SettingsPage() {
         <TabsContent value="backup" className="space-y-6">
           <Card className="border-white/10 bg-card/50 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl">
             <CardHeader className="bg-white/[0.03] border-b border-white/10 p-8">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                <div>
-                  <CardTitle className="text-2xl font-black text-white">Database Snapshots</CardTitle>
-                  <CardDescription className="text-muted-foreground/80 text-base">Create and restore full database backups. Click a filename to download.</CardDescription>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <CardTitle className="text-2xl font-black text-white">Database Snapshots</CardTitle>
+                    <CardDescription className="text-muted-foreground/80 text-base">Create and restore isolated database backups.</CardDescription>
+                  </div>
+                  
+                  {isAdmin && (
+                      <div className="flex flex-col gap-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground px-1">Selected User Account</Label>
+                        <div className="relative group min-w-[300px]">
+                            <select 
+                                value={targetUserId} 
+                                onChange={(e) => setTargetUserId(e.target.value)}
+                                className="w-full h-10 pl-4 pr-10 bg-white/5 border border-white/10 rounded-xl text-white font-semibold appearance-none focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all cursor-pointer group-hover:bg-white/10"
+                            >
+                                {users.map(u => (
+                                    <option key={u.id} value={u.id} className="bg-[#0f0f0f] text-white">
+                                        {u.email} {u.id === currentUserId ? '(You)' : ''} {u.role === 'PENDING' ? '[PENDING]' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-white transition-colors" />
+                        </div>
+                      </div>
+                  )}
                 </div>
+
                 <div className="flex items-center gap-3">
                   <Button 
                     variant="outline" 
@@ -338,13 +397,13 @@ export default function SettingsPage() {
                     {backupsLoading ? (
                       <tr><td colSpan={4} className="px-6 py-16 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary opacity-50" /></td></tr>
                     ) : backups.length === 0 ? (
-                      <tr><td colSpan={4} className="px-6 py-20 text-center text-muted-foreground/50"><History className="h-16 w-16 mx-auto opacity-5 mb-4" /> No snapshots available.</td></tr>
+                      <tr><td colSpan={4} className="px-6 py-20 text-center text-muted-foreground/50"><History className="h-16 w-16 mx-auto opacity-5 mb-4" /> No snapshots available for this user.</td></tr>
                     ) : (
                       backups.map((bc) => (
                         <tr key={bc.filename} className="hover:bg-white/[0.03] transition-all group border-b border-white/[0.02]">
                           <td className="px-6 py-5 font-semibold">
                             <a 
-                              href={`/api/database/download/${bc.filename}`}
+                              href={`/api/database/download/${bc.filename}?userId=${targetUserId}`}
                               className="flex items-center gap-4 text-white hover:text-primary transition-colors hover:translate-x-1 duration-200"
                               title="Click to download"
                             >
@@ -445,8 +504,8 @@ export default function SettingsPage() {
                   <Database className="h-6 w-6" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Create Snapshot</h2>
-                  <p className="text-sm text-muted-foreground font-medium">Give your backup a descriptive name.</p>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Create Snapshot {isAdmin && targetUserId !== currentUserId ? '(Audit)' : ''}</h2>
+                  <p className="text-sm text-muted-foreground font-medium">Give this snapshot a descriptive name.</p>
                 </div>
               </div>
               
