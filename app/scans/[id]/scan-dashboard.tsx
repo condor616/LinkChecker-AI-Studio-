@@ -4,11 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Pause, Play, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, Terminal, AlertCircle, CheckCircle2, Link2, Ghost, Globe } from 'lucide-react';
+import { Pause, Play, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, Terminal, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { useSearchParams } from 'next/navigation';
 
 export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initialStatus: string }) {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [status, setStatus] = useState(initialStatus);
   const [showTerminal, setShowTerminal] = useState(true);
@@ -19,10 +22,21 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const [successPage, setSuccessPage] = useState(1);
   const [skippedPage, setSkippedPage] = useState(1);
   const [recheckedPage, setRecheckedPage] = useState(1);
+  
+  const initialSearch = searchParams.get('search') || '';
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
+  const [isSearching, setIsSearching] = useState(false);
   const pageSize = 30;
 
-  const fetchData = async () => {
-    const res = await fetch(`/api/scans/${scanId}`);
+  const fetchData = async (searchOverride?: string) => {
+    const searchToUse = searchOverride !== undefined ? searchOverride : (searchQuery.length >= 3 ? searchQuery : '');
+    const url = new URL(`/api/scans/${scanId}`, window.location.origin);
+    if (searchToUse) {
+      url.searchParams.set('search', searchToUse);
+    }
+
+    const res = await fetch(url.toString());
     if (res.ok) {
       const json = await res.json();
       setData(json);
@@ -31,7 +45,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
       // Update logs: get last 20 checked links
       const checkedLinks = [...json.links]
         .filter(l => l.status !== 'PENDING' && l.status !== 'SKIPPED')
-        .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
+        .sort((a, b) => new Date(b?.checkedAt || 0).getTime() - new Date(a?.checkedAt || 0).getTime())
         .slice(0, 20);
       
       const newLogs = checkedLinks.map(l => 
@@ -42,10 +56,37 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   };
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
-  }, [scanId]);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    // Initial fetch when scanId or debouncedSearch changes
+    const runFetch = async () => {
+      const searchToUse = debouncedSearch.length >= 3 ? debouncedSearch : '';
+      setIsSearching(true);
+      await fetchData(searchToUse);
+      if (isMounted) setIsSearching(false);
+    };
+
+    runFetch();
+
+    // Polling fetch
+    const interval = setInterval(() => {
+      const searchToUse = debouncedSearch.length >= 3 ? debouncedSearch : '';
+      fetchData(searchToUse);
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [scanId, debouncedSearch]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -85,23 +126,42 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
 
   const { links, scan } = data;
   
-  // Parse config for targeted scan info
+  // Parse config for filtering
   let config: any = {};
   try {
     config = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
   } catch (e) {}
   
+  const startUrl = config.startUrl || '';
+  const internalDomain = startUrl ? new URL(startUrl).hostname.toLowerCase().replace(/^www\./, '') : '';
   const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
   const targetUrls = config.targetUrls || [];
 
-  // Filter links if targeted
-  const filteredLinks = isTargeted 
-    ? links.filter((l: any) => targetUrls.some((t: string) => {
+  const isUrlInternal = (url: string) => {
+    try {
+      const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+      return host === internalDomain || (host.endsWith('.' + internalDomain) && !config.excludeSubdomains);
+    } catch (e) {
+      return url.startsWith('/');
+    }
+  };
+
+  // Filter links:
+  // 1. If targeted: only targets.
+  // 2. Regular: Only links found ON internal pages (or the entry point).
+  const filteredLinks = links.filter((l: any) => {
+    if (isTargeted) {
+      return targetUrls.some((t: string) => {
         const cleanT = t.trim().replace(/\/$/, '');
         const cleanL = l.url.replace(/\/$/, '');
         return cleanL === cleanT || cleanL.includes(cleanT);
-      }))
-    : links;
+      });
+    }
+    
+    const parent = l.parentUrl;
+    if (!parent) return true; // Entry point
+    return isUrlInternal(parent);
+  });
 
   const total = filteredLinks.length;
   const pending = filteredLinks.filter((l: any) => l.status === 'PENDING').length;
@@ -252,16 +312,33 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
             <Card className="min-h-[500px] flex flex-col shadow-xl border-primary/5">
                 <Tabs defaultValue={isTargeted ? (brokenCount > 0 ? "broken" : "success") : "broken"} className="flex flex-col h-full">
                     <CardHeader className="py-3 px-4 border-b sticky top-0 bg-background/80 backdrop-blur-md z-10">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-lg">{isTargeted ? 'Audit Results' : 'Report Triage'}</CardTitle>
-                            {!isTargeted && (
-                                <TabsList>
-                                    <TabsTrigger value="broken" className="text-red-500 data-[state=active]:bg-red-500/10">Broken ({brokenCount})</TabsTrigger>
-                                    <TabsTrigger value="rechecked" className="text-blue-500 data-[state=active]:bg-blue-500/10">Re-checked ({recheckedCount})</TabsTrigger>
-                                    <TabsTrigger value="success">Success ({successCount})</TabsTrigger>
-                                    <TabsTrigger value="skipped">Skipped ({skippedCount})</TabsTrigger>
-                                </TabsList>
-                            )}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <CardTitle className="text-lg flex items-center gap-2">
+                                {isTargeted ? 'Audit Results' : 'Report Triage'}
+                                {isSearching && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                            </CardTitle>
+                            
+                            <div className="flex items-center gap-4">
+                                <div className="relative w-full md:w-64">
+                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search URLs (min 3 chars)..."
+                                        className="pl-9 h-9"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                                
+                                {!isTargeted && (
+                                    <TabsList>
+                                        <TabsTrigger value="broken" className="text-red-500 data-[state=active]:bg-red-500/10">Broken ({brokenCount})</TabsTrigger>
+                                        <TabsTrigger value="rechecked" className="text-blue-500 data-[state=active]:bg-blue-500/10">Re-checked ({recheckedCount})</TabsTrigger>
+                                        <TabsTrigger value="success">Success ({successCount})</TabsTrigger>
+                                        <TabsTrigger value="skipped">Skipped ({skippedCount})</TabsTrigger>
+                                    </TabsList>
+                                )}
+                            </div>
+
                             {isTargeted && (
                                 <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted px-2 py-1 rounded">
                                     LIVE AUDIT ACTIVE
@@ -540,37 +617,35 @@ function TriageItemGeneral({ group, onRecheck }: any) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className={cn(
-                "border-l-4 transition-colors",
+                "border-l-4 transition-colors overflow-hidden",
                 isBroken ? "border-l-red-500 hover:bg-red-500/5" : "border-l-green-500 hover:bg-green-500/5"
             )}
         >
-            <div className="p-4 flex items-start justify-between gap-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-                <div className="space-y-1 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                         {group.count > 1 && (
-                            <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                                {group.count} PLACES
-                            </span>
-                        )}
-                        <span className={cn(
-                            "font-medium text-sm break-all",
-                            isBroken ? "text-red-500" : "text-green-600 dark:text-green-400"
-                        )}>
-                            {link.url}
+            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                     {group.count > 1 && (
+                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                            {group.count}
                         </span>
-                        <a 
-                            href={link.url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="text-muted-foreground hover:text-primary shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <ExternalLink className="h-3 w-3" />
-                        </a>
-                    </div>
-                    {link.error && isBroken && <p className="text-[10px] font-mono bg-destructive/5 p-2 rounded border border-destructive/20 text-destructive">{link.error}</p>}
+                    )}
+                    <span className={cn(
+                        "font-medium text-sm truncate",
+                        isBroken ? "text-red-500" : "text-green-600 dark:text-green-400"
+                    )}>
+                        {link.url}
+                    </span>
+                    <a 
+                        href={link.url} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Open in new tab"
+                    >
+                        <ExternalLink className="h-3 w-3" />
+                    </a>
                 </div>
-                <div className="flex items-center gap-4 shrink-0">
+                <div className="flex items-center gap-3 shrink-0">
                      <span className={cn(
                         "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
                         isBroken ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
@@ -590,6 +665,12 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                         className="overflow-hidden bg-muted/20 border-t"
                     >
                         <div className="p-4 space-y-4">
+                            {link.error && isBroken && (
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-red-500/50 uppercase tracking-tight">Error:</p>
+                                    <p className="text-[10px] font-mono bg-red-500/5 p-2 rounded border border-red-500/10 text-red-500">{link.error}</p>
+                                </div>
+                            )}
                             {visibleInstances.map((inst: any, i: number) => (
                                 <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
                                     <div className="flex flex-col gap-1">
@@ -645,39 +726,41 @@ function TriageItem({ group, onRecheck }: any) {
         <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="border-l-4 border-l-red-500 hover:bg-muted/30 transition-colors"
+            className="border-l-4 border-l-red-500 hover:bg-muted/30 transition-colors overflow-hidden"
         >
-            <div className="p-4 flex items-start justify-between gap-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-                <div className="space-y-1 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                        {group.count > 1 && (
-                            <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                                {group.count} PLACES
-                            </span>
-                        )}
-                        <a 
-                            href={link.url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="font-medium text-sm text-red-500 hover:underline break-all"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {link.url}
-                        </a>
-                        <ExternalLink className="h-3 w-3 text-red-400 shrink-0" />
-                    </div>
-                    {link.error && <p className="text-[10px] font-mono bg-destructive/5 p-2 rounded border border-destructive/20 text-destructive">{link.error}</p>}
-                </div>
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                    <div className="flex items-center gap-2">
-                         <span className="text-xs font-bold bg-red-500 text-white px-2 py-1 rounded">
-                            {link.statusCode || 'FAIL'}
+            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {group.count > 1 && (
+                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                            {group.count}
                         </span>
-                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                    </div>
-                    <Button variant="outline" size="sm" className="h-8 text-[10px] px-2" onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }}>
-                        <RefreshCw className="mr-1 h-3 w-3" /> RE-CHECK
+                    )}
+                    <a 
+                        href={link.url} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="font-medium text-sm text-red-500 hover:underline truncate"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {link.url}
+                    </a>
+                    <ExternalLink className="h-3 w-3 text-red-400/50 shrink-0" />
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded">
+                        {link.statusCode || 'FAIL'}
+                    </span>
+                    <Button 
+                        variant="outline" 
+                        size="icon" 
+                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:border-primary/50 transition-all" 
+                        onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }}
+                        title="Re-check link"
+                        aria-label="Re-check link"
+                    >
+                        <RefreshCw className="h-3.5 w-3.5" />
                     </Button>
+                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                 </div>
             </div>
 
@@ -690,6 +773,12 @@ function TriageItem({ group, onRecheck }: any) {
                         className="overflow-hidden bg-muted/20 border-t"
                     >
                         <div className="p-4 space-y-4">
+                            {link.error && (
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-red-500/50 uppercase tracking-tight">Error:</p>
+                                    <p className="text-[10px] font-mono bg-red-500/5 p-2 rounded border border-red-500/10 text-red-500">{link.error}</p>
+                                </div>
+                            )}
                             {visibleInstances.map((inst: any, i: number) => (
                                 <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
                                     <div className="flex flex-col gap-1">
@@ -742,28 +831,27 @@ function TriageItemSuccess({ group }: any) {
     const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
-        <div className="border-l-4 border-l-green-500 hover:bg-muted/10 transition-colors">
-            <div className="p-4 flex items-start justify-between gap-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-                <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                        {group.count > 1 && (
-                            <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                                {group.count} PLACES
-                            </span>
-                        )}
-                        <span className="font-medium text-sm text-green-600 dark:text-green-400 break-all">{link.url}</span>
-                        <a 
-                            href={link.url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="text-muted-foreground hover:text-primary shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <ExternalLink className="h-3 w-3" />
-                        </a>
-                    </div>
+        <div className="border-l-4 border-l-green-500 hover:bg-muted/10 transition-colors overflow-hidden">
+            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {group.count > 1 && (
+                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                            {group.count}
+                        </span>
+                    )}
+                    <span className="font-medium text-sm text-green-600 dark:text-green-400 truncate">{link.url}</span>
+                    <a 
+                        href={link.url} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Open in new tab"
+                    >
+                        <ExternalLink className="h-3 w-3" />
+                    </a>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-3 shrink-0">
                     <span className="bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-sm font-bold text-[10px]">{link.statusCode || 200} OK</span>
                     {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                 </div>
@@ -822,29 +910,28 @@ function TriageItemSkipped({ group }: any) {
     const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
-        <div className="hover:bg-muted/10 transition-colors">
-             <div className="p-3 flex items-center justify-between gap-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                        {group.count > 1 && (
-                            <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                                {group.count} PLACES
-                            </span>
-                        )}
-                        <span className="font-medium text-slate-400 break-all">{link.url}</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    <span className="bg-slate-500/10 text-slate-500 px-1.5 py-0.5 rounded-sm text-[10px] uppercase font-bold tracking-tighter">Skipped</span>
+        <div className="hover:bg-muted/10 transition-colors border-l-4 border-l-transparent overflow-hidden">
+             <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {group.count > 1 && (
+                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                            {group.count}
+                        </span>
+                    )}
+                    <span className="font-medium text-slate-400 text-sm truncate">{link.url}</span>
                     <a 
                         href={link.url} 
                         target="_blank" 
                         rel="noreferrer" 
-                        className="text-muted-foreground hover:text-primary"
+                        className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
                         onClick={(e) => e.stopPropagation()}
+                        title="Open in new tab"
                     >
                         <ExternalLink className="h-3 w-3" />
                     </a>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                    <span className="bg-slate-500/10 text-slate-500 px-1.5 py-0.5 rounded-sm text-[10px] uppercase font-bold tracking-tighter">Skipped</span>
                     {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                 </div>
             </div>
@@ -907,51 +994,54 @@ function TriageItemRechecked({ group, onRecheck }: any) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className={cn(
-                "border-l-4 transition-colors",
+                "border-l-4 transition-colors overflow-hidden",
                 isBroken ? "border-l-red-500 hover:bg-red-500/5 text-slate-800 dark:text-slate-200" : 
                 isSuccess ? "border-l-green-500 hover:bg-green-500/5" :
                 "border-l-blue-500 hover:bg-blue-500/5"
             )}
         >
-            <div className="p-4 flex items-start justify-between gap-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-                <div className="space-y-1 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                        {group.count > 1 && (
-                            <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                                {group.count} PLACES
-                            </span>
-                        )}
-                        <a 
-                            href={link.url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className={cn(
-                                "font-medium text-sm break-all hover:underline",
-                                isBroken ? "text-red-500" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
-                            )}
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {link.url}
-                        </a>
-                        <ExternalLink className={cn("h-3 w-3 shrink-0", isBroken ? "text-red-400" : "text-muted-foreground")} />
-                    </div>
-                    {link.error && isBroken && <p className="text-[10px] font-mono bg-destructive/5 p-2 rounded border border-destructive/20 text-destructive">{link.error}</p>}
-                </div>
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                    <div className="flex items-center gap-2">
-                         <span className={cn(
-                             "text-[10px] font-bold px-2 py-1 rounded uppercase tracking-tighter",
-                             isPending ? "bg-blue-500 text-white flex items-center gap-1" :
-                             isBroken ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
-                         )}>
-                            {isPending && <RefreshCw className="h-3 w-3 animate-spin inline mr-1" />}
-                            {isPending ? 'CHECKING' : link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
+            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {group.count > 1 && (
+                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                            {group.count}
                         </span>
-                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                    </div>
-                    <Button variant="outline" size="sm" className="h-8 text-[10px] px-2" onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }} disabled={isPending}>
-                        <RefreshCw className={cn("mr-1 h-3 w-3", isPending && "animate-spin")} /> RE-CHECK
+                    )}
+                    <a 
+                        href={link.url} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className={cn(
+                            "font-medium text-sm truncate hover:underline",
+                            isBroken ? "text-red-500" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {link.url}
+                    </a>
+                    <ExternalLink className={cn("h-3 w-3 shrink-0", isBroken ? "text-red-400/50" : "text-muted-foreground/40")} />
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                    <span className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                        isPending ? "bg-blue-500 text-white flex items-center gap-1" :
+                        isBroken ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
+                    )}>
+                        {isPending && <RefreshCw className="h-3 w-3 animate-spin inline mr-1" />}
+                        {isPending ? 'CHECKING' : link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
+                    </span>
+                    <Button 
+                        variant="outline" 
+                        size="icon" 
+                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:border-primary/50 transition-all" 
+                        onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }} 
+                        disabled={isPending}
+                        title="Re-check link"
+                        aria-label="Re-check link"
+                    >
+                        <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
                     </Button>
+                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                 </div>
             </div>
 
@@ -964,6 +1054,12 @@ function TriageItemRechecked({ group, onRecheck }: any) {
                         className="overflow-hidden bg-muted/20 border-t"
                     >
                         <div className="p-4 space-y-4">
+                            {link.error && isBroken && (
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-red-500/50 uppercase tracking-tight">Error:</p>
+                                    <p className="text-[10px] font-mono bg-red-500/5 p-2 rounded border border-red-500/10 text-red-500">{link.error}</p>
+                                </div>
+                            )}
                             {visibleInstances.map((inst: any, i: number) => (
                                 <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
                                     <div className="flex flex-col gap-1">
