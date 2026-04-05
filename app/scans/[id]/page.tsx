@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { LayoutDashboard, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Suspense } from 'react';
+import { ExportButton } from './export-button';
 
 export default async function ScanDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
@@ -41,12 +42,15 @@ export default async function ScanDetailsPage({ params }: { params: Promise<{ id
           </div>
         </div>
 
-        <Button asChild variant="outline" className="gap-2 border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all">
-          <Link href={`/scans/${id}/dashboard`}>
-            <LayoutDashboard className="h-4 w-4 text-primary" />
-            Visual Dashboard
-          </Link>
-        </Button>
+        <div className="flex items-center gap-3">
+          <ExportButton scanId={scan.id} scanName={scan.name} />
+          <Button asChild variant="outline" className="gap-2 border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all">
+            <Link href={`/scans/${id}/dashboard`}>
+              <LayoutDashboard className="h-4 w-4 text-primary" />
+              Visual Dashboard
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Suspense fallback={<div className="flex items-center justify-center p-20"><RefreshCw className="h-10 w-10 animate-spin text-primary/50" /></div>}>
