@@ -12,7 +12,8 @@ const execAsync = promisify(exec);
  * Gets the database name for a specific user.
  */
 function getDbName(userId: string) {
-  return `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  const suffix = process.env.NODE_ENV === 'test' ? '_test' : '';
+  return `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}${suffix}`;
 }
 
 export async function createBackup(userId: string, username: string, customFilename?: string) {

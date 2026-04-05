@@ -15,8 +15,6 @@ if (process.env.NODE_ENV === 'test') {
 const baseConnectionString = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan';
 const info = parseDatabaseUrl(baseConnectionString);
 
-
-
 // Cache for connection pools: dbName -> Pool
 const pools: Map<string, Pool> = new Map();
 
@@ -29,11 +27,20 @@ function getConnectionString(dbName: string) {
 }
 
 /**
+ * Returns the database name for a specific user, 
+ * including the test suffix if in test mode.
+ */
+export function getUserDbName(userId: string) {
+  const suffix = process.env.NODE_ENV === 'test' ? '_test' : '';
+  return `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}${suffix}`;
+}
+
+/**
  * Gets a database instance (Drizzle) for the specified user.
  * If no userId is provided, it returns the main database instance.
  */
 export function getDb(userId?: string) {
-  const dbName = userId ? `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}` : info.db;
+  const dbName = userId ? getUserDbName(userId) : info.db;
 
   if (!pools.has(dbName)) {
     console.log(`Creating new connection pool for database: ${dbName}`);
@@ -59,7 +66,7 @@ export const db = getDb();
  * Closes a specific user's connection pool.
  */
 export async function closePool(userId: string) {
-  const dbName = `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  const dbName = getUserDbName(userId);
   const pool = pools.get(dbName);
   if (pool) {
     console.log(`Closing pool for user ${userId} (${dbName})`);

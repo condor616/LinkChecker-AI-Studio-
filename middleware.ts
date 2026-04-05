@@ -11,7 +11,11 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public paths
-  const isPublicPath = pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/api/auth') || pathname === '/icon.png';
+  const isPublicPath = 
+    pathname === '/' || 
+    pathname.startsWith('/login') || 
+    pathname.startsWith('/api/auth') || 
+    pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|webp)$/);
 
   if (isPublicPath) {
     return NextResponse.next();

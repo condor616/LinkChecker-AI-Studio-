@@ -189,7 +189,16 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     const maxDepth = config.maxDepth ?? 0;
     const currentDepth = link.depth || 0;
 
-    if (response.ok && contentType.includes('text/html') && (maxDepth === 0 || currentDepth < maxDepth)) {
+    // IMPORTANT: Only extract links from INTERNAL pages.
+    // We check the status (200), type (HTML), and Depth.
+    // AND we must check if the current page being processed is on the same domain as the startUrl.
+    const startUrlObj = new URL(config.startUrl);
+    const currentUrlObj = new URL(link.url);
+    const startHost = startUrlObj.hostname.toLowerCase().replace(/^www\./, '');
+    const currentHost = currentUrlObj.hostname.toLowerCase().replace(/^www\./, '');
+    const isInternal = currentHost === startHost || (currentHost.endsWith('.' + startHost) && !config.excludeSubdomains);
+
+    if (response.ok && contentType.includes('text/html') && isInternal && (maxDepth === 0 || currentDepth < maxDepth)) {
       const html = await response.text();
       const $ = cheerio.load(html);
       
@@ -261,8 +270,12 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
 
       await userDb.transaction(async (tx: any) => {
+
         for (const [urlStr, info] of foundLinks) {
+          if (isTargeted && !targetUrls.includes(urlStr)) continue;
           const occurrences = linksByUrl.get(urlStr) || [];
+
+
           
           if (isTargeted) {
               // Targeted Scan: Deduplicate by exact (url, parent) pair
