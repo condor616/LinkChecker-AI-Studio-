@@ -1,14 +1,24 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { server, port } from '../../scripts/serve-mock-site';
+import { port, startMockServer } from '../../scripts/serve-mock-site';
 import { processLink } from '../../lib/crawler/worker';
 import { getDb } from '../../lib/db';
 import { scans, links } from '../../lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
+/**
+ * USE CASE: Targeted Scan Mode
+ * Verifies that the crawler can:
+ * 1. Accurately verify a specific list of target URLs without full-site crawling.
+ * 2. Handle non-HTML assets (PDFs, CSS) correctly.
+ */
 describe('Targeted Scan (Phase 2)', () => {
     const baseUrl = `http://localhost:${port}`;
     const testDb = getDb();
+
+    beforeAll(async () => {
+        startMockServer();
+    });
 
     async function setupScan(config: any) {
         const scanId = crypto.randomUUID();
@@ -53,7 +63,6 @@ describe('Targeted Scan (Phase 2)', () => {
             await processLink(testDb, { url, scanId, depth: 0 }, { id: scanId }, config);
         }
 
-
         const results = await testDb.select().from(links).where(eq(links.scanId, scanId));
         expect(results.length).toBe(targets.length);
         
@@ -67,8 +76,6 @@ describe('Targeted Scan (Phase 2)', () => {
     });
 
     it('should work with Basic Auth (mocked simulation)', async () => {
-        // Hono server doesn't have auth for these routes yet, but we can verify the headers are sent
-        // Actually, we'll just verify processLink doesn't crash and correctly identifies auth config
         const config = {
             startUrl: baseUrl,
             auth: { username: 'admin', password: 'password123' }
@@ -84,9 +91,7 @@ describe('Targeted Scan (Phase 2)', () => {
         });
 
         const link = { url: baseUrl, scanId, depth: 0 };
-        
         await processLink(testDb, link, { id: scanId }, config);
-
         
         const result = await testDb.select().from(links).where(and(
             eq(links.scanId, scanId),

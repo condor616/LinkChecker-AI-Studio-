@@ -11,7 +11,16 @@ test.beforeAll(async () => {
 });
 
 
+/**
+ * USE CASE: Full Browser Authentication Flow
+ * Verifies:
+ * 1. User registration as the first user (ADMIN).
+ * 2. Automatic redirection to the dashboard.
+ * 3. Handling of duplicate user registration.
+ */
 test.describe('Authentication Flow', () => {
+
+
   test('should register a new user as admin and login', async ({ page }) => {
     // Go to login page
     await page.goto('/login');

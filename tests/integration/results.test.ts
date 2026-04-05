@@ -4,7 +4,14 @@ import { scans, links } from '../../lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import crypto from 'crypto';
 
+/**
+ * USE CASE: Results Tracking & Traceability
+ * Covers requirements:
+ * - Broken link parent mapping (showing where the link is found)
+ * - Re-check status updates persistence
+ */
 describe('Results & Traceability (Phase 2)', () => {
+
     const testDb = getDb();
 
     it('should correctly filter broken links and their parent pages', async () => {

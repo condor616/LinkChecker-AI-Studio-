@@ -36,24 +36,29 @@ describe('Crawler Link Processing', () => {
     }
   });
 
+  const TEST_USER_ID = 'crawler_test_user';
+  const TEST_SCAN_ID = 'crawler_test_scan';
+
   beforeEach(async () => {
-    // Clean up test DB
-    await db.delete(links);
-    await db.delete(scans);
-    await db.delete(users);
+    // Surgical cleanup of test data for this file only
+    await db.delete(links).where(eq(links.scanId, TEST_SCAN_ID));
+    await db.delete(scans).where(eq(scans.id, TEST_SCAN_ID));
+    await db.delete(users).where(eq(users.id, TEST_USER_ID));
+
 
     // Setup a mock user and scan
     await db.insert(users).values({
-        id: 'test_user',
+        id: TEST_USER_ID,
         email: 'test@example.com',
         passwordHash: 'hash',
         role: 'USER',
         createdAt: new Date(),
     });
 
+
     await db.insert(scans).values({
-        id: 'test_scan',
-        userId: 'test_user',
+        id: TEST_SCAN_ID,
+        userId: TEST_USER_ID,
         name: 'Test Scan',
         status: 'RUNNING',
         config: JSON.stringify({ startUrl: baseUrl, maxDepth: 2 }),
@@ -61,21 +66,24 @@ describe('Crawler Link Processing', () => {
         updatedAt: new Date(),
     });
 
+
   });
 
   it('marks a 200 OK link as SUCCESS and extracts new links', async () => {
     const link = {
         id: crypto.randomUUID(),
-        scanId: 'test_scan',
+        scanId: TEST_SCAN_ID,
         url: `${baseUrl}/success`,
         status: 'PENDING',
         depth: 0,
     };
 
+
     // Insert the initial link
     await db.insert(links).values(link);
 
-    const scan = await db.select().from(scans).where(eq(scans.id, 'test_scan')).then(res => res[0]);
+    const scan = await db.select().from(scans).where(eq(scans.id, TEST_SCAN_ID)).then(res => res[0]);
+
     const config = JSON.parse(scan?.config as string);
 
     await processLink(db, link, scan, config);
@@ -95,15 +103,17 @@ describe('Crawler Link Processing', () => {
   it('marks a 404 link as BROKEN', async () => {
     const link = {
         id: crypto.randomUUID(),
-        scanId: 'test_scan',
+        scanId: TEST_SCAN_ID,
         url: `${baseUrl}/broken`,
         status: 'PENDING',
         depth: 1,
     };
 
+
     await db.insert(links).values(link);
 
-    const scan = await db.select().from(scans).where(eq(scans.id, 'test_scan')).then(res => res[0]);
+    const scan = await db.select().from(scans).where(eq(scans.id, TEST_SCAN_ID)).then(res => res[0]);
+
     const config = JSON.parse(scan?.config as string);
 
     await processLink(db, link, scan, config);

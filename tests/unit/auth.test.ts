@@ -22,7 +22,14 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 
+/**
+ * USE CASE: Core User Approval Logic
+ * Verifies the "First User is Admin" rule and subsequent "Pending" logic.
+ * 
+ * Target: app/api/auth/register/route.ts
+ */
 describe('Auth Registration', () => {
+
   beforeEach(async () => {
     // Clean up users table before each test
     await db.delete(users);

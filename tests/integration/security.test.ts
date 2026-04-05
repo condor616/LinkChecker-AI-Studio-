@@ -6,14 +6,20 @@ import { users, scans } from '../../lib/db/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 
+/**
+ * USE CASE: Security & Multi-Tenancy Isolation
+ * Verifies that:
+ * 1. PENDING users are strictly restricted from scan operations.
+ * 2. User data is isolated across separate databases (Multi-Tenant).
+ */
 describe('Security & Multi-Tenancy (Phase 2)', () => {
+
+
     const testDb = getDb();
 
-    beforeAll(async () => {
-        await testDb.delete(users);
-    });
-
     it('should prevent PENDING users from accessing scan data (simulated)', async () => {
+ ministerial_use_case_security: true;
+
 
         // This is typically handled by middleware/requireAuth, but we can test the data layer
         const userId = 'pending-user';

@@ -13,7 +13,16 @@ test.beforeAll(async () => {
 
 
 
+/**
+ * USE CASE: Scan Management & Feedback
+ * Verifies:
+ * 1. Creation and execution of a scan from the browser.
+ * 2. Real-time report generation and visibility of results.
+ */
 test.describe('Scan Management', () => {
+
+
+
   test('should allow a logged-in user to trigger a new scan', async ({ page }) => {
     // 1. Login/Register first
     const email = `test-${Date.now()}@example.com`;
