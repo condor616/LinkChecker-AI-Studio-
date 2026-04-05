@@ -63,12 +63,10 @@ To browse all user databases, use **pgAdmin 4**, which is included in the Docker
 - **Setup**: Once logged in, add a new server connecting to host `db` with your database credentials.
 
 ### Development Commands
-- `npm run dev`: Start Next.js in development mode.
-- `npm run build`: Create a production-ready build.
-- `npm start`: Run the production server.
-- `npm run lint`: Run ESLint to check for code quality issues.
-- `npm run test`: Run unit and integration tests.
-- `npm run test:e2e`: Run end-to-end tests with Playwright.
+- `npm run test`: Run unit and integration tests (includes auto-setup and cleanup).
+- `npm run test:e2e`: Run end-to-end tests with Playwright (includes auto-setup and cleanup).
+- `npm run test:setup`: Manually prepare the test environment.
+- `npm run test:teardown`: Manually cleanup all test databases.
 
 ---
 
@@ -87,10 +85,16 @@ Tests run against an isolated database to ensure your development data remains u
    JWT_SECRET=your-test-secret
    NODE_ENV=test
    ```
-3. **Database Initialization**: The test database is automatically created and migrated during test runs, but you can manually trigger it:
-   ```bash
-   npm run test:setup
-   ```
+3. **Database Initialization**: The test environment is automatically managed.
+   - **Main Database**: `lynx_scan_test` is recreated at the start of each run.
+   - **User Databases**: Any user-specific database will automatically append a `_test` suffix (e.g., `lynx_scan_user1_test`) to ensure full isolation from production data.
+   - **Automatic Cleanup**: At the end of every test run (`npm run test` or `npm run test:e2e`), all `*_test` databases are automatically dropped.
+
+You can manually trigger setup or teardown if needed:
+```bash
+npm run test:setup     # Prepare environment
+npm run test:teardown  # Drop all test databases
+```
 
 ### Unit & Integration Testing (Vitest)
 Used for testing core logic, database operations, and crawler mechanics.

@@ -13,10 +13,11 @@
     "clean": "next clean",
     "reset-all": "npx tsx scripts/reset-all.ts && npx drizzle-kit push --force",
     "test:setup": "npx tsx scripts/setup-test-db.ts",
+    "test:teardown": "npx tsx scripts/teardown-test-db.ts",
     "test:wipe": "npx tsx scripts/wipe-test-db.ts",
-    "test": "npm run test:setup && vitest run",
+    "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "npm run test:setup && npm run test:wipe && npx playwright test",
+    "test:e2e": "npm run test:setup && (npx playwright test; npm run test:teardown)",
     "test:ui": "vitest --ui"
   },
   "dependencies": {
