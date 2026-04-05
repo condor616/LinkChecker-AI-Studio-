@@ -11,7 +11,7 @@ const dbName = url.pathname.slice(1);
 url.pathname = '/postgres'; // Connect to default postgres DB to create the test DB
 
 async function setup() {
-  console.log(`Setting up test database: ${dbName}...`);
+  console.log('Cleaning up old test databases...');
   
   const client = new Client({
     connectionString: url.toString(),
@@ -20,16 +20,23 @@ async function setup() {
   try {
     await client.connect();
     
-    // Check if DB exists
-    const res = await client.query(`SELECT 1 FROM pg_database WHERE datname = '${dbName}'`);
-    if (res.rowCount === 0) {
-      console.log(`Creating database ${dbName}...`);
-      await client.query(`CREATE DATABASE ${dbName}`);
-    } else {
-      console.log(`Database ${dbName} already exists.`);
+    // 1. Identify all *_test databases
+    const res = await client.query("SELECT datname FROM pg_database WHERE datname LIKE '%_test'");
+    const dbsToDrop = res.rows.map(row => row.datname);
+
+    console.log(`Found ${dbsToDrop.length} test databases to drop.`);
+
+    for (const dName of dbsToDrop) {
+      console.log(`Dropping database: ${dName}...`);
+      await client.query(`DROP DATABASE IF EXISTS ${dName} WITH (FORCE)`);
     }
+
+    // 2. Create main test database
+    console.log(`Creating fresh test database: ${dbName}...`);
+    await client.query(`CREATE DATABASE ${dbName}`);
+    
   } catch (err) {
-    console.error('Error creating test database:', err);
+    console.error('Error during test database setup:', err);
     process.exit(1);
   } finally {
     await client.end();

@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { parseDatabaseUrl } from '../utils/db-command';
-import { getDb, closePool } from './index';
+import { getDb, closePool, getUserDbName } from './index';
 
 const baseConnectionString = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan';
 const info = parseDatabaseUrl(baseConnectionString);
@@ -18,7 +18,7 @@ export async function provisionUserDb(userId: string) {
     return;
   }
 
-  const dbName = `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  const dbName = getUserDbName(userId);
   
   console.log(`Provisioning database: ${dbName}`);
 
@@ -104,7 +104,7 @@ export async function provisionUserDb(userId: string) {
  * Deletes a user's database.
  */
 export async function deleteUserDb(userId: string) {
-  const dbName = `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  const dbName = getUserDbName(userId);
   
   console.log(`Deleting database: ${dbName}`);
 
