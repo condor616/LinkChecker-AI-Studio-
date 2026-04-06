@@ -141,6 +141,34 @@ To verify advanced features like subpath traversal and CSS exclusions, Lynx Scan
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/) & [Shadcn UI](https://ui.shadcn.com/)
 - **Database**: [PostgreSQL](https://www.postgresql.org/) (via Docker) with [Drizzle ORM](https://orm.drizzle.team/)
 - **Message Queue**: [BullMQ](https://docs.bullmq.io/) & [Redis](https://redis.io/)
+
+## Distributed Background Processing (BullMQ)
+
+The application uses **BullMQ** with **Redis** to handle background link scanning. This architecture separates the heavy crawling logic from the Next.js process for better reliability and performance.
+
+### Services
+- **Web**: Next.js App (Producer).
+- **Redis**: Message broker and job store.
+- **Worker**: Standalone Node.js process (Consumer).
+
+### Monitoring & UI (BullBoard)
+You can monitor the worker queue in real-time by visiting the **BullBoard** dashboard:
+- **URL**: `http://localhost:3001/admin/queues`
+- **Features**: View active jobs, retry failed links, and monitor throughput.
+
+### Scaling the Workers
+If you have a large number of links to scan or multiple concurrent users, you can scale the worker service horizontally:
+
+```bash
+# Add 3 more workers
+docker-compose -f docker/services/docker-compose.yml up -d --scale worker=4
+```
+
+**How do I know if I need more workers?**
+1.  **Check BullBoard**: If the "Waiting" count is consistently growing or jobs are staying "Waiting" for more than 5-10 seconds.
+2.  **Latency**: If scans are taking significantly longer than usual to complete.
+3.  **Concurrency**: Each worker handles **10 concurrent links** by default (customizable via `BULLMQ_CONCURRENCY` env var).
+
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **Animations**: [Framer Motion](https://www.framer.com/motion/)
 

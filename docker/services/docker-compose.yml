@@ -24,6 +24,29 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Background Worker
+  worker:
+    build:
+      context: ../..
+      dockerfile: docker/services/worker.Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgres://lynx_scan:localpass@db:5432/lynx_scan
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
 
   # pgAdmin for Multi-Database Management
   pgadmin:

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, beforeAll, vi } from 'vitest';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import { processLink } from '@/lib/crawler/worker';
+import { processLink } from '@/lib/crawler/processor';
 import { db } from '@/lib/db';
 import { scans, links, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';

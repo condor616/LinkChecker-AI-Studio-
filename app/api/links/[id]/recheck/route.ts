@@ -3,7 +3,7 @@ import { getDb, db as centralDb } from '@/lib/db';
 import { links, scans, users } from '@/lib/db/schema';
 import { requireApprovedUser } from '@/lib/auth';
 import { eq, and } from 'drizzle-orm';
-import { startWorker } from '@/lib/crawler/worker';
+import { scanQueue } from '@/lib/bullmq';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -32,8 +32,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         await userDb.update(scans).set({ status: 'RUNNING' }).where(eq(scans.id, scan.id));
         // Mark user as having an active scan in central DB
         await centralDb.update(users).set({ hasActiveScan: true }).where(eq(users.id, session.id));
-        startWorker();
     }
+
+    // Enqueue the specific link for recheck
+    const config = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
+    await scanQueue.add(`scan-link-${link.id}`, {
+      userId: session.id,
+      scanId: scan.id,
+      url: link.url,
+      depth: link.depth,
+      config,
+      linkId: link.id
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

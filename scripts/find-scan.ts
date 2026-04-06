@@ -1,5 +1,5 @@
-import { getDb } from './lib/db';
-import { scans, users } from './lib/db/schema';
+import { getDb } from '@/lib/db';
+import { scans, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
 async function findScan() {

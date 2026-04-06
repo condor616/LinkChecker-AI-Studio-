@@ -3,7 +3,8 @@ import { requireApprovedUser } from '@/lib/auth';
 import { getDb, db as centralDb } from '@/lib/db';
 import { scans, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { startWorker } from '@/lib/crawler/worker';
+import { scanQueue } from '@/lib/bullmq';
+import { links } from '@/lib/db/schema';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -20,7 +21,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (status === 'RUNNING') {
       // Mark user as having an active scan in central DB
       await centralDb.update(users).set({ hasActiveScan: true }).where(eq(users.id, session.id));
-      startWorker();
+      
+      // Enqueue all pending links for this scan to ensure worker picks them up
+      const pendingLinks = await userDb.select().from(links).where(and(eq(links.scanId, id), eq(links.status, 'PENDING')));
+      if (pendingLinks.length > 0) {
+        const config = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
+        await scanQueue.addBulk(pendingLinks.map((l: any) => ({
+          name: `scan-link-${l.id}`,
+          data: { userId: session.id, scanId: id, url: l.url, depth: l.depth, config, linkId: l.id }
+        })));
+      }
     }
 
     return NextResponse.json({ success: true });

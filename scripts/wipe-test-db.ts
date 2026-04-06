@@ -1,5 +1,5 @@
-import { getDb } from '../lib/db';
-import { users, scans, links, templates } from '../lib/db/schema';
+import { getDb } from '@/lib/db';
+import { users, scans, links, templates } from '@/lib/db/schema';
 import dotenv from 'dotenv';
 import path from 'path';
 

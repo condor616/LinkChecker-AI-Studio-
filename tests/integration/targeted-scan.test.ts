@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { port, startMockServer } from '../../scripts/serve-mock-site';
-import { processLink } from '../../lib/crawler/worker';
+import { processLink } from '@/lib/crawler/processor';
 import { getDb } from '../../lib/db';
 import { scans, links } from '../../lib/db/schema';
 import { eq, and } from 'drizzle-orm';

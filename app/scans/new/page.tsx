@@ -461,39 +461,90 @@ export default function NewScanPage() {
                     </div>
                 </div>
 
-                <div className="flex flex-wrap gap-4 pt-2">
-                    <div 
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                    <motion.div 
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
                         className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 border rounded-lg cursor-pointer transition-all",
-                            config.skipExternal ? "bg-blue-500/10 border-blue-500 text-blue-500" : "bg-background border-input hover:bg-muted"
+                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                            config.skipExternal 
+                                ? "bg-blue-500/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]" 
+                                : "bg-muted/10 border-white/5 hover:border-white/10"
                         )}
                         onClick={() => setConfig(prev => ({ ...prev, skipExternal: !prev.skipExternal }))}
                     >
-                        <div className={cn("w-2 h-2 rounded-full transition-all", config.skipExternal ? "bg-blue-500" : "bg-muted-foreground/30")} />
-                        <span className="text-[10px] font-bold uppercase">Skip External Links</span>
-                    </div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className={cn(
+                                "w-2 h-2 rounded-full transition-all duration-500", 
+                                config.skipExternal ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" : "bg-muted-foreground/30"
+                            )} />
+                            <span className={cn(
+                                "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                config.skipExternal ? "text-blue-400" : "text-muted-foreground"
+                            )}>Skip External</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                            {config.skipExternal 
+                                ? "External links (like Google) will be verified once for status but not crawled." 
+                                : "Crawl external sites found during the scan (Warning: can be very slow)."}
+                        </p>
+                    </motion.div>
 
-                    <div 
+                    <motion.div 
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
                         className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 border rounded-lg cursor-pointer transition-all",
-                            config.excludeSubdomains ? "bg-orange-500/10 border-orange-500 text-orange-500" : "bg-background border-input hover:bg-muted"
+                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                            config.excludeSubdomains 
+                                ? "bg-orange-500/10 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.1)]" 
+                                : "bg-muted/10 border-white/5 hover:border-white/10"
                         )}
                         onClick={() => setConfig(prev => ({ ...prev, excludeSubdomains: !prev.excludeSubdomains }))}
                     >
-                        <div className={cn("w-2 h-2 rounded-full transition-all", config.excludeSubdomains ? "bg-orange-500" : "bg-muted-foreground/30")} />
-                        <span className="text-[10px] font-bold uppercase">Exclude Subdomains</span>
-                    </div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className={cn(
+                                "w-2 h-2 rounded-full transition-all duration-500", 
+                                config.excludeSubdomains ? "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]" : "bg-muted-foreground/30"
+                            )} />
+                            <span className={cn(
+                                "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                config.excludeSubdomains ? "text-orange-400" : "text-muted-foreground"
+                            )}>Exclude Subdomains</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                            {config.excludeSubdomains 
+                                ? "Treat subdomains (like blog.site.com) as external. Verified but not crawled." 
+                                : "Crawl subdomains as if they were internal pages."}
+                        </p>
+                    </motion.div>
 
-                    <div 
+                    <motion.div 
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
                         className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 border rounded-lg cursor-pointer transition-all",
-                            config.doNotTraverseBackward ? "bg-purple-500/10 border-purple-500 text-purple-500" : "bg-background border-input hover:bg-muted"
+                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                            config.doNotTraverseBackward 
+                                ? "bg-purple-500/10 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.1)]" 
+                                : "bg-muted/10 border-white/5 hover:border-white/10"
                         )}
                         onClick={() => setConfig(prev => ({ ...prev, doNotTraverseBackward: !prev.doNotTraverseBackward }))}
                     >
-                        <div className={cn("w-2 h-2 rounded-full transition-all", config.doNotTraverseBackward ? "bg-purple-500" : "bg-muted-foreground/30")} />
-                        <span className="text-[10px] font-bold uppercase">Stay in Subpath (No Back)</span>
-                    </div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className={cn(
+                                "w-2 h-2 rounded-full transition-all duration-500", 
+                                config.doNotTraverseBackward ? "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]" : "bg-muted-foreground/30"
+                            )} />
+                            <span className={cn(
+                                "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                config.doNotTraverseBackward ? "text-purple-400" : "text-muted-foreground"
+                            )}>Stay in Subpath</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                            {config.doNotTraverseBackward 
+                                ? "Only crawl deeper into the start URL path. Never go 'up' or 'sideways'." 
+                                : "Crawl the entire site starting from the root of the domain."}
+                        </p>
+                    </motion.div>
                 </div>
 
                 <AnimatePresence>

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireApprovedUser } from '@/lib/auth';
 import { getDb, db as centralDb } from '@/lib/db';
 import { scans, links, users } from '@/lib/db/schema';
-import { startWorker } from '@/lib/crawler/worker';
+import { scanQueue } from '@/lib/bullmq';
 import { eq } from 'drizzle-orm';
 
 export async function POST(req: Request) {
@@ -27,17 +27,26 @@ export async function POST(req: Request) {
     await centralDb.update(users).set({ hasActiveScan: true }).where(eq(users.id, session.id));
 
     // Insert the starting URL
+    let initialLinkId: string;
     if (config.startUrl) {
+      initialLinkId = crypto.randomUUID();
       await userDb.insert(links).values({
-        id: crypto.randomUUID(),
+        id: initialLinkId,
         scanId: id,
         url: config.startUrl,
         status: 'PENDING',
       });
-    }
 
-    // Ensure worker is running
-    startWorker();
+      // Enqueue the initial job
+      await scanQueue.add(`scan-link-${initialLinkId}`, {
+        userId: session.id,
+        scanId: id,
+        url: config.startUrl,
+        depth: 0,
+        config,
+        linkId: initialLinkId
+      });
+    }
 
     return NextResponse.json({ id });
   } catch (error: any) {
