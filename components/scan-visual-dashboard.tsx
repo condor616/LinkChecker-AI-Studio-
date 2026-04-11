@@ -19,7 +19,8 @@ import {
   AlertTriangle,
   Zap,
   TrendingDown,
-  Activity
+  Activity,
+  Ghost
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -81,6 +82,22 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
     // - If targeted: only targets.
     // - Regular: Only links found ON internal pages (or the start URL itself).
     const filteredLinks = links.filter((l: any) => {
+      // ALWAYS include SKIPPED links if they were recorded and found on a relevant page
+      if (l.status === 'SKIPPED') {
+        if (isTargeted) {
+          // In targeted scans, show skipped links if their parent was targeted
+          return !l.parentUrl || targetUrls.some((t: string) => {
+            const cleanT = t.trim().replace(/\/$/, '');
+            const cleanP = l.parentUrl.replace(/\/$/, '');
+            return cleanP === cleanT || cleanP.includes(cleanT);
+          });
+        }
+        // In regular scans, show skipped links if their parent was internal
+        const parent = l.parentUrl;
+        if (!parent) return true;
+        return isUrlInternal(parent);
+      }
+
       if (isTargeted) {
         return targetUrls.some((t: string) => {
           const cleanT = t.trim().replace(/\/$/, '');
@@ -129,16 +146,24 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       ? Math.max(0, 100 - (totalPenalty / total) * 100 * sensitivity) 
       : 100;
 
-    // Group by parent page for prioritized fix list
-    const brokenByPage: Record<string, number> = {};
+    // Group by parent page for prioritized fix list (normalizing URLs to avoid duplication)
+    const brokenByPage: Record<string, { count: number, originalUrl: string }> = {};
     brokenLinks.forEach((l: any) => {
       const parent = l.parentUrl || startUrl || 'Direct Entry';
-      brokenByPage[parent] = (brokenByPage[parent] || 0) + 1;
+      // Normalize: lowercase, strip protocol, strip www., strip trailing slash
+      const normalized = parent.toLowerCase()
+        .replace(/^https?:\/\/(www\.)?/, '')
+        .replace(/\/$/, '');
+        
+      if (!brokenByPage[normalized]) {
+        brokenByPage[normalized] = { count: 0, originalUrl: parent };
+      }
+      brokenByPage[normalized].count++;
     });
 
-    const topPagesToFix = Object.entries(brokenByPage)
-      .sort(([, a], [, b]) => b - a)
-      .map(([url, count]) => ({ url, count }));
+    const topPagesToFix = Object.values(brokenByPage)
+      .sort((a, b) => b.count - a.count)
+      .map(({ originalUrl, count }) => ({ url: originalUrl, count }));
 
     return {
       total,
@@ -255,7 +280,7 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
         </Card>
 
         {/* Quick Stats Grid */}
-        <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+        <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-4">
            <StatMetric 
               label="Total Links Found" 
               value={stats.total} 
@@ -283,6 +308,13 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
               icon={<Activity className="h-5 w-5" />} 
               color="info"
               description="Waiting in queue"
+           />
+           <StatMetric 
+              label="Skipped Links" 
+              value={stats.skipped} 
+              icon={<Ghost className="h-5 w-5" />} 
+              color="muted"
+              description="Excluded by rules"
            />
         </div>
       </div>
@@ -449,6 +481,7 @@ function StatMetric({ label, value, icon, color, description }: any) {
     success: "text-emerald-400 border-emerald-500/20 bg-emerald-500/5",
     danger: "text-red-400 border-red-500/20 bg-red-500/5",
     info: "text-blue-400 border-blue-500/20 bg-blue-500/5",
+    muted: "text-slate-400 border-slate-500/20 bg-slate-500/5",
   };
 
   return (

@@ -15,7 +15,17 @@ export const scans = pgTable('scans', {
   userId: text('user_id').notNull(), // FK removed for multi-db
   name: text('name').notNull(),
   status: text('status').notNull().default('IDLE'), // IDLE, RUNNING, PAUSED, COMPLETED, FAILED
+  /**
+   * Scan configuration (JSON).
+   * @property {string} userAgent - Selected predefined browser agent string
+   * @property {string} customUserAgent - Custom browser agent string (overrides selection)
+   * @property {number} randomDelay - Max random delay in ms before each request
+   * @property {number} maxDepth - Max crawl depth
+   * @property {number} rateLimit - Requests per minute
+   * @property {string} startUrl - The URL to start the scan from
+   */
   config: text('config').notNull(), // JSON string
+
   createdAt: timestamp('created_at', { mode: 'date' }).notNull(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).notNull(),
 });

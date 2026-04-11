@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Play, Save, Copy, Check, Trash2, LayoutTemplate, Plus, X, Shield, Filter, Globe, Code, ChevronDown, Key } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { USER_AGENTS, DEFAULT_USER_AGENT } from '@/lib/crawler/agents';
+
 
 interface ScanConfig {
   name: string;
@@ -18,6 +20,9 @@ interface ScanConfig {
   maxDepth: number;
   rateLimit: number;
   excludeRegex: string;
+  userAgent: string;
+  customUserAgent: string;
+  randomDelay: number;
   auth?: {
     username?: string;
     password?: string;
@@ -30,7 +35,9 @@ interface ScanConfig {
   skipExternal?: boolean;
   excludeSubdomains?: boolean;
   doNotTraverseBackward?: boolean;
+  saveSkippedLinks?: boolean;
 }
+
 
 const DEFAULT_CONFIG: ScanConfig = {
   name: 'My New Scan',
@@ -38,6 +45,9 @@ const DEFAULT_CONFIG: ScanConfig = {
   maxDepth: 2,
   rateLimit: 60,
   excludeRegex: '',
+  userAgent: DEFAULT_USER_AGENT,
+  customUserAgent: '',
+  randomDelay: 500,
   auth: { username: '', password: '' },
   regexRules: [],
   skipSelectors: [],
@@ -47,7 +57,9 @@ const DEFAULT_CONFIG: ScanConfig = {
   skipExternal: false,
   excludeSubdomains: false,
   doNotTraverseBackward: false,
+  saveSkippedLinks: false,
 };
+
 
 const COMMON_SELECTORS = [
   { label: 'Header', value: 'header' },
@@ -60,6 +72,7 @@ const COMMON_SELECTORS = [
 
 export default function NewScanPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [config, setConfig] = useState<ScanConfig>(DEFAULT_CONFIG);
   const [jsonText, setJsonText] = useState(JSON.stringify(config, null, 2));
   const [jsonError, setJsonError] = useState('');
@@ -86,12 +99,7 @@ export default function NewScanPage() {
     // Check for selected template from Templates page or edit param
     const checkTemplates = async () => {
         const savedConfig = localStorage.getItem('selected_template_config');
-        const targetParam = searchParams.get('target');
         
-        if (targetParam === 'true') {
-            setConfig(prev => ({ ...prev, isTargeted: true }));
-        }
-
         if (savedConfig) {
           try {
             const parsed = JSON.parse(savedConfig);
@@ -131,6 +139,16 @@ export default function NewScanPage() {
     
     checkTemplates();
   }, []);
+
+  // React to query parameter changes (for navigating between normal and targeted scan)
+  useEffect(() => {
+    const targetParam = searchParams.get('target');
+    if (targetParam === 'true') {
+        setConfig(prev => ({ ...prev, isTargeted: true }));
+    } else {
+        setConfig(prev => ({ ...prev, isTargeted: false }));
+    }
+  }, [searchParams]);
 
   const fetchTemplates = async () => {
     const res = await fetch('/api/templates');
@@ -545,7 +563,92 @@ export default function NewScanPage() {
                                 : "Crawl the entire site starting from the root of the domain."}
                         </p>
                     </motion.div>
+
+                    <motion.div 
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        className={cn(
+                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                            config.saveSkippedLinks 
+                                ? "bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
+                                : "bg-muted/10 border-white/5 hover:border-white/10"
+                        )}
+                        onClick={() => setConfig(prev => ({ ...prev, saveSkippedLinks: !prev.saveSkippedLinks }))}
+                    >
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className={cn(
+                                "w-2 h-2 rounded-full transition-all duration-500", 
+                                config.saveSkippedLinks ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-muted-foreground/30"
+                            )} />
+                            <span className={cn(
+                                "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                config.saveSkippedLinks ? "text-emerald-400" : "text-muted-foreground"
+                            )}>Record Skipped</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                            {config.saveSkippedLinks 
+                                ? "Links excluded by rules will be recorded in the report with a reason." 
+                                : "Excluded links are ignored to save database space (Default)."}
+                        </p>
+                    </motion.div>
                 </div>
+
+
+                <div className="pt-6 border-t border-white/5 space-y-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Shield className="h-4 w-4 text-primary" />
+                        <h3 className="text-sm font-bold uppercase tracking-widest text-primary">Anti-Bot & Identity</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Browser Agent</Label>
+                                <div className="relative group">
+                                    <select 
+                                        className="w-full h-10 pl-3 pr-10 bg-muted/30 border-none rounded-lg appearance-none cursor-pointer focus:ring-1 ring-primary/50 transition-all outline-none text-xs"
+                                        value={config.userAgent}
+                                        onChange={(e) => setConfig({ ...config, userAgent: e.target.value })}
+                                    >
+                                        {USER_AGENTS.map(agent => (
+                                            <option key={agent.name} value={agent.value}>{agent.name}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Custom User Agent (Overrides selection)</Label>
+                                <Input
+                                    placeholder="Mozilla/5.0..."
+                                    value={config.customUserAgent}
+                                    onChange={(e) => setConfig({ ...config, customUserAgent: e.target.value })}
+                                    className="bg-muted/30 border-none shadow-none focus-visible:ring-1 h-10 text-xs"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Random Delay (ms)</Label>
+                                <span className="text-[10px] font-mono text-primary">{config.randomDelay}ms</span>
+                            </div>
+                            <Input
+                                type="number"
+                                min={0}
+                                step={100}
+                                value={config.randomDelay}
+                                onChange={(e) => setConfig({ ...config, randomDelay: parseInt(e.target.value) || 0 })}
+                                className="bg-muted/30 border-none shadow-none focus-visible:ring-1 h-10 text-xs"
+                            />
+                            <p className="text-[10px] text-muted-foreground leading-relaxed italic mt-2">
+                                Adds a random delay between 0 and this value before each request to mimic human browsing and avoid bot detection.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
 
                 <AnimatePresence>
                     {config.isTargeted && (
@@ -555,11 +658,12 @@ export default function NewScanPage() {
                             exit={{ height: 0, opacity: 0 }}
                             className="overflow-hidden space-y-2"
                         >
-                            <Label className="text-primary font-bold">Target URLs to Audit (Bulk Entry)</Label>
+                            <Label className="text-primary font-bold">Target URLs to Audit (Webpages, PDFs, Images)</Label>
                             <Textarea 
                                 placeholder="Paste URLs here, one per line. e.g.
-https://mysite.com/report1.pdf
-https://mysite.com/images/logo.png"
+https://mysite.com/landing-page
+https://mysite.com/report-2024.pdf
+https://mysite.com/assets/banner.png"
                                 value={targetUrlsRaw}
                                 onChange={(e) => {
                                     const raw = e.target.value;
@@ -569,7 +673,12 @@ https://mysite.com/images/logo.png"
                                 }}
                                 className="min-h-[120px] bg-primary/5 border-primary/20 font-mono text-xs focus-visible:ring-1"
                             />
-                            <p className="text-[10px] text-muted-foreground italic">Note: The scan results will be focused exclusively on these target URLs.</p>
+                            <p className="text-[10px] text-muted-foreground italic">
+                                Note: The scan will be focused exclusively on finding these target URLs. 
+                                <span className="text-primary/70 block mt-1 font-bold tracking-tight uppercase text-[9px]">
+                                    Pro-Tip: Only targets linked directly from your "Starting URL" or other target pages will be discovered.
+                                </span>
+                            </p>
                         </motion.div>
                     )}
                 </AnimatePresence>

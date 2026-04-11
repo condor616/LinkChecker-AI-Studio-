@@ -33,8 +33,10 @@ test.describe('Scan Management', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL('/');
 
-    // 2. Go to New Scan page
+    // 2. Go to New Scan page (via Modal)
     await page.click('text=New Scan');
+    await expect(page.locator('text=Choose your Scan Mode')).toBeVisible();
+    await page.click('text=Launch Normal Scan');
     await expect(page).toHaveURL('/scans/new');
 
     // 3. Fill scan configuration

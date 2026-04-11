@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Pause, Play, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, Terminal, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2 } from 'lucide-react';
+import { Pause, Play, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,6 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const searchParams = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [status, setStatus] = useState(initialStatus);
-  const [showTerminal, setShowTerminal] = useState(true);
-  const [logs, setLogs] = useState<string[]>([]);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const triageContentRef = useRef<HTMLDivElement>(null);
   const [brokenPage, setBrokenPage] = useState(1);
   const [successPage, setSuccessPage] = useState(1);
@@ -27,6 +24,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [isSearching, setIsSearching] = useState(false);
+  const [viewMode, setViewMode] = useState<'url' | 'source'>('url');
   const pageSize = 30;
 
   const fetchData = async (searchOverride?: string) => {
@@ -41,17 +39,6 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
       const json = await res.json();
       setData(json);
       setStatus(json.scan.status);
-      
-      // Update logs: get last 20 checked links
-      const checkedLinks = [...json.links]
-        .filter(l => l.status !== 'PENDING' && l.status !== 'SKIPPED')
-        .sort((a, b) => new Date(b?.checkedAt || 0).getTime() - new Date(a?.checkedAt || 0).getTime())
-        .slice(0, 20);
-      
-      const newLogs = checkedLinks.map(l => 
-        `[${new Date(l.checkedAt).toLocaleTimeString()}] ${l.status === 'SUCCESS' ? '✓' : '✗'} ${l.url} (${l.statusCode || 'ERROR'})`
-      );
-      setLogs(newLogs.reverse());
     }
   };
 
@@ -88,11 +75,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     };
   }, [scanId, debouncedSearch]);
 
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  }, [logs, showTerminal]);
+
 
   useEffect(() => {
     if (triageContentRef.current) {
@@ -116,6 +99,31 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     if (res.ok) {
       fetchData();
     }
+  };
+
+  const downloadBacklinkCSV = () => {
+    const headers = ['Target URL', 'Source Page (Parent)', 'Status', 'Code', 'Snippet'];
+    const rows = [headers.join(',')];
+    
+    uniqueFilteredLinks.forEach(group => {
+      group.instances.forEach((inst: any) => {
+        const row = [
+          `"${inst.url}"`,
+          `"${inst.parentUrl || ''}"`,
+          `"${inst.status}"`,
+          `"${inst.statusCode || ''}"`,
+          `"${(inst.snippet || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`
+        ];
+        rows.push(row.join(','));
+      });
+    });
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backlinks-${scan.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.csv`;
+    a.click();
   };
 
   if (!data) return (
@@ -149,7 +157,63 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   // Filter links:
   // 1. If targeted: only targets.
   // 2. Regular: Only links found ON internal pages (or the entry point).
+  const groupLinks = (links: any[]) => {
+    const grouped: Record<string, any[]> = {};
+    links.forEach(link => {
+        const normalizedUrl = link.url.replace(/^https?:\/\//, '').toLowerCase();
+        if (!grouped[normalizedUrl]) {
+            grouped[normalizedUrl] = [];
+        }
+        grouped[normalizedUrl].push(link);
+    });
+    return Object.entries(grouped).map(([normalizedKey, instances]) => {
+        const displayUrl = instances.find(inst => inst.url.startsWith('https'))?.url || instances[0].url;
+        return {
+            url: displayUrl,
+            normalizedKey,
+            instances,
+            ...instances[0], 
+            count: instances.length
+        };
+    });
+  };
+
+  const groupLinksBySource = (links: any[]) => {
+    const grouped: Record<string, any[]> = {};
+    links.forEach(link => {
+        const source = link.parentUrl || 'Entry Point';
+        if (!grouped[source]) {
+            grouped[source] = [];
+        }
+        grouped[source].push(link);
+    });
+    return Object.entries(grouped).map(([source, instances]) => {
+        return {
+            url: source,
+            instances,
+            status: instances.some(i => i.status === 'BROKEN') ? 'BROKEN' : 'SUCCESS',
+            count: instances.length
+        };
+    });
+  };
+
   const filteredLinks = links.filter((l: any) => {
+    // ALWAYS include SKIPPED links if they were recorded and found on a relevant page
+    if (l.status === 'SKIPPED') {
+      if (isTargeted) {
+        // In targeted scans, show skipped links if their parent was targeted
+        return !l.parentUrl || targetUrls.some((t: string) => {
+          const cleanT = t.trim().replace(/\/$/, '');
+          const cleanP = l.parentUrl.replace(/\/$/, '');
+          return cleanP === cleanT || cleanP.includes(cleanT);
+        });
+      }
+      // In regular scans, show skipped links if their parent was internal
+      const parent = l.parentUrl;
+      if (!parent) return true;
+      return isUrlInternal(parent);
+    }
+
     if (isTargeted) {
       return targetUrls.some((t: string) => {
         const cleanT = t.trim().replace(/\/$/, '');
@@ -163,7 +227,8 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     return isUrlInternal(parent);
   });
 
-  const total = filteredLinks.length;
+  const uniqueFilteredLinks = groupLinks(filteredLinks);
+  const total = uniqueFilteredLinks.length;
   const pending = filteredLinks.filter((l: any) => l.status === 'PENDING').length;
   // Raw counts for internal use if needed, but UI uses unique counts derived below
   
@@ -174,28 +239,6 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const skippedLinksRaw = filteredLinks.filter((l: any) => l.status === 'SKIPPED' && !l.isRechecked);
   const recheckedLinksRaw = filteredLinks.filter((l: any) => l.isRechecked);
 
-  const groupLinks = (links: any[]) => {
-    const grouped: Record<string, any[]> = {};
-    links.forEach(link => {
-        // Protocol-insensitive grouping
-        const normalizedUrl = link.url.replace(/^https?:\/\//, '').toLowerCase();
-        if (!grouped[normalizedUrl]) {
-            grouped[normalizedUrl] = [];
-        }
-        grouped[normalizedUrl].push(link);
-    });
-    return Object.entries(grouped).map(([normalizedKey, instances]) => {
-        // Prioritize https version if available for the display URL
-        const displayUrl = instances.find(inst => inst.url.startsWith('https'))?.url || instances[0].url;
-        return {
-            url: displayUrl,
-            normalizedKey,
-            instances,
-            ...instances[0], // status, statusCode, etc. from first instance
-            count: instances.length
-        };
-    });
-  };
 
   const brokenLinks = groupLinks(brokenLinksRaw);
   const successLinks = groupLinks(successLinksRaw);
@@ -207,10 +250,24 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const recheckedLinks = groupLinks(recheckedLinksRaw);
   const recheckedCount = recheckedLinks.length;
 
-  const paginatedBroken = brokenLinks.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);
-  const paginatedSuccess = successLinks.slice((successPage - 1) * pageSize, successPage * pageSize);
-  const paginatedSkipped = skippedLinks.slice((skippedPage - 1) * pageSize, skippedPage * pageSize);
-  const paginatedRechecked = recheckedLinks.slice((recheckedPage - 1) * pageSize, recheckedPage * pageSize);
+  const currentBrokenGroups = viewMode === 'url' ? brokenLinks : groupLinksBySource(brokenLinksRaw);
+  const currentSuccessGroups = viewMode === 'url' ? successLinks : groupLinksBySource(successLinksRaw);
+  const currentSkippedGroups = viewMode === 'url' ? skippedLinks : groupLinksBySource(skippedLinksRaw);
+  const currentRecheckedGroups = viewMode === 'url' ? recheckedLinks : groupLinksBySource(recheckedLinksRaw);
+
+  const paginatedBroken = currentBrokenGroups.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);
+  const paginatedSuccess = currentSuccessGroups.slice((successPage - 1) * pageSize, successPage * pageSize);
+  const paginatedSkipped = currentSkippedGroups.slice((skippedPage - 1) * pageSize, skippedPage * pageSize);
+  const paginatedRechecked = currentRecheckedGroups.slice((recheckedPage - 1) * pageSize, recheckedPage * pageSize);
+
+  // Discovery Logic: Which targets are MISSING?
+  const missingTargets = isTargeted ? targetUrls.filter((t: string) => {
+    const cleanT = t.trim().replace(/\/$/, '').toLowerCase();
+    return !uniqueFilteredLinks.some(l => l.url.replace(/\/$/, '').toLowerCase() === cleanT);
+  }) : [];
+
+  const foundTargetCount = targetUrls.length - missingTargets.length;
+  const coveragePercent = targetUrls.length > 0 ? (foundTargetCount / targetUrls.length) * 100 : 0;
 
   // Stats specific to the crawl progress (unfiltered)
   const pagesCrawled = links.filter((l: any) => l.type?.includes('html') && l.status !== 'PENDING').length;
@@ -286,25 +343,62 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
       {/* Terminal and Triage */}
       <div className="flex flex-col gap-8 pb-20">
         {isTargeted && (
-             <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 flex items-center justify-between">
-                <div>
+             <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="flex-1 space-y-2">
                     <h3 className="text-lg font-bold text-primary flex items-center gap-2">
                         <CheckCircle2 className="h-5 w-5" />
                         Targeted Audit Active
                     </h3>
-                    <p className="text-sm text-muted-foreground">This report is filtered to show ONLY the specific assets you requested.</p>
+                    <p className="text-sm text-muted-foreground">Isolating reporting to your specific assets. We've found <strong>{foundTargetCount}</strong> of <strong>{targetUrls.length}</strong> targets so far.</p>
+                    
+                    <div className="w-full max-w-md h-1.5 bg-primary/10 rounded-full overflow-hidden">
+                        <motion.div 
+                            className="h-full bg-primary" 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${coveragePercent}%` }}
+                        />
+                    </div>
                 </div>
-                <div className="flex gap-8">
+
+                <div className="flex items-center gap-8 shrink-0">
                     <div className="text-center">
-                        <div className="text-sm font-bold opacity-50 uppercase tracking-tighter">Your targets</div>
-                        <div className="text-3xl font-black">{targetUrls.length}</div>
+                        <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">Found</div>
+                        <div className="text-3xl font-black text-green-500 leading-none">{foundTargetCount}</div>
                     </div>
-                    <div className="text-center">
-                        <div className="text-sm font-bold opacity-50 uppercase tracking-tighter">Total Results</div>
-                        <div className="text-3xl font-black text-green-500">{successCount}</div>
-                    </div>
+                    {missingTargets.length > 0 && (
+                        <div className="text-center">
+                            <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">Missing</div>
+                            <div className="text-3xl font-black text-red-500 leading-none">{missingTargets.length}</div>
+                        </div>
+                    )}
+                    <div className="h-10 w-px bg-white/10 hidden md:block" />
+                    <Button variant="glow" size="sm" onClick={downloadBacklinkCSV} className="h-10 px-4">
+                        <ExternalLink className="mr-2 h-4 w-4" /> Export Backlinks
+                    </Button>
                 </div>
              </div>
+        )}
+
+        {isTargeted && missingTargets.length > 0 && (
+            <Card className="border-red-500/20 bg-red-500/5">
+                <CardHeader className="py-3">
+                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-red-500 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        Missing / Orphaned Targets ({missingTargets.length})
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-4 pt-0">
+                    <p className="text-[11px] text-muted-foreground mb-3">The following requested URLs were not found after crawling the site. These assets are either unlinked or the crawler could not discover a path to them.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {missingTargets.map((t: string) => (
+                            <div key={t} className="px-3 py-1.5 rounded bg-black/20 border border-white/5 text-[10px] font-mono text-red-400/80 break-all flex items-center justify-between group">
+                                {t}
+                                <Ghost className="h-3 w-3 opacity-20 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
         )}
 
         {/* Triage Section (Now at the top) */}
@@ -330,11 +424,36 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                 </div>
                                 
                                 {!isTargeted && (
+                                    <div className="flex border rounded-lg bg-muted/30 p-0.5">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className={cn("h-7 px-2 text-[10px] font-bold uppercase tracking-tight", viewMode === 'url' ? "bg-background shadow-sm" : "opacity-50")}
+                                            onClick={() => setViewMode('url')}
+                                        >
+                                            By URL
+                                        </Button>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className={cn("h-7 px-2 text-[10px] font-bold uppercase tracking-tight", viewMode === 'source' ? "bg-background shadow-sm" : "opacity-50")}
+                                            onClick={() => setViewMode('source')}
+                                        >
+                                            By Page
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {!isTargeted && (
                                     <TabsList>
-                                        <TabsTrigger value="broken" className="text-red-500 data-[state=active]:bg-red-500/10">Broken ({brokenCount})</TabsTrigger>
-                                        <TabsTrigger value="rechecked" className="text-blue-500 data-[state=active]:bg-blue-500/10">Re-checked ({recheckedCount})</TabsTrigger>
-                                        <TabsTrigger value="success">Success ({successCount})</TabsTrigger>
-                                        <TabsTrigger value="skipped">Skipped ({skippedCount})</TabsTrigger>
+                                        <TabsTrigger value="broken" className="text-red-500 data-[state=active]:bg-red-500/10">
+                                            Broken ({currentBrokenGroups.length})
+                                        </TabsTrigger>
+                                        <TabsTrigger value="rechecked" className="text-blue-500 data-[state=active]:bg-blue-500/10">
+                                            Re-checked ({currentRecheckedGroups.length})
+                                        </TabsTrigger>
+                                        <TabsTrigger value="success">Success ({currentSuccessGroups.length})</TabsTrigger>
+                                        <TabsTrigger value="skipped">Skipped ({currentSkippedGroups.length})</TabsTrigger>
                                     </TabsList>
                                 )}
                             </div>
@@ -365,19 +484,23 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                 <>
                                     <PaginationControls 
                                         currentPage={brokenPage} 
-                                        totalItems={brokenLinks.length} 
+                                        totalItems={currentBrokenGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setBrokenPage} 
                                         position="top"
                                     />
                                     <div className="divide-y flex-1">
                                         {paginatedBroken.map((group: any) => (
-                                            <TriageItem key={group.url} group={group} onRecheck={handleRecheck} />
+                                            viewMode === 'url' ? (
+                                                <TriageItem key={group.url} group={group} onRecheck={handleRecheck} />
+                                            ) : (
+                                                <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                            )
                                         ))}
                                     </div>
                                     <PaginationControls 
                                         currentPage={brokenPage} 
-                                        totalItems={brokenLinks.length} 
+                                        totalItems={currentBrokenGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setBrokenPage} 
                                         position="bottom"
@@ -387,28 +510,32 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                         </TabsContent>
                         <TabsContent value="rechecked" className="m-0 flex-1 flex flex-col">
                              <div className="divide-y text-xs text-muted-foreground/60 flex-1">
-                                {recheckedLinks.length === 0 ? (
+                                {currentRecheckedGroups.length === 0 ? (
                                     <div className="p-12 text-center text-sm italic text-muted-foreground">
                                         No links have been manually re-checked yet.
                                     </div>
                                 ) : (
                                     <>
-                                        {recheckedLinks.length > pageSize && (
+                                        {currentRecheckedGroups.length > pageSize && (
                                             <PaginationControls 
                                                 currentPage={recheckedPage} 
-                                                totalItems={recheckedLinks.length} 
+                                                totalItems={currentRecheckedGroups.length} 
                                                 pageSize={pageSize} 
                                                 onPageChange={setRecheckedPage} 
                                                 position="top"
                                             />
                                         )}
                                         {paginatedRechecked.map((group: any) => (
-                                            <TriageItemRechecked key={group.url} group={group} onRecheck={handleRecheck} />
+                                            viewMode === 'url' ? (
+                                                <TriageItemRechecked key={group.url} group={group} onRecheck={handleRecheck} />
+                                            ) : (
+                                                <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                            )
                                         ))}
-                                        {recheckedLinks.length > pageSize && (
+                                        {currentRecheckedGroups.length > pageSize && (
                                             <PaginationControls 
                                                 currentPage={recheckedPage} 
-                                                totalItems={recheckedLinks.length} 
+                                                totalItems={currentRecheckedGroups.length} 
                                                 pageSize={pageSize} 
                                                 onPageChange={setRecheckedPage} 
                                                 position="bottom"
@@ -420,23 +547,27 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                         </TabsContent>
                         <TabsContent value="success" className="m-0 flex-1 flex flex-col">
                              <div className="divide-y text-xs text-muted-foreground/60 flex-1">
-                                {successLinks.length > pageSize && (
+                                {currentSuccessGroups.length > pageSize && (
                                     <PaginationControls 
                                         currentPage={successPage} 
-                                        totalItems={successLinks.length} 
+                                        totalItems={currentSuccessGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setSuccessPage} 
                                         position="top"
                                     />
                                 )}
                                 {paginatedSuccess.map((group: any) => (
-                                    <TriageItemSuccess key={group.url} group={group} />
+                                    viewMode === 'url' ? (
+                                        <TriageItemSuccess key={group.url} group={group} />
+                                    ) : (
+                                        <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                    )
                                 ))}
                              </div>
-                             {successLinks.length > pageSize && (
+                             {currentSuccessGroups.length > pageSize && (
                                 <PaginationControls 
                                     currentPage={successPage} 
-                                    totalItems={successLinks.length} 
+                                    totalItems={currentSuccessGroups.length} 
                                     pageSize={pageSize} 
                                     onPageChange={setSuccessPage} 
                                     position="bottom"
@@ -445,28 +576,32 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                         </TabsContent>
                         <TabsContent value="skipped" className="m-0 flex-1 flex flex-col">
                              <div className="divide-y text-xs text-muted-foreground/60 flex-1">
-                                {skippedLinks.length > pageSize && (
+                                {currentSkippedGroups.length > pageSize && (
                                     <PaginationControls 
                                         currentPage={skippedPage} 
-                                        totalItems={skippedLinks.length} 
+                                        totalItems={currentSkippedGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setSkippedPage} 
                                         position="top"
                                     />
                                 )}
                                 {paginatedSkipped.map((group: any) => (
-                                    <TriageItemSkipped key={group.url} group={group} />
+                                    viewMode === 'url' ? (
+                                        <TriageItemSkipped key={group.url} group={group} />
+                                    ) : (
+                                        <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                    )
                                 ))}
-                                {skippedLinks.length === 0 && (
+                                {currentSkippedGroups.length === 0 && (
                                     <div className="p-12 text-center text-sm italic text-muted-foreground">
                                         No links skipped.
                                     </div>
                                 )}
                              </div>
-                             {skippedLinks.length > pageSize && (
+                             {currentSkippedGroups.length > pageSize && (
                                 <PaginationControls 
                                     currentPage={skippedPage} 
-                                    totalItems={skippedLinks.length} 
+                                    totalItems={currentSkippedGroups.length} 
                                     pageSize={pageSize} 
                                     onPageChange={setSkippedPage} 
                                     position="bottom"
@@ -491,54 +626,6 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
             </div>
         )}
 
-        {/* Terminal Section (Now at the bottom and collapsible) */}
-        {status !== 'COMPLETED' && (
-            <div className="w-full order-2">
-                <Card className="flex flex-col bg-slate-950 border-slate-800 text-slate-300 font-mono shadow-2xl overflow-hidden transition-all duration-300">
-                    <CardHeader className="py-3 px-4 border-b border-slate-800 flex flex-row items-center justify-between space-y-0 cursor-pointer hover:bg-slate-900/50" onClick={() => setShowTerminal(!showTerminal)}>
-                        <CardTitle className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                            <Terminal className="h-3 w-3" />
-                            Live Console
-                        </CardTitle>
-                        <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] text-slate-500 mr-2">
-                                <div className={cn("w-1.5 h-1.5 rounded-full", status === 'RUNNING' ? "bg-emerald-500 animate-pulse" : "bg-slate-600")} />
-                                {status === 'RUNNING' ? 'STREAMING' : 'READY'}
-                            </div>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-500">
-                                 {showTerminal ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            </Button>
-                        </div>
-                    </CardHeader>
-                    <AnimatePresence initial={false}>
-                        {showTerminal && (
-                            <motion.div
-                                initial={{ height: 0 }}
-                                animate={{ height: "auto" }}
-                                exit={{ height: 0 }}
-                                transition={{ duration: 0.3, ease: "easeInOut" }}
-                            >
-                                <CardContent 
-                                    ref={scrollAreaRef}
-                                    className="h-[400px] overflow-auto p-4 text-[11px] leading-relaxed space-y-1 custom-scrollbar"
-                                >
-                                    {logs.length === 0 ? (
-                                        <p className="text-slate-600 italic">Initializing engine...</p>
-                                    ) : (
-                                        logs.map((log, i) => (
-                                            <div key={i} className={cn("flex gap-3", log.includes('✗') ? 'text-red-400' : 'text-emerald-400')}>
-                                                <span className="opacity-30 flex-shrink-0 select-none">{(i + 1).toString().padStart(3, '0')}</span>
-                                                <span>{log}</span>
-                                            </div>
-                                        ))
-                                    )}
-                                </CardContent>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </Card>
-            </div>
-        )}
       </div>
     </div>
   );
@@ -824,28 +911,18 @@ function TriageItem({ group, onRecheck }: any) {
 }
 
 function TriageItemSuccess({ group }: any) {
-    const [expanded, setExpanded] = useState(false);
-    const [showAll, setShowAll] = useState(false);
     const link = group;
 
-    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
-
     return (
-        <div className="border-l-4 border-l-green-500 hover:bg-muted/10 transition-colors overflow-hidden">
-            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+        <div className="border-l-4 border-l-green-500 hover:bg-green-500/5 transition-colors overflow-hidden">
+            <div className="h-12 px-4 flex items-center justify-between gap-4 select-none">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {group.count > 1 && (
-                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                            {group.count}
-                        </span>
-                    )}
                     <span className="font-medium text-sm text-green-600 dark:text-green-400 truncate">{link.url}</span>
                     <a 
                         href={link.url} 
                         target="_blank" 
                         rel="noreferrer" 
                         className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
                         title="Open in new tab"
                     >
                         <ExternalLink className="h-3 w-3" />
@@ -853,51 +930,8 @@ function TriageItemSuccess({ group }: any) {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                     <span className="bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-sm font-bold text-[10px]">{link.statusCode || 200} OK</span>
-                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                 </div>
             </div>
-
-            <AnimatePresence>
-                {expanded && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden bg-muted/20 border-t"
-                    >
-                        <div className="p-4 space-y-2">
-                             {visibleInstances.map((inst: any, i: number) => (
-                                <div key={inst.id} className={cn("flex flex-col gap-1", i > 0 && "pt-2 border-t border-dashed")}>
-                                    <div className="flex flex-col gap-1">
-                                         {inst.url !== link.url && (
-                                            <div className="text-[10px] font-mono text-green-500/80">
-                                                Specific URL: {inst.url}
-                                            </div>
-                                        )}
-                                        {inst.parentUrl && (
-                                            <p className="text-[10px] text-muted-foreground flex items-center gap-2">
-                                                <span className="font-bold opacity-50 shrink-0 uppercase tracking-tighter">Linked from:</span>
-                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
-                                                    {inst.parentUrl}
-                                                </a>
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                            {group.instances.length > 10 && !showAll && (
-                                <Button 
-                                    variant="ghost" 
-                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
-                                    onClick={() => setShowAll(true)}
-                                >
-                                    Show all {group.count} occurrences
-                                </Button>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }
@@ -952,6 +986,11 @@ function TriageItemSkipped({ group }: any) {
                                             <span className="text-[10px] text-primary/80 font-mono italic">
                                                 {inst.snippet.split(']')[0] + ']'}
                                             </span>
+                                        )}
+                                         {inst.error && (
+                                            <div className="text-[10px] font-bold text-amber-500/80 bg-amber-500/5 px-2 py-1 rounded border border-amber-500/10 mb-1">
+                                                Reason: {inst.error}
+                                            </div>
                                         )}
                                          {inst.url !== link.url && (
                                             <div className="text-[10px] font-mono text-slate-500/80">
@@ -1104,3 +1143,93 @@ function TriageItemRechecked({ group, onRecheck }: any) {
     );
 }
 
+function TriageItemSource({ group, onRecheck }: any) {
+    const [expanded, setExpanded] = useState(false);
+    const hasBroken = group.instances.some((i: any) => i.status === 'BROKEN');
+
+    return (
+        <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={cn(
+                "border-l-4 transition-colors overflow-hidden",
+                hasBroken ? "border-l-red-500 hover:bg-red-500/5 shadow-[inset_4px_0_0_rgba(239,68,68,0.2)]" : "border-l-green-500 hover:bg-green-500/5"
+            )}
+        >
+            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        {group.count} {group.count === 1 ? 'link' : 'links'}
+                    </span>
+                    <span className={cn(
+                        "font-medium text-sm truncate",
+                        hasBroken ? "text-red-500" : "text-green-600 dark:text-green-400"
+                    )}>
+                        {group.url}
+                    </span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                     <span className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                        hasBroken ? "bg-red-500 text-white shadow-sm" : "bg-green-500/10 text-green-500"
+                    )}>
+                        {hasBroken ? 'FIX NEEDED' : 'CLEAN'}
+                    </span>
+                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                </div>
+            </div>
+
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-muted/20 border-t"
+                    >
+                        <div className="p-4 space-y-3">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 opacity-50">Links on this page:</p>
+                            {group.instances.map((inst: any) => (
+                                <div key={inst.id} className="flex items-center justify-between gap-4 p-3 rounded-lg bg-black/5 border border-white/5 hover:bg-black/10 transition-colors">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn(
+                                                "text-xs font-bold leading-none",
+                                                inst.status === 'BROKEN' ? "text-red-500" : "text-green-500"
+                                            )}>
+                                                {inst.url}
+                                            </span>
+                                            <a href={inst.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                                                <ExternalLink className="h-3.5 w-3.5" />
+                                            </a>
+                                        </div>
+                                        {inst.error && <p className="text-[10px] font-mono text-red-400/80 mt-1.5 leading-relaxed break-all">{inst.error}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <span className={cn(
+                                            "text-[10px] font-black px-2 py-0.5 rounded shadow-sm",
+                                            inst.status === 'BROKEN' ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
+                                        )}>
+                                            {inst.statusCode || (inst.status === 'BROKEN' ? 'FAIL' : '200')}
+                                        </span>
+                                        {inst.status === 'BROKEN' && (
+                                            <Button 
+                                                variant="outline" 
+                                                size="icon" 
+                                                className="h-8 w-8 hover:bg-primary/10 hover:text-primary hover:border-primary/50" 
+                                                onClick={(e) => { e.stopPropagation(); onRecheck(inst.id); }}
+                                            >
+                                                <RefreshCw className="h-3.5 w-3.5" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
+    );
+}

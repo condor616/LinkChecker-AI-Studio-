@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Activity, PlusCircle, History, LayoutTemplate, Users, Shield, Zap, BarChart3, Globe, Target, ArrowRight, CheckCircle2 } from 'lucide-react';
 import * as motion from 'motion/react-client';
 import { cn } from '@/lib/utils';
+import { StartScanButton } from '@/components/scans/start-scan-button';
 
 export default async function Dashboard() {
   const session = await getSession();
@@ -73,9 +74,15 @@ export default async function Dashboard() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8">
-              <Button size="lg" asChild className="px-10 h-14 text-lg font-bold bg-gradient-to-r from-primary to-indigo-600 hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] transition-all rounded-xl">
-                <Link href={startScanHref}>{session ? 'Launch New Scan' : 'Get Started Free'}</Link>
-              </Button>
+              {session ? (
+                <StartScanButton size="lg" className="px-10 h-14 text-lg font-bold bg-gradient-to-r from-primary to-indigo-600 hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] transition-all rounded-xl">
+                  Launch New Scan
+                </StartScanButton>
+              ) : (
+                <Button size="lg" asChild className="px-10 h-14 text-lg font-bold bg-gradient-to-r from-primary to-indigo-600 hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] transition-all rounded-xl">
+                  <Link href="/login">Get Started Free</Link>
+                </Button>
+              )}
               <Button variant="outline" size="lg" asChild className="px-10 h-14 text-lg border-white/10 hover:bg-white/5 backdrop-blur-sm rounded-xl">
                 <Link href={session ? "/scans/history" : "/login"}>Explore Features</Link>
               </Button>
@@ -187,12 +194,19 @@ export default async function Dashboard() {
                   </div>
 
                   <div className="pt-4">
-                    <Button size="lg" asChild className="group px-8 h-14 text-lg rounded-xl bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all border-none">
-                      <Link href={targetedScanHref}>
+                    {session ? (
+                      <StartScanButton size="lg" className="group px-8 h-14 text-lg rounded-xl bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all border-none">
                         Try Targeted Audit
                         <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                      </Link>
-                    </Button>
+                      </StartScanButton>
+                    ) : (
+                      <Button size="lg" asChild className="group px-8 h-14 text-lg rounded-xl bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all border-none">
+                        <Link href="/login">
+                          Try Targeted Audit
+                          <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                        </Link>
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -299,24 +313,45 @@ function FeatureCard({ href, icon, title, description, delay, color }: { href: s
             viewport={{ once: true }}
             transition={{ delay }}
         >
-            <Link href={href} className="group">
-                <Card className={cn("transition-all duration-300 h-full border-white/5 bg-white/[0.02] backdrop-blur-sm overflow-hidden relative", colorMap[color])}>
-                    <div className={cn("absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity", 
-                        color === 'purple' ? "from-primary to-indigo-500" :
-                        color === 'blue' ? "from-blue-500 to-cyan-500" :
-                        color === 'cyan' ? "from-cyan-500 to-emerald-500" :
-                        color === 'emerald' ? "from-emerald-400 to-cyan-500" :
-                        "from-indigo-500 to-primary"
-                    )} />
-                    <CardHeader className="p-6">
-                        <div className={cn("mb-4 h-12 w-12 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 group-hover:bg-white/10 transition-all", iconColorMap[color])}>
-                            {icon}
-                        </div>
-                        <CardTitle className="text-xl font-bold text-white group-hover:text-white transition-colors">{title}</CardTitle>
-                        <CardDescription className="text-slate-400 mt-2 leading-relaxed">{description}</CardDescription>
-                    </CardHeader>
-                </Card>
-            </Link>
+            {title === 'New Scan' ? (
+                <StartScanButton className="group p-0 h-auto w-full bg-transparent border-none hover:bg-transparent block text-left shadow-none">
+                    <Card className={cn("transition-all duration-300 h-full border-white/5 bg-white/[0.02] backdrop-blur-sm overflow-hidden relative", colorMap[color])}>
+                        <div className={cn("absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity", 
+                            color === 'purple' ? "from-primary to-indigo-500" :
+                            color === 'blue' ? "from-blue-500 to-cyan-500" :
+                            color === 'cyan' ? "from-cyan-500 to-emerald-500" :
+                            color === 'emerald' ? "from-emerald-400 to-cyan-500" :
+                            "from-indigo-500 to-primary"
+                        )} />
+                        <CardHeader className="p-6">
+                            <div className={cn("mb-4 h-12 w-12 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 group-hover:bg-white/10 transition-all", iconColorMap[color])}>
+                                {icon}
+                            </div>
+                            <CardTitle className="text-xl font-bold text-white group-hover:text-white transition-colors">{title}</CardTitle>
+                            <CardDescription className="text-slate-400 mt-2 leading-relaxed">{description}</CardDescription>
+                        </CardHeader>
+                    </Card>
+                </StartScanButton>
+            ) : (
+                <Link href={href} className="group">
+                    <Card className={cn("transition-all duration-300 h-full border-white/5 bg-white/[0.02] backdrop-blur-sm overflow-hidden relative", colorMap[color])}>
+                        <div className={cn("absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity", 
+                            color === 'purple' ? "from-primary to-indigo-500" :
+                            color === 'blue' ? "from-blue-500 to-cyan-500" :
+                            color === 'cyan' ? "from-cyan-500 to-emerald-500" :
+                            color === 'emerald' ? "from-emerald-400 to-cyan-500" :
+                            "from-indigo-500 to-primary"
+                        )} />
+                        <CardHeader className="p-6">
+                            <div className={cn("mb-4 h-12 w-12 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 group-hover:bg-white/10 transition-all", iconColorMap[color])}>
+                                {icon}
+                            </div>
+                            <CardTitle className="text-xl font-bold text-white group-hover:text-white transition-colors">{title}</CardTitle>
+                            <CardDescription className="text-slate-400 mt-2 leading-relaxed">{description}</CardDescription>
+                        </CardHeader>
+                    </Card>
+                </Link>
+            )}
         </motion.div>
     );
 }

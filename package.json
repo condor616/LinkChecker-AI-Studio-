@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "npx tsx scripts/start-docker.ts",
+    "predev": "npx tsx scripts/cleanup-processes.ts && npx tsx scripts/start-docker.ts",
     "dev": "next dev",
     "build": "next build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && cp -r docker .next/standalone/docker",
-    "prestart": "npx tsx scripts/start-docker.ts",
+    "prestart": "npx tsx scripts/cleanup-processes.ts && npx tsx scripts/start-docker.ts",
     "start": "node .next/standalone/server.js",
     "stop-docker": "npx tsx scripts/stop-docker.ts",
     "lint": "eslint .",

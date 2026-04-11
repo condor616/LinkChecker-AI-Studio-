@@ -2,30 +2,42 @@
 
 ## Architecture Overview
 
-This application is built using a modern Next.js stack with a focus on simplicity and performance.
+This application is built using a modern Next.js stack with a distributed task processing system.
 
 ### Tech Stack
 - **Framework**: Next.js 15 (App Router)
-- **Database**: SQLite (via `better-sqlite3`)
+- **Database**: SQLite (via `better-sqlite3`, multi-tenant)
 - **ORM**: Drizzle ORM
-- **Styling**: Tailwind CSS + Shadcn UI components
+- **Task Queue**: BullMQ (running on Redis)
+- **Worker**: Standalone Node.js worker service (Docker-based)
+- **Styling**: Vanilla CSS + Shadcn UI components
 - **Authentication**: Custom JWT implementation using `jose`
-- **Crawler**: Custom background worker using `cheerio` and `p-limit`
 
 ### Database Schema
 The schema is defined in `lib/db/schema.ts`:
-- `users`: Stores user accounts, roles (ADMIN, PENDING, USER), and resource limits (`maxJobs`).
+- `users`: Stores user accounts, roles (ADMIN, PENDING, USER), and resource limits.
 - `scans`: Represents a crawling job. Contains the configuration JSON and current status.
 - `links`: Represents individual URLs found during a scan. Tracks status (PENDING, SUCCESS, BROKEN) and parent-child relationships.
 
-### Crawler Engine
-The crawler runs as a background interval within the Node.js process (`lib/crawler/worker.ts`).
-- It polls the database for `RUNNING` scans.
-- It respects the user's `maxJobs` setting using `p-limit` to control concurrency.
-- It uses `AbortController` to handle timeouts.
-- New links are extracted using `cheerio` and added to the database as `PENDING`.
+> [!NOTE]
+> Each user has their own isolated SQLite database file, managed via a tenant-based connection system in `lib/db/index.ts`.
 
-*Note on Serverless*: This background worker approach works well in stateful environments (Local, VPS, Docker). In serverless environments (like Vercel), this worker will be suspended. For serverless, consider migrating the worker logic to a queue-based system like Inngest or a separate worker service.
+### Crawler Engine (BullMQ Worker)
+The crawler has been migrated from an internal interval to a robust, asynchronous queue-based system.
+
+- **Queue Management**: The Next.js app enqueues scan tasks into a `scan-jobs` queue managed by BullMQ and Redis.
+- **Worker Service**: A separate worker service (`worker/index.ts`) processes these jobs. It is containerized and can be scaled independently.
+- **Concurrency**: The worker supports configurable concurrency (via `BULLMQ_CONCURRENCY` env var).
+- **Extensibility**: The worker uses `cheerio` for extraction and respects user-defined crawl depth and exclusion rules.
+- **Monitoring**: A BullBoard UI is available at `http://localhost:3001/admin/queues` (when running via Docker) to monitor job status, retries, and failures.
+
+### Local Development
+To run the full stack locally (including Redis and the Worker):
+```bash
+# Using the provided docker-compose
+cd docker/services
+docker-compose up -d
+```
 
 ### Authentication Flow
 - Simple JWT-based auth.

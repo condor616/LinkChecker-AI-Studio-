@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { getSession } from '@/lib/auth';
 import { Navbar } from '@/components/navbar';
+import { ScanSelectionProvider } from '@/components/scans/scan-selection-provider';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 import { DatabaseOffline } from '@/components/database-offline';
@@ -35,10 +36,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
       <body className="min-h-screen bg-background font-sans antialiased text-foreground">
-        <Navbar user={session} />
-        <main>
-          {isDbOnline ? children : <DatabaseOffline />}
-        </main>
+        <ScanSelectionProvider>
+          <Navbar user={session} />
+          <main>
+            {isDbOnline ? children : <DatabaseOffline />}
+          </main>
+        </ScanSelectionProvider>
       </body>
     </html>
   );

@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useScanSelection } from '@/components/scans/scan-selection-provider';
 
 interface NavbarProps {
   user: {
@@ -35,6 +36,7 @@ export function Navbar({ user }: NavbarProps) {
   const router = useRouter();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { openModal } = useScanSelection();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = async () => {
@@ -70,21 +72,37 @@ export function Navbar({ user }: NavbarProps) {
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all rounded-lg relative group",
-                  pathname === link.href 
-                    ? "text-primary bg-primary/10 border border-primary/20" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
-                )}
-              >
-                {link.icon}
-                <span className="relative z-10">{link.label}</span>
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              if (link.label === 'New Scan') {
+                return (
+                  <button
+                    key={link.href}
+                    onClick={() => openModal()}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all rounded-lg relative group text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                    )}
+                  >
+                    {link.icon}
+                    <span className="relative z-10">{link.label}</span>
+                  </button>
+                );
+              }
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all rounded-lg relative group",
+                    pathname === link.href 
+                      ? "text-primary bg-primary/10 border border-primary/20" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                  )}
+                >
+                  {link.icon}
+                  <span className="relative z-10">{link.label}</span>
+                </Link>
+              );
+            })}
           </nav>
         </div>
 
@@ -213,20 +231,36 @@ export function Navbar({ user }: NavbarProps) {
           >
             <nav className="flex flex-col gap-4">
               {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setIsMenuOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-xl",
-                    pathname === link.href 
-                      ? "text-primary bg-primary/10 border border-primary/20" 
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                <div key={link.href}>
+                  {link.label === 'New Scan' ? (
+                    <button
+                      onClick={() => {
+                        openModal();
+                        setIsMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-xl text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                      )}
+                    >
+                      {link.icon}
+                      <span>{link.label}</span>
+                    </button>
+                  ) : (
+                    <Link
+                      href={link.href}
+                      onClick={() => setIsMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-xl",
+                        pathname === link.href 
+                          ? "text-primary bg-primary/10 border border-primary/20" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
+                      )}
+                    >
+                      {link.icon}
+                      <span>{link.label}</span>
+                    </Link>
                   )}
-                >
-                  {link.icon}
-                  <span>{link.label}</span>
-                </Link>
+                </div>
               ))}
               
               {!user && (

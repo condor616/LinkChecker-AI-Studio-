@@ -30,8 +30,16 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
     
     // HTTP Basic Auth
+    let userAgent = config.customUserAgent || config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    
+    // Implement Random Delay if configured
+    if (config.randomDelay && config.randomDelay > 0) {
+        const delay = Math.floor(Math.random() * config.randomDelay);
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
     const headers: Record<string, string> = { 
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': userAgent,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
     };
@@ -40,26 +48,25 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         headers['Authorization'] = `Basic ${auth}`;
     }
 
-    // URL Deduplication check (for already COMPLETED links)
-    const existing = await userDb.select().from(links)
+
+    // Single Crawl Guarantee: Handle PENDING or already checked results
+    const existingRaw = await userDb.select().from(links)
       .where(and(
         eq(links.scanId, scan.id),
-        eq(links.url, link.url),
-        or(eq(links.status, 'SUCCESS'), eq(links.status, 'BROKEN'), eq(links.status, 'SKIPPED'))
-      ))
-      .limit(1)
-      .then((res: any[]) => res[0]);
+        eq(links.url, link.url)
+      ));
 
-    if (existing) {
+    const checkComplete = existingRaw.find((l: any) => l.status === 'SUCCESS' || l.status === 'BROKEN' || l.status === 'SKIPPED');
+    if (checkComplete) {
       await userDb.update(links).set({
-        status: existing.status,
-        statusCode: existing.statusCode,
-        type: existing.type,
-        error: existing.error,
+        status: checkComplete.status,
+        statusCode: checkComplete.statusCode,
+        type: checkComplete.type,
+        error: checkComplete.error,
         checkedAt: new Date(),
         snippet: `[Reused Result] ` + (link.snippet || '')
       }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING')));
-      return; // Stop here, no need to fetch or re-extract
+      return; 
     }
 
     const response = await fetch(link.url, {
@@ -90,6 +97,26 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         eq(links.url, link.url),
         eq(links.status, 'PENDING')
       ));
+
+    // Post-Process Cleanup for Success: Remove duplicates for healthy links
+    if (status === 'SUCCESS' && !isTargeted) {
+        const healthyLinks = await userDb.select({ id: links.id, url: links.url })
+            .from(links)
+            .where(and(eq(links.scanId, scan.id), eq(links.url, link.url)));
+        
+        if (healthyLinks.length > 1) {
+            const keepers = [healthyLinks[0].id];
+            await userDb.delete(links).where(and(
+                eq(links.scanId, scan.id),
+                eq(links.url, link.url),
+                inArray(links.id, healthyLinks.slice(1).map((l: any) => l.id))
+            ));
+            // Ensure the keeper has no parentUrl as per user request
+            await userDb.update(links).set({ parentUrl: null }).where(eq(links.id, keepers[0]));
+        } else if (healthyLinks.length === 1) {
+            await userDb.update(links).set({ parentUrl: null }).where(eq(links.id, healthyLinks[0].id));
+        }
+    }
 
     // Recursive Extraction logic
     const maxDepth = config.maxDepth ?? 0;
@@ -205,15 +232,35 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
       await userDb.transaction(async (tx: any) => {
         for (const [urlStr, info] of foundLinks) {
+          const skipReason = getSkipReason(urlStr, config);
+          if (skipReason) {
+              if (config.saveSkippedLinks) {
+                  const depthToAdd = currentDepth + 1;
+                  const finalLink: any = {
+                      id: crypto.randomUUID(),
+                      scanId: scan.id,
+                      url: urlStr,
+                      parentUrl: link.url,
+                      status: 'SKIPPED',
+                      depth: depthToAdd,
+                      snippet: info.snippet,
+                      checkedAt: new Date(),
+                      statusCode: null,
+                      error: skipReason,
+                      type: null
+                  };
+                  await tx.insert(links).values(finalLink);
+              }
+              continue; // Do not fetch/queue if skipped by rules
+          }
+
           if (isTargeted && !targetUrls.includes(urlStr)) continue;
           const occurrences = linksByUrl.get(urlStr) || [];
 
           if (isTargeted) {
-              // Targeted Scan: Deduplicate by exact (url, parent) pair
               if (occurrences.some(o => o.parentUrl === link.url)) continue;
           } else {
-              // Deduplication: Only skip inserting entirely if it's already recorded as SUCCESS.
-              // If it's PENDING or BROKEN, we want to record the parent mapping, so we proceed to insert it.
+              // Discovery Logic: Skip if already known as SUCCESS
               if (occurrences.some(o => o.status === 'SUCCESS')) continue;
           }
 
@@ -232,24 +279,20 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
               type: null
           };
 
-          // If it was already known definitively elsewhere
           const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN');
           if (definitive) {
+              if (definitive.status === 'SUCCESS' && !isTargeted) {
+                  continue; 
+              }
               finalLink.status = definitive.status;
               finalLink.statusCode = definitive.statusCode;
               finalLink.error = definitive.error;
               finalLink.type = definitive.type;
               finalLink.checkedAt = new Date();
-              // Performance: If successful, it's just recorded once per crawl effectively for report
-              // but we keep the parentUrl for reporting purposes if requested or useful
-              // Actually, simplified logic: if already SUCCESS elsewhere, just record it.
           }
 
           await tx.insert(links).values(finalLink);
           if (finalLink.status === 'PENDING') {
-              // Performance: Only fetch if we haven't already queued a fetch for this URL.
-              // If `occurrences` has length > 0, it means another thread or earlier step already inserted
-              // it as PENDING (or BROKEN which wouldn't reach here if it actually resolved, but we use `status === 'PENDING'` check anyway)
               if (occurrences.length === 0) {
                   newLinksToAdd.push(finalLink);
               }
@@ -326,4 +369,53 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
     }
 
     return { excluded: false };
+}
+
+function getSkipReason(urlStr: string, config: any): string | null {
+    try {
+        const startUrlObj = new URL(config.startUrl);
+        const currentUrlObj = new URL(urlStr);
+        const startHost = startUrlObj.hostname.toLowerCase().replace(/^www\./, '');
+        const currentHost = currentUrlObj.hostname.toLowerCase().replace(/^www\./, '');
+        
+        const isExactHost = currentHost === startHost;
+        const isSubdomain = currentHost.endsWith('.' + startHost);
+        const isInternal = isExactHost || isSubdomain;
+
+        // 1. External
+        if (!isInternal && config.skipExternal) {
+            return "External link (skipExternal enabled)";
+        }
+
+        // 2. Subdomain
+        if (isSubdomain && !isExactHost && config.excludeSubdomains) {
+            return "Subdomain (excludeSubdomains enabled)";
+        }
+
+        // 3. Backward
+        if (config.doNotTraverseBackward) {
+            const normalize = (u: string) => u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+            const normalizedStart = normalize(config.startUrl);
+            const normalizedCurrent = normalize(urlStr);
+
+            if (!normalizedCurrent.startsWith(normalizedStart)) {
+                return "Stay in Subpath (traversing backward)";
+            } else {
+                const remaining = normalizedCurrent.slice(normalizedStart.length);
+                if (remaining.length > 0 && !remaining.startsWith('/')) {
+                    return "Stay in Subpath (not a sub-folder)";
+                }
+            }
+        }
+
+        // 4. Regex/Wildcard
+        const exclusion = shouldExclude(urlStr, config);
+        if (exclusion.excluded) {
+            return exclusion.reason || "Matches exclusion rule";
+        }
+    } catch (e) {
+        return "Invalid URL format";
+    }
+
+    return null;
 }

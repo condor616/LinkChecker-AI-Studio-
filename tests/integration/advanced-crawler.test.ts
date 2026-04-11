@@ -63,7 +63,8 @@ describe('Advanced Crawler Features (Phase 2)', () => {
         const itUrl = `${baseUrl}/it-it/`;
         const config = {
             startUrl: itUrl,
-            doNotTraverseBackward: true
+            doNotTraverseBackward: true,
+            saveSkippedLinks: true
         };
         const scanId = await setupScan(config);
         
@@ -76,8 +77,9 @@ describe('Advanced Crawler Features (Phase 2)', () => {
         // Note: The crawler strips trailing slashes, so http://localhost:PORT/ becomes http://localhost:PORT
         const backwardLink = extracted.find(l => l.url === baseUrl || l.url.endsWith('index.html'));
         expect(backwardLink).toBeDefined();
-        // Since we didn't fetch it, it stays PENDING in the DB
-        expect(backwardLink?.status).toBe('PENDING'); 
+        // Since we didn't fetch it, it stays SKIPPED in the DB
+        expect(backwardLink?.status).toBe('SKIPPED');
+        expect(backwardLink?.error).toContain('Stay in Subpath');
         
         // Ensure no children were extracted FROM index.html (which has many links)
         const itPageLinks = extracted.filter(l => l.parentUrl === itUrl);
