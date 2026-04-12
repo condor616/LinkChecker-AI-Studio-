@@ -12,8 +12,12 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
   const [deletingUser, setDeletingUser] = useState<any>(null);
   const [associations, setAssociations] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const updateUser = async (id: string, updates: any) => {
+    setUpdatingUserId(id);
+    setError(null);
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: 'PATCH',
@@ -22,9 +26,20 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
       });
       if (res.ok) {
         setUsers(users.map(u => u.id === id ? { ...u, ...updates } : u));
+      } else {
+        const data = await res.json();
+        const errorMsg = data.error || 'Failed to update user';
+        console.error('Update failed:', errorMsg);
+        setError(errorMsg);
+        alert(`Error: ${errorMsg}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      const errorMsg = e.message || 'An error occurred during update';
+      setError(errorMsg);
+      alert(`Error: ${errorMsg}`);
+    } finally {
+      setUpdatingUserId(null);
     }
   };
 
@@ -83,8 +98,10 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                 <select
                   value={user.role}
                   onChange={(e) => updateUser(user.id, { role: e.target.value })}
+                  disabled={updatingUserId === user.id}
                   className={cn(
                     "bg-[#1a1a1e]/90 backdrop-blur-md border border-white/10 hover:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer shadow-xl",
+                    updatingUserId === user.id && "opacity-50 cursor-not-allowed",
                     user.role === 'ADMIN' ? 'text-blue-400' : 
                     user.role === 'BLOCKED' ? 'text-red-400' : 'text-emerald-400'
                   )}
@@ -101,6 +118,7 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                     type="number"
                     value={user.maxJobs}
                     onChange={(e) => updateUser(user.id, { maxJobs: parseInt(e.target.value) || 1 })}
+                    disabled={updatingUserId === user.id}
                     className="w-16 h-8 text-center font-bold"
                     min={1}
                     max={100}
@@ -115,9 +133,16 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                         variant="default"
                         className="bg-green-600 hover:bg-green-700 h-8"
                         onClick={() => updateUser(user.id, { role: 'USER' })}
+                        disabled={updatingUserId === user.id}
                     >
-                        <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
-                        Approve
+                        {updatingUserId === user.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                            <>
+                                <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+                                Approve
+                            </>
+                        )}
                     </Button>
                     )}
                     {user.role !== 'BLOCKED' && user.role !== 'ADMIN' && (
@@ -126,9 +151,16 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                             variant="destructive" 
                             className="h-8"
                             onClick={() => updateUser(user.id, { role: 'BLOCKED' })}
+                            disabled={updatingUserId === user.id}
                         >
-                            <Ban className="mr-2 h-3.5 w-3.5" />
-                            Block
+                            {updatingUserId === user.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                                <>
+                                    <Ban className="mr-2 h-3.5 w-3.5" />
+                                    Block
+                                </>
+                            )}
                         </Button>
                     )}
                     {user.role === 'BLOCKED' && (
@@ -137,9 +169,16 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                             variant="outline" 
                             className="h-8 border-green-500/50 text-green-500 hover:bg-green-500/10"
                             onClick={() => updateUser(user.id, { role: 'USER' })}
+                            disabled={updatingUserId === user.id}
                         >
-                            <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
-                            Restore
+                            {updatingUserId === user.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                                <>
+                                    <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+                                    Restore
+                                </>
+                            )}
                         </Button>
                     )}
                     {user.role !== 'ADMIN' && (
@@ -148,6 +187,7 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                             variant="ghost" 
                             className="h-8 text-muted-foreground hover:text-red-500 hover:bg-red-50"
                             onClick={() => handleDeleteClick(user)}
+                            disabled={updatingUserId === user.id}
                         >
                             <Trash2 className="h-3.5 w-3.5" />
                         </Button>

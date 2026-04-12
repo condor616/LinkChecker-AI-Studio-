@@ -22,6 +22,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!token) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
@@ -32,11 +35,17 @@ export async function middleware(request: NextRequest) {
     // Check for BLOCKED users
     if (userRole === 'BLOCKED' && !pathname.startsWith('/api/auth/logout')) {
        // Clear session and redirect to login with error (simplified: just redirect)
+       if (pathname.startsWith('/api/')) {
+         return NextResponse.json({ error: 'Account blocked' }, { status: 403 });
+       }
        return NextResponse.redirect(new URL('/login?error=account_blocked', request.url));
     }
 
     // Check for PENDING users
     if (userRole === 'PENDING' && !pathname.startsWith('/auth/pending') && !pathname.startsWith('/api/auth/logout')) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Account pending approval' }, { status: 403 });
+      }
       return NextResponse.redirect(new URL('/auth/pending', request.url));
     }
 
@@ -44,6 +53,9 @@ export async function middleware(request: NextRequest) {
     
     // Check for ADMIN routes
     if (isAdminRoute && userRole?.toUpperCase() !== 'ADMIN') {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
       return NextResponse.redirect(new URL('/', request.url));
     }
 
@@ -54,6 +66,9 @@ export async function middleware(request: NextRequest) {
 
     return NextResponse.next();
   } catch (error) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 }

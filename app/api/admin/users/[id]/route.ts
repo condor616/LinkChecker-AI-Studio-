@@ -11,10 +11,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const updates = await req.json();
     const { id } = await params;
 
-    await db.update(users).set(updates).where(eq(users.id, id));
+    console.log(`PATCH /api/admin/users/${id} called with updates:`, updates);
+    const result = await db.update(users).set(updates).where(eq(users.id, id));
+    console.log(`Update result for user ${id}:`, result);
 
     // If the role is being updated to an active one, trigger provisioning
     if (updates.role === 'USER' || updates.role === 'ADMIN') {
+        console.log(`Triggering provisioning for user ${id}`);
         process.nextTick(() => {
             provisionUserDb(id).catch(err => {
                 console.error(`Deferred provisioning failed for ${id}:`, err);
