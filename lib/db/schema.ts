@@ -7,6 +7,7 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('PENDING'), // ADMIN, PENDING, USER
   hasActiveScan: boolean('has_active_scan').notNull().default(false),
   maxJobs: integer('max_jobs').notNull().default(1),
+  preferences: text('preferences'), // JSON string for user settings
   createdAt: timestamp('created_at', { mode: 'date' }).notNull(),
 });
 

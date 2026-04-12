@@ -21,7 +21,10 @@ import {
   Activity,
   Plus,
   UploadCloud,
-  ChevronDown
+  ChevronDown,
+  Sparkles,
+  User,
+  Layout
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -62,6 +65,10 @@ export default function SettingsPage() {
   const [isDockerLoading, setIsDockerLoading] = useState(false);
   const [dockerModalType, setDockerModalType] = useState<'stop' | 'start' | null>(null);
 
+  // User Preferences state
+  const [preferences, setPreferences] = useState<{ skipWizard?: boolean }>({});
+  const [prefsLoading, setPrefsLoading] = useState(false);
+
   useEffect(() => {
     async function init() {
       const sessionRes = await fetch('/api/auth/session');
@@ -73,6 +80,7 @@ export default function SettingsPage() {
         setTargetUserId(uid);
 
         if (role === 'ADMIN' || role === 'USER') {
+          fetchPreferences();
           if (role === 'ADMIN') {
             setIsAdmin(true);
             fetchDockerStatus();
@@ -285,6 +293,37 @@ export default function SettingsPage() {
 
   const formatSize = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 
+  async function fetchPreferences() {
+    try {
+      const res = await fetch('/api/user/preferences');
+      if (res.ok) {
+        const data = await res.json();
+        setPreferences(data.preferences || {});
+      }
+    } catch (err) {
+      console.error('Failed to fetch preferences:', err);
+    }
+  }
+
+  async function toggleWizardPreference() {
+    setPrefsLoading(true);
+    const newValue = !preferences.skipWizard;
+    try {
+      const res = await fetch('/api/user/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: { skipWizard: newValue } }),
+      });
+      if (res.ok) {
+        setPreferences(prev => ({ ...prev, skipWizard: newValue }));
+      }
+    } catch (err) {
+      console.error('Failed to update preferences:', err);
+    } finally {
+      setPrefsLoading(false);
+    }
+  }
+
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8">
       <input 
@@ -319,6 +358,9 @@ export default function SettingsPage() {
               <Server className="h-4 w-4 mr-2" /> Docker Services
             </TabsTrigger>
           )}
+          <TabsTrigger value="preferences" className="px-8 py-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-500 transition-all rounded-lg font-bold">
+            <User className="h-4 w-4 mr-2" /> User Preferences
+          </TabsTrigger>
         </TabsList>
 
         {/* --- Backup Tab Content --- */}
@@ -486,6 +528,55 @@ export default function SettingsPage() {
                 <Button variant="outline" size="lg" className="h-14 px-6 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10 transition-all font-bold" onClick={fetchDockerStatus} disabled={isDockerLoading}>
                   <RefreshCw className={cn("h-5 w-5 mr-2", isDockerLoading && "animate-spin")} /> Refresh
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        {/* --- User Preferences Tab Content --- */}
+        <TabsContent value="preferences" className="space-y-6">
+          <Card className="border-white/10 bg-card/50 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl">
+            <CardHeader className="bg-white/[0.03] border-b border-white/10 p-8">
+              <CardTitle className="text-2xl font-black text-white">Experience Settings</CardTitle>
+              <CardDescription className="text-muted-foreground/80 text-base">Customize how you interact with the Lynx interface.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-8 space-y-8">
+              <div className="flex items-center justify-between p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-emerald-500/20 transition-all group">
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                    <Sparkles className="h-6 w-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-lg font-bold text-white">New Scan Wizard</h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed max-w-md">
+                      A step-by-step guide to help you configure your scans. 
+                      Disable this to go directly to the advanced configuration page.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <span className={cn("text-xs font-black uppercase tracking-widest", !preferences.skipWizard ? "text-emerald-400" : "text-muted-foreground")}>
+                    {!preferences.skipWizard ? 'ENABLED' : 'DISABLED'}
+                  </span>
+                  <Button 
+                    variant={!preferences.skipWizard ? "glow" : "outline"}
+                    onClick={toggleWizardPreference}
+                    disabled={prefsLoading}
+                    className="rounded-xl font-bold"
+                  >
+                    {prefsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : preferences.skipWizard ? 'Enable Wizard' : 'Disable Wizard'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 flex gap-4 opacity-50">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                  <Layout className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-lg font-bold text-white">Compact Dashboard View</h4>
+                  <p className="text-sm text-muted-foreground">Coming soon: A denser view for managing many high-frequency scans.</p>
+                </div>
               </div>
             </CardContent>
           </Card>

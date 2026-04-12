@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { useScanSelection } from './scan-selection-provider';
+import { ScanWizard } from './scan-wizard';
 
 interface ScanSelectionModalProps {
   isOpen: boolean;
@@ -14,6 +16,7 @@ interface ScanSelectionModalProps {
 
 export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps) {
   const router = useRouter();
+  const { showWizard, setShowWizard } = useScanSelection();
 
   const handleSelect = (mode: 'normal' | 'targeted') => {
     onClose();
@@ -42,19 +45,42 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-4xl overflow-hidden rounded-[32px] border border-white/10 bg-[#0c0c0e] shadow-2xl shadow-primary/20"
+            className={cn(
+                "relative w-full overflow-hidden rounded-[32px] border border-white/10 bg-[#0c0c0e] shadow-2xl shadow-primary/20 transition-all duration-500",
+                showWizard ? "max-w-2xl" : "max-w-4xl"
+            )}
           >
             {/* Header Decoration */}
             <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-primary via-cyan-400 to-emerald-400" />
             
-            <button
-              onClick={onClose}
-              className="absolute right-6 top-6 p-2 text-muted-foreground hover:text-white hover:bg-white/10 rounded-full transition-all z-10"
-            >
-              <X className="h-6 w-6" />
-            </button>
+            {!showWizard && (
+              <button
+                onClick={onClose}
+                className="absolute right-6 top-6 p-2 text-muted-foreground hover:text-white hover:bg-white/10 rounded-full transition-all z-10"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            )}
 
-            <div className="p-8 md:p-12">
+            <AnimatePresence mode="wait">
+              {showWizard ? (
+                <motion.div
+                  key="wizard"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="h-full"
+                >
+                  <ScanWizard onExit={onClose} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="selection"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="p-8 md:p-12"
+                >
               <div className="text-center space-y-4 mb-12">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-widest">
                   <Zap className="h-3 w-3 fill-current" /> Initialize engine
@@ -150,8 +176,10 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                     </CardContent>
                   </Card>
                 </motion.div>
-              </div>
-            </div>
+                </div>
+              </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </div>
       )}
