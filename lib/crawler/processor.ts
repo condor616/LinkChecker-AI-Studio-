@@ -40,8 +40,12 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
     const headers: Record<string, string> = { 
         'User-Agent': userAgent,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'en-US,en;q=0.9',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-fetch-user': '?1',
+        'sec-fetch-dest': 'document',
     };
     if (config.auth && config.auth.username && config.auth.password) {
         const auth = Buffer.from(`${config.auth.username}:${config.auth.password}`).toString('base64');
@@ -69,10 +73,31 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       return; 
     }
 
-    const response = await fetch(link.url, {
+    let response = await fetch(link.url, {
       signal: controller.signal,
       headers
     });
+
+    // Smart Retry: If blocked (403/400), try with Minimalist headers
+    if (!response.ok && (response.status === 403 || response.status === 400)) {
+        console.log(`[Smart Retry] Detected ${response.status} for ${link.url}. Retrying with minimalist headers...`);
+        const fallbackHeaders: Record<string, string> = {
+            'User-Agent': 'curl/8.17.0',
+            'Accept': '*/*',
+            'sec-fetch-mode': 'navigate'
+        };
+        // Preserve auth if present
+        if (headers['Authorization']) fallbackHeaders['Authorization'] = headers['Authorization'];
+        
+        const retryResponse = await fetch(link.url, {
+            signal: controller.signal,
+            headers: fallbackHeaders
+        });
+        if (retryResponse.ok || (retryResponse.status !== 403 && retryResponse.status !== 400)) {
+            response = retryResponse;
+        }
+    }
+
     clearTimeout(timeoutId);
 
     const contentType = (response.headers.get('content-type') || '').split(';')[0];
