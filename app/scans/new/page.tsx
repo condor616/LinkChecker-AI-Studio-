@@ -305,7 +305,7 @@ export default function NewScanPage() {
   };
 
   return (
-    <div className="p-8 space-y-8 max-w-4xl mx-auto">
+    <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       {/* Header with Preset Dropdown */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
@@ -333,7 +333,7 @@ export default function NewScanPage() {
 
                 <div className="relative group min-w-[220px]">
                     <select 
-                        className="w-full h-11 pl-4 pr-10 bg-[#1a1a1e]/90 backdrop-blur-xl border border-white/10 group-hover:border-emerald-500/50 rounded-xl appearance-none cursor-pointer focus:ring-2 ring-emerald-500/20 transition-all outline-none text-sm font-medium shadow-xl"
+                        className="w-full h-11 pl-4 pr-10 bg-[#1a1a1e]/90 backdrop-blur-xl border border-white/20 group-hover:border-emerald-500/50 rounded-xl appearance-none cursor-pointer focus:ring-2 ring-emerald-500/20 transition-all outline-none text-sm font-medium shadow-xl"
                         onChange={(e) => {
                             const template = templates.find(t => t.id === e.target.value);
                             if (template) loadTemplate(template);
@@ -355,505 +355,476 @@ export default function NewScanPage() {
         </div>
       </motion.div>
 
-      <div className="space-y-6">
-        <div className="animated-border-container shadow-2xl">
-            <div className="animated-border-gradient" />
-            <Card className="animated-border-inner">
-                <CardHeader className="bg-muted/10 pb-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                            <Globe className="h-4 w-4" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left Column: Form Configuration */}
+        <div className="lg:col-span-8 space-y-8">
+            <div className="animated-border-container shadow-2xl">
+                <div className="animated-border-gradient" />
+                <Card className="animated-border-inner">
+                    <CardHeader className="bg-muted/10 pb-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <Globe className="h-4 w-4" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-lg">Core Parameters</CardTitle>
+                                <CardDescription>Essential details to start your scan.</CardDescription>
+                            </div>
                         </div>
-                        <div>
-                            <CardTitle className="text-lg">Core Parameters</CardTitle>
-                            <CardDescription>Essential details to start your scan.</CardDescription>
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button 
-                            variant="glow" 
-                            size="sm" 
-                            onClick={handleSaveTemplate}
-                            disabled={savingTemplate}
-                            className="text-xs px-4"
-                        >
-                            <Save className="mr-2 h-3.5 w-3.5" />
-                            {savingTemplate ? 'Saving...' : editingTemplateId ? 'Update Preset' : 'Save as Preset'}
-                        </Button>
-                        {editingTemplateId && (
-                            <Button variant="ghost" size="sm" onClick={() => setEditingTemplateId(null)}>
-                                <Plus className="mr-2 h-4 w-4" /> New
-                            </Button>
-                        )}
-                    </div>
-                </div>
-            </CardHeader>
-            <CardContent className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2 md:col-span-1">
-                        <Label>Scan Name</Label>
-                        <Input
-                            placeholder="e.g. Weekly Health Check"
-                            value={config.name}
-                            onChange={(e) => setConfig({ ...config, name: e.target.value })}
-                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
-                        />
-                    </div>
-                    
-                    <div className="space-y-2 md:col-span-1">
-                        <div className="flex items-center justify-between">
-                            <Label>Starting URL</Label>
+                        <div className="flex gap-2">
                             <Button 
-                                variant="ghost" 
+                                variant="glow" 
                                 size="sm" 
-                                className={cn("h-6 px-1.5 text-[10px] gap-1.5", showAuth ? "text-primary bg-primary/10" : "text-muted-foreground")}
-                                onClick={() => setShowAuth(!showAuth)}
+                                onClick={handleSaveTemplate}
+                                disabled={savingTemplate}
+                                className="text-xs px-4"
                             >
-                                <Key className="h-3 w-3" /> AUTH
+                                <Save className="mr-2 h-3.5 w-3.5" />
+                                {savingTemplate ? 'Saving...' : editingTemplateId ? 'Update Preset' : 'Save as Preset'}
                             </Button>
+                            {editingTemplateId && (
+                                <Button variant="ghost" size="sm" onClick={() => setEditingTemplateId(null)}>
+                                    <Plus className="mr-2 h-4 w-4" /> New
+                                </Button>
+                            )}
                         </div>
-                        <Input
-                            type="url"
-                            placeholder="https://mysite.com"
-                            value={config.startUrl}
-                            onChange={(e) => setConfig({ ...config, startUrl: e.target.value })}
-                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
-                        />
                     </div>
-                </div>
-
-                <AnimatePresence>
-                    {showAuth && (
-                        <motion.div 
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="overflow-hidden"
-                        >
-                            <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-primary/20 grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Username</Label>
-                                    <Input 
-                                        placeholder="user" 
-                                        value={config.auth?.username || ''} 
-                                        onChange={(e) => handleAuthChange('username', e.target.value)}
-                                        className="h-8 text-xs"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Password</Label>
-                                    <Input 
-                                        type="password" 
-                                        placeholder="••••••" 
-                                        value={config.auth?.password || ''} 
-                                        onChange={(e) => handleAuthChange('password', e.target.value)}
-                                        className="h-8 text-xs"
-                                    />
-                                </div>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                        <Label>Max Depth (0=∞</Label>
-                        <Input
-                            type="number"
-                            min={0}
-                            value={config.maxDepth}
-                            onChange={(e) => setConfig({ ...config, maxDepth: parseInt(e.target.value) || 0 })}
-                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Rate Limit (req/min)</Label>
-                        <Input
-                            type="number"
-                            min={1}
-                            value={config.rateLimit}
-                            onChange={(e) => setConfig({ ...config, rateLimit: parseInt(e.target.value) || 60 })}
-                            className="bg-muted/30 border-none shadow-none focus-visible:ring-1"
-                        />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                    <motion.div 
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.99 }}
-                        className={cn(
-                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
-                            config.skipExternal 
-                                ? "bg-blue-500/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]" 
-                                : "bg-muted/10 border-white/5 hover:border-white/10"
-                        )}
-                        onClick={() => setConfig(prev => ({ ...prev, skipExternal: !prev.skipExternal }))}
-                    >
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className={cn(
-                                "w-2 h-2 rounded-full transition-all duration-500", 
-                                config.skipExternal ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" : "bg-muted-foreground/30"
-                            )} />
-                            <span className={cn(
-                                "text-[11px] font-black uppercase tracking-wider transition-colors",
-                                config.skipExternal ? "text-blue-400" : "text-muted-foreground"
-                            )}>Skip External</span>
-                        </div>
-                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
-                            {config.skipExternal 
-                                ? "External links (like Google) will be verified once for status but not crawled." 
-                                : "Crawl external sites found during the scan (Warning: can be very slow)."}
-                        </p>
-                    </motion.div>
-
-                    <motion.div 
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.99 }}
-                        className={cn(
-                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
-                            config.excludeSubdomains 
-                                ? "bg-orange-500/10 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.1)]" 
-                                : "bg-muted/10 border-white/5 hover:border-white/10"
-                        )}
-                        onClick={() => setConfig(prev => ({ ...prev, excludeSubdomains: !prev.excludeSubdomains }))}
-                    >
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className={cn(
-                                "w-2 h-2 rounded-full transition-all duration-500", 
-                                config.excludeSubdomains ? "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]" : "bg-muted-foreground/30"
-                            )} />
-                            <span className={cn(
-                                "text-[11px] font-black uppercase tracking-wider transition-colors",
-                                config.excludeSubdomains ? "text-orange-400" : "text-muted-foreground"
-                            )}>Exclude Subdomains</span>
-                        </div>
-                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
-                            {config.excludeSubdomains 
-                                ? "Treat subdomains (like blog.site.com) as external. Verified but not crawled." 
-                                : "Crawl subdomains as if they were internal pages."}
-                        </p>
-                    </motion.div>
-
-                    <motion.div 
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.99 }}
-                        className={cn(
-                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
-                            config.doNotTraverseBackward 
-                                ? "bg-purple-500/10 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.1)]" 
-                                : "bg-muted/10 border-white/5 hover:border-white/10"
-                        )}
-                        onClick={() => setConfig(prev => ({ ...prev, doNotTraverseBackward: !prev.doNotTraverseBackward }))}
-                    >
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className={cn(
-                                "w-2 h-2 rounded-full transition-all duration-500", 
-                                config.doNotTraverseBackward ? "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]" : "bg-muted-foreground/30"
-                            )} />
-                            <span className={cn(
-                                "text-[11px] font-black uppercase tracking-wider transition-colors",
-                                config.doNotTraverseBackward ? "text-purple-400" : "text-muted-foreground"
-                            )}>Stay in Subpath</span>
-                        </div>
-                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
-                            {config.doNotTraverseBackward 
-                                ? "Only crawl deeper into the start URL path. Never go 'up' or 'sideways'." 
-                                : "Crawl the entire site starting from the root of the domain."}
-                        </p>
-                    </motion.div>
-
-                    <motion.div 
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.99 }}
-                        className={cn(
-                            "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
-                            config.saveSkippedLinks 
-                                ? "bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
-                                : "bg-muted/10 border-white/5 hover:border-white/10"
-                        )}
-                        onClick={() => setConfig(prev => ({ ...prev, saveSkippedLinks: !prev.saveSkippedLinks }))}
-                    >
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className={cn(
-                                "w-2 h-2 rounded-full transition-all duration-500", 
-                                config.saveSkippedLinks ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-muted-foreground/30"
-                            )} />
-                            <span className={cn(
-                                "text-[11px] font-black uppercase tracking-wider transition-colors",
-                                config.saveSkippedLinks ? "text-emerald-400" : "text-muted-foreground"
-                            )}>Record Skipped</span>
-                        </div>
-                        <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
-                            {config.saveSkippedLinks 
-                                ? "Links excluded by rules will be recorded in the report with a reason." 
-                                : "Excluded links are ignored to save database space (Default)."}
-                        </p>
-                    </motion.div>
-                </div>
-
-
-                <div className="pt-6 border-t border-white/5 space-y-6">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Shield className="h-4 w-4 text-primary" />
-                        <h3 className="text-sm font-bold uppercase tracking-widest text-primary">Anti-Bot & Identity</h3>
-                    </div>
-                    
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label className="text-xs font-bold text-muted-foreground uppercase">Browser Agent</Label>
-                                <div className="relative group">
-                                    <select 
-                                        className="w-full h-10 pl-3 pr-10 bg-muted/30 border-none rounded-lg appearance-none cursor-pointer focus:ring-1 ring-primary/50 transition-all outline-none text-xs"
-                                        value={config.userAgent}
-                                        onChange={(e) => setConfig({ ...config, userAgent: e.target.value })}
-                                    >
-                                        {USER_AGENTS.map(agent => (
-                                            <option key={agent.name} value={agent.value}>{agent.name}</option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
-                                </div>
-                            </div>
-                            
-                            <div className="space-y-2">
-                                <Label className="text-xs font-bold text-muted-foreground uppercase">Custom User Agent (Overrides selection)</Label>
-                                <Input
-                                    placeholder="Mozilla/5.0..."
-                                    value={config.customUserAgent}
-                                    onChange={(e) => setConfig({ ...config, customUserAgent: e.target.value })}
-                                    className="bg-muted/30 border-none shadow-none focus-visible:ring-1 h-10 text-xs"
-                                />
-                            </div>
+                        <div className="space-y-2 md:col-span-1">
+                            <Label>Scan Name</Label>
+                            <Input
+                                placeholder="e.g. Weekly Health Check"
+                                value={config.name}
+                                onChange={(e) => setConfig({ ...config, name: e.target.value })}
+                            />
                         </div>
+                        
+                        <div className="space-y-2 md:col-span-1">
+                            <div className="flex items-center justify-between">
+                                <Label>Starting URL</Label>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className={cn("h-6 px-1.5 text-[10px] gap-1.5", showAuth ? "text-primary bg-primary/10" : "text-muted-foreground")}
+                                    onClick={() => setShowAuth(!showAuth)}
+                                >
+                                    <Key className="h-3 w-3" /> AUTH
+                                </Button>
+                            </div>
+                            <Input
+                                type="url"
+                                placeholder="https://mysite.com"
+                                value={config.startUrl}
+                                onChange={(e) => setConfig({ ...config, startUrl: e.target.value })}
+                            />
+                        </div>
+                    </div>
 
+                    <AnimatePresence>
+                        {showAuth && (
+                            <motion.div 
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-primary/20 grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] uppercase font-bold text-muted-foreground">Username</Label>
+                                        <Input 
+                                            placeholder="user" 
+                                            value={config.auth?.username || ''} 
+                                            onChange={(e) => handleAuthChange('username', e.target.value)}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] uppercase font-bold text-muted-foreground">Password</Label>
+                                        <Input 
+                                            type="password" 
+                                            placeholder="••••••" 
+                                            value={config.auth?.password || ''} 
+                                            onChange={(e) => handleAuthChange('password', e.target.value)}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <Label className="text-xs font-bold text-muted-foreground uppercase">Random Delay (ms)</Label>
-                                <span className="text-[10px] font-mono text-primary">{config.randomDelay}ms</span>
+                                <Label>Max Depth</Label>
+                                {config.maxDepth === 0 && (
+                                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full animate-pulse">
+                                        ∞ UNLIMITED
+                                    </span>
+                                )}
                             </div>
                             <Input
                                 type="number"
                                 min={0}
-                                step={100}
-                                value={config.randomDelay}
-                                onChange={(e) => setConfig({ ...config, randomDelay: parseInt(e.target.value) || 0 })}
-                                className="bg-muted/30 border-none shadow-none focus-visible:ring-1 h-10 text-xs"
+                                value={config.maxDepth}
+                                onChange={(e) => setConfig({ ...config, maxDepth: parseInt(e.target.value) || 0 })}
                             />
-                            <p className="text-[10px] text-muted-foreground leading-relaxed italic mt-2">
-                                Adds a random delay between 0 and this value before each request to mimic human browsing and avoid bot detection.
-                            </p>
+                            <p className="text-[10px] text-muted-foreground italic">Set to 0 for unlimited crawl.</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Rate Limit (req/min)</Label>
+                            <Input
+                                type="number"
+                                min={1}
+                                value={config.rateLimit}
+                                onChange={(e) => setConfig({ ...config, rateLimit: parseInt(e.target.value) || 60 })}
+                            />
                         </div>
                     </div>
-                </div>
 
-
-                <AnimatePresence>
-                    {config.isTargeted && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                         <motion.div 
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="overflow-hidden space-y-2"
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            className={cn(
+                                "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                                config.skipExternal 
+                                    ? "bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.15)]" 
+                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                            )}
+                            onClick={() => setConfig(prev => ({ ...prev, skipExternal: !prev.skipExternal }))}
                         >
-                            <Label className="text-primary font-bold">Target URLs to Audit (Webpages, PDFs, Images)</Label>
-                            <Textarea 
-                                placeholder="Paste URLs here, one per line. e.g.
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className={cn(
+                                    "w-2 h-2 rounded-full transition-all duration-500", 
+                                    config.skipExternal ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" : "bg-muted-foreground/30"
+                                )} />
+                                <span className={cn(
+                                    "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                    config.skipExternal ? "text-blue-400" : "text-muted-foreground"
+                                )}>Skip External</span>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                                {config.skipExternal 
+                                    ? "External links (like Google) will be verified once for status but not crawled." 
+                                    : "Crawl external sites found during the scan (Warning: can be very slow)."}
+                            </p>
+                        </motion.div>
+
+                        <motion.div 
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            className={cn(
+                                "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                                config.excludeSubdomains 
+                                    ? "bg-orange-500/10 border-orange-500/50 shadow-[0_0_20px_rgba(249,115,22,0.15)]" 
+                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                            )}
+                            onClick={() => setConfig(prev => ({ ...prev, excludeSubdomains: !prev.excludeSubdomains }))}
+                        >
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className={cn(
+                                    "w-2 h-2 rounded-full transition-all duration-500", 
+                                    config.excludeSubdomains ? "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]" : "bg-muted-foreground/30"
+                                )} />
+                                <span className={cn(
+                                    "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                    config.excludeSubdomains ? "text-orange-400" : "text-muted-foreground"
+                                )}>Exclude Subdomains</span>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                                {config.excludeSubdomains 
+                                    ? "Treat subdomains (like blog.site.com) as external. Verified but not crawled." 
+                                    : "Crawl subdomains as if they were internal pages."}
+                            </p>
+                        </motion.div>
+
+                        <motion.div 
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            className={cn(
+                                "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                                config.doNotTraverseBackward 
+                                    ? "bg-purple-500/10 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.2)]" 
+                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                            )}
+                            onClick={() => setConfig(prev => ({ ...prev, doNotTraverseBackward: !prev.doNotTraverseBackward }))}
+                        >
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className={cn(
+                                    "w-2 h-2 rounded-full transition-all duration-500", 
+                                    config.doNotTraverseBackward ? "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]" : "bg-muted-foreground/30"
+                                )} />
+                                <span className={cn(
+                                    "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                    config.doNotTraverseBackward ? "text-purple-400" : "text-muted-foreground"
+                                )}>Stay in Subpath</span>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                                {config.doNotTraverseBackward 
+                                    ? "Only crawl deeper into the start URL path. Never go 'up' or 'sideways'." 
+                                    : "Crawl the entire site starting from the root of the domain."}
+                            </p>
+                        </motion.div>
+
+                        <motion.div 
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            className={cn(
+                                "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
+                                config.saveSkippedLinks 
+                                    ? "bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.2)]" 
+                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                            )}
+                            onClick={() => setConfig(prev => ({ ...prev, saveSkippedLinks: !prev.saveSkippedLinks }))}
+                        >
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className={cn(
+                                    "w-2 h-2 rounded-full transition-all duration-500", 
+                                    config.saveSkippedLinks ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-muted-foreground/30"
+                                )} />
+                                <span className={cn(
+                                    "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                    config.saveSkippedLinks ? "text-emerald-400" : "text-muted-foreground"
+                                )}>Record Skipped</span>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                                {config.saveSkippedLinks 
+                                    ? "Links excluded by rules will be recorded in the report with a reason." 
+                                    : "Excluded links are ignored to save database space (Default)."}
+                            </p>
+                        </motion.div>
+                    </div>
+
+
+                    <div className="pt-6 border-t border-white/5 space-y-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Shield className="h-4 w-4 text-primary" />
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-primary">Anti-Bot & Identity</h3>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Browser Agent</Label>
+                                    <div className="relative group">
+                                        <select 
+                                            className="w-full h-10 pl-3 pr-10 bg-muted/30 border-none rounded-lg appearance-none cursor-pointer focus:ring-1 ring-primary/50 transition-all outline-none text-xs"
+                                            value={config.userAgent}
+                                            onChange={(e) => setConfig({ ...config, userAgent: e.target.value })}
+                                        >
+                                            {USER_AGENTS.map(agent => (
+                                                <option key={agent.name} value={agent.value}>{agent.name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Custom User Agent (Overrides selection)</Label>
+                                    <Input
+                                        placeholder="Mozilla/5.0..."
+                                        value={config.customUserAgent}
+                                        onChange={(e) => setConfig({ ...config, customUserAgent: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Random Delay (ms)</Label>
+                                    <span className="text-[10px] font-mono text-primary">{config.randomDelay}ms</span>
+                                </div>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    step={100}
+                                    value={config.randomDelay}
+                                    onChange={(e) => setConfig({ ...config, randomDelay: parseInt(e.target.value) || 0 })}
+                                />
+                                <p className="text-[10px] text-muted-foreground leading-relaxed italic mt-2">
+                                    Adds a random delay between 0 and this value before each request to mimic human browsing and avoid bot detection.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <AnimatePresence>
+                        {config.isTargeted && (
+                            <motion.div 
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden space-y-2"
+                            >
+                                <Label className="text-primary font-bold">Target URLs to Audit (Webpages, PDFs, Images)</Label>
+                                <Textarea 
+                                    placeholder="Paste URLs here, one per line. e.g.
 https://mysite.com/landing-page
 https://mysite.com/report-2024.pdf
 https://mysite.com/assets/banner.png"
-                                value={targetUrlsRaw}
-                                onChange={(e) => {
-                                    const raw = e.target.value;
-                                    setTargetUrlsRaw(raw);
-                                    const urls = raw.split('\n').map(s => s.trim()).filter(s => !!s);
-                                    setConfig({ ...config, targetUrls: urls });
-                                }}
-                                className="min-h-[120px] bg-primary/5 border-primary/20 font-mono text-xs focus-visible:ring-1"
-                            />
-                            <p className="text-[10px] text-muted-foreground italic">
-                                Note: The scan will be focused exclusively on finding these target URLs. 
-                                <span className="text-primary/70 block mt-1 font-bold tracking-tight uppercase text-[9px]">
-                                    Pro-Tip: Only targets linked directly from your "Starting URL" or other target pages will be discovered.
-                                </span>
-                            </p>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </CardContent>
-        </Card>
-      </div>
-
-        {/* Advanced Filters Toggle */}
-        <div className="space-y-4">
-            <Button 
-                variant="ghost" 
-                className="w-full justify-between h-12 px-6 rounded-xl hover:bg-muted/50 border border-transparent hover:border-muted-foreground/20 transition-all text-muted-foreground"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-            >
-                <div className="flex items-center gap-3">
-                    <Filter className="h-4 w-4" />
-                    <span className="font-semibold text-sm">Advanced Exclusion Logic</span>
-                </div>
-                <ChevronDown className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-180")} />
-            </Button>
-
-            <AnimatePresence>
-                {showAdvanced && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                    >
-                        <Card className="border-none shadow-lg bg-card/50">
-                            <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-6">
-                                    <div className="space-y-2">
-                                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Legacy Exclude Pattern (Regex)</Label>
-                                        <Input
-                                            placeholder="\.pdf$|\.zip$"
-                                            value={config.excludeRegex}
-                                            onChange={(e) => setConfig({ ...config, excludeRegex: e.target.value })}
-                                            className="bg-muted/50 border-none shadow-none focus-visible:ring-1 h-9 text-xs"
-                                        />
-                                    </div>
-                                    <DynamicList 
-                                        title="Regex Filter rules" 
-                                        items={config.regexRules || []} 
-                                        onAdd={(val) => addListItem('regexRules', val)} 
-                                        onRemove={(idx) => removeListItem('regexRules', idx)}
-                                        onUpdate={(idx, val) => updateListItem('regexRules', idx, val)}
-                                        placeholder="novartis\.com/node.*"
-                                    />
-                                </div>
-                                <div className="space-y-6">
-                                    <DynamicList 
-                                        title="CSS Selectors to skip" 
-                                        items={config.skipSelectors || []} 
-                                        onAdd={(val) => addListItem('skipSelectors', val)} 
-                                        onRemove={(idx) => removeListItem('skipSelectors', idx)}
-                                        onUpdate={(idx, val) => updateListItem('skipSelectors', idx, val)}
-                                        placeholder="e.g. .site-footer"
-                                    >
-                                        <div className="flex flex-wrap gap-1.5 mt-2">
-                                            {COMMON_SELECTORS.map(s => (
-                                                <button
-                                                    key={s.value}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (!config.skipSelectors?.includes(s.value)) {
-                                                            addListItem('skipSelectors', s.value);
-                                                        }
-                                                    }}
-                                                    className="px-2 py-0.5 rounded-full bg-primary/5 hover:bg-primary/10 text-[9px] font-bold text-primary border border-primary/20 transition-colors"
-                                                >
-                                                    + {s.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </DynamicList>
-                                    <DynamicList 
-                                        title="Wildcard Exclusions" 
-                                        items={config.wildcardExclusions || []} 
-                                        onAdd={(val) => addListItem('wildcardExclusions', val)} 
-                                        onRemove={(idx) => removeListItem('wildcardExclusions', idx)}
-                                        onUpdate={(idx, val) => updateListItem('wildcardExclusions', idx, val)}
-                                        placeholder="novartis.com/careers/*"
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-
-        {/* Code Engine Toggle */}
-        <div className="space-y-4">
-            <div className="flex items-center justify-between px-2">
-                <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setShowCode(!showCode)}
-                    className="text-xs text-muted-foreground hover:text-foreground gap-2"
-                >
-                    <Code className="h-3 w-3" /> {showCode ? 'Hide Code Engine' : 'Reveal Code Engine'}
-                </Button>
-                <AnimatePresence>
-                    {showCode && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                            <Button variant="ghost" size="sm" onClick={copyToClipboard} className="h-7 w-7 p-0">
-                                <AnimatePresence mode="wait">
-                                    {showCopyFeedback ? (
-                                        <motion.div key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
-                                            <Check className="h-3 w-3 text-green-500" />
-                                        </motion.div>
-                                    ) : (
-                                        <motion.div key="copy" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
-                                            <Copy className="h-3 w-3" />
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </Button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
-
-            <AnimatePresence>
-                {showCode && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                    >
-                        <Card className="bg-slate-950 border-none shadow-inner overflow-hidden">
-                            <CardContent className="p-0">
-                                <Textarea
-                                    className="font-mono h-[200px] bg-transparent text-slate-300 text-[10px] resize-none border-0 focus-visible:ring-0 ring-offset-0 p-4"
-                                    value={jsonText}
-                                    onChange={handleJsonChange}
+                                    value={targetUrlsRaw}
+                                    onChange={(e) => {
+                                        const raw = e.target.value;
+                                        setTargetUrlsRaw(raw);
+                                        const urls = raw.split('\n').map(s => s.trim()).filter(s => !!s);
+                                        setConfig({ ...config, targetUrls: urls });
+                                    }}
+                                    className="min-h-[120px] bg-primary/5 border-primary/20 font-mono text-xs focus-visible:ring-1"
                                 />
-                                {jsonError && (
-                                    <div className="px-4 pb-4">
-                                        <p className="text-[10px] text-red-500 font-medium">⚠ {jsonError}</p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                                <p className="text-[10px] text-muted-foreground italic">
+                                    Note: The scan will be focused exclusively on finding these target URLs. 
+                                    <span className="text-primary/70 block mt-1 font-bold tracking-tight uppercase text-[9px]">
+                                        Pro-Tip: Only targets linked directly from your "Starting URL" or other target pages will be discovered.
+                                    </span>
+                                </p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </CardContent>
+            </Card>
+          </div>
+
+          {/* Advanced Exclusion Logic: Now a permanent card */}
+          <Card className="border-white/10 shadow-xl bg-card/50 overflow-hidden">
+              <CardHeader className="bg-muted/20 pb-4 border-b border-white/5">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500">
+                      <Filter className="h-4 w-4" />
+                  </div>
+                  <div>
+                      <CardTitle className="text-lg">Advanced Exclusion Logic</CardTitle>
+                      <CardDescription>Fine-tune what links should be ignored during the scan.</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                      <DynamicList 
+                          title="Regex Exclusion Rules" 
+                          items={config.regexRules || []} 
+                          onAdd={(val) => addListItem('regexRules', val)} 
+                          onRemove={(idx) => removeListItem('regexRules', idx)}
+                          onUpdate={(idx, val) => updateListItem('regexRules', idx, val)}
+                          placeholder="novartis\.com/[a-z]{2}-[a-z]{2}(/|$)"
+                      />
+                      <p className="text-[10px] text-muted-foreground italic mt-2">
+                        Any link matching these patterns will be **skipped**. Use this to block large sections of a site.
+                      </p>
+                  </div>
+                  <div className="space-y-6">
+                      <DynamicList 
+                          title="CSS Selectors to skip" 
+                          items={config.skipSelectors || []} 
+                          onAdd={(val) => addListItem('skipSelectors', val)} 
+                          onRemove={(idx) => removeListItem('skipSelectors', idx)}
+                          onUpdate={(idx, val) => updateListItem('skipSelectors', idx, val)}
+                          placeholder="e.g. .site-footer"
+                      >
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                              {COMMON_SELECTORS.map(s => (
+                                  <button
+                                      key={s.value}
+                                      type="button"
+                                      onClick={() => {
+                                          if (!config.skipSelectors?.includes(s.value)) {
+                                              addListItem('skipSelectors', s.value);
+                                          }
+                                      }}
+                                      className="px-2 py-0.5 rounded-full bg-primary/5 hover:bg-primary/10 text-[9px] font-bold text-primary border border-primary/20 transition-colors"
+                                  >
+                                      + {s.label}
+                                  </button>
+                              ))}
+                          </div>
+                      </DynamicList>
+                      <DynamicList 
+                          title="Wildcard Exclusions" 
+                          items={config.wildcardExclusions || []} 
+                          onAdd={(val) => addListItem('wildcardExclusions', val)} 
+                          onRemove={(idx) => removeListItem('wildcardExclusions', idx)}
+                          onUpdate={(idx, val) => updateListItem('wildcardExclusions', idx, val)}
+                          placeholder="novartis.com/careers/*"
+                      />
+                  </div>
+              </CardContent>
+          </Card>
         </div>
 
-        {/* Ignite Button */}
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="pt-4"
-        >
-            <Button 
-                onClick={handleStart} 
-                disabled={loading || !!jsonError || !config.startUrl} 
-                variant="glow"
-                className="w-full h-16 text-xl rounded-2xl font-black tracking-widest uppercase hover:scale-[1.02] active:scale-[0.98]"
+        {/* Right Column: JSON Engine and Actions */}
+        <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-24">
+            <Card className="border-white/10 shadow-2xl bg-slate-950 overflow-hidden flex flex-col">
+                <CardHeader className="bg-white/5 pb-3 flex-row items-center justify-between border-b border-white/5 space-y-0">
+                    <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                            <Code className="h-3.5 w-3.5" />
+                        </div>
+                        <CardTitle className="text-sm font-bold uppercase tracking-wider">JSON Configuration</CardTitle>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={copyToClipboard} className="h-8 w-8 p-0">
+                        <AnimatePresence mode="wait">
+                            {showCopyFeedback ? (
+                                <motion.div key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                                    <Check className="h-3.5 w-3.5 text-green-500" />
+                                </motion.div>
+                            ) : (
+                                <motion.div key="copy" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </Button>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <Textarea
+                        className="font-mono min-h-[400px] bg-transparent text-emerald-400/80 text-[11px] resize-none border-0 focus-visible:ring-0 ring-offset-0 p-6 leading-relaxed"
+                        value={jsonText}
+                        onChange={handleJsonChange}
+                        spellCheck={false}
+                    />
+                    {jsonError && (
+                        <div className="px-6 pb-4">
+                            <p className="text-[10px] text-red-400 font-medium bg-red-400/10 p-2 rounded border border-red-400/20 flex items-center gap-2">
+                                <span>⚠️</span> {jsonError}
+                            </p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Ignite Button moved to sidebar */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="pt-2"
             >
-                {loading ? (
-                    <span className="flex items-center gap-3">
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Powering up Engine...
-                    </span>
-                ) : (
-                    <span className="flex items-center gap-2">
-                        <Play className="h-5 w-5 fill-current" /> Ignite Scan
-                    </span>
-                )}
-            </Button>
-        </motion.div>
+                <Button 
+                    onClick={handleStart} 
+                    disabled={loading || !!jsonError || !config.startUrl} 
+                    variant="glow"
+                    className="w-full h-20 text-xl rounded-2xl font-black tracking-widest uppercase hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-primary/20"
+                >
+                    {loading ? (
+                        <span className="flex items-center gap-3">
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Powering up...
+                        </span>
+                    ) : (
+                        <span className="flex items-center gap-2">
+                            <Play className="h-6 w-6 fill-current" /> Ignite Scan
+                        </span>
+                    )}
+                </Button>
+                <p className="text-[10px] text-center text-muted-foreground mt-4 px-4 italic leading-relaxed">
+                    By clicking Ignite, you confirm that you have permission to crawl the target domain and will adhere to its robots.txt policies.
+                </p>
+            </motion.div>
+        </div>
       </div>
     </div>
   );

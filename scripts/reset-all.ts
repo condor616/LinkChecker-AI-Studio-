@@ -2,8 +2,14 @@ import { Pool } from 'pg';
 import { parseDatabaseUrl } from '../lib/utils/db-command';
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
 
-const baseConnectionString = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan';
+dotenv.config();
+
+const pgUser = process.env.POSTGRES_USER || 'lynx_scan';
+const pgPassword = process.env.POSTGRES_PASSWORD || 'localpass';
+const pgDb = process.env.POSTGRES_DB || 'lynx_scan';
+const baseConnectionString = process.env.DATABASE_URL || `postgres://${pgUser}:${pgPassword}@localhost:5432/${pgDb}`;
 const info = parseDatabaseUrl(baseConnectionString);
 
 async function resetAll() {

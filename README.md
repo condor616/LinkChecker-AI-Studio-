@@ -51,10 +51,21 @@ Open [http://localhost:3000](http://localhost:3000) to see the application in ac
 The **first user** to register on a new installation is automatically granted the **ADMIN** role. Subsequent users are marked as **PENDING** and must be approved by an administrator via the **Users** management dashboard.
 
 ### Resetting the System
-To wipe all data (scans, users, templates, and backups) and start fresh:
+
+**Soft Reset (Keep config, wipe data)**
+To wipe all data (scans, users, templates, and backups) but leave your `.env` and Docker container settings intact:
 ```bash
 npm run reset-all
 ```
+
+**Hard Reset (Nuke Everything)**
+To restart completely from zero (destroys `.env`, drops all databases, destroys all Docker volumes and caches):
+```bash
+npm run nuke
+```
+*To restart after a nuke:*
+1. Copy `.env.example` to `.env` and configure it.
+2. Run `npm run dev` to boot the stack from a completely fresh slate.
 
 ### Database Management
 To browse all user databases, use **pgAdmin 4**, which is included in the Docker stack:

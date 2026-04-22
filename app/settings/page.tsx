@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { useScanSelection } from '@/components/scans/scan-selection-provider';
 
 interface Backup {
   filename: string;
@@ -65,8 +66,8 @@ export default function SettingsPage() {
   const [isDockerLoading, setIsDockerLoading] = useState(false);
   const [dockerModalType, setDockerModalType] = useState<'stop' | 'start' | null>(null);
 
-  // User Preferences state
-  const [preferences, setPreferences] = useState<{ skipWizard?: boolean }>({});
+  // User Preferences from global context
+  const { preferences, updatePreferences } = useScanSelection();
   const [prefsLoading, setPrefsLoading] = useState(false);
 
   useEffect(() => {
@@ -80,7 +81,6 @@ export default function SettingsPage() {
         setTargetUserId(uid);
 
         if (role === 'ADMIN' || role === 'USER') {
-          fetchPreferences();
           if (role === 'ADMIN') {
             setIsAdmin(true);
             fetchDockerStatus();
@@ -293,30 +293,12 @@ export default function SettingsPage() {
 
   const formatSize = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 
-  async function fetchPreferences() {
-    try {
-      const res = await fetch('/api/user/preferences');
-      if (res.ok) {
-        const data = await res.json();
-        setPreferences(data.preferences || {});
-      }
-    } catch (err) {
-      console.error('Failed to fetch preferences:', err);
-    }
-  }
 
   async function toggleWizardPreference() {
     setPrefsLoading(true);
     const newValue = !preferences.skipWizard;
     try {
-      const res = await fetch('/api/user/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: { skipWizard: newValue } }),
-      });
-      if (res.ok) {
-        setPreferences(prev => ({ ...prev, skipWizard: newValue }));
-      }
+      await updatePreferences({ skipWizard: newValue });
     } catch (err) {
       console.error('Failed to update preferences:', err);
     } finally {

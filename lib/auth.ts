@@ -30,7 +30,23 @@ export async function getSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get('session')?.value;
   if (!token) return null;
-  return verifyToken(token);
+  
+  const payload = await verifyToken(token);
+  if (!payload) return null;
+
+  // Guard against ghost sessions (e.g. after a DB nuke or user deletion)
+  try {
+    const res = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.id, payload.id)).limit(1);
+    if (res.length === 0) {
+      return null;
+    }
+    // Update role just in case it changed since the JWT was issued
+    payload.role = res[0].role;
+    return payload;
+  } catch (error) {
+    console.error("Session DB check failed (DB likely offline):", error);
+    return payload;
+  }
 }
 
 export async function requireAuth() {

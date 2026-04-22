@@ -3,7 +3,7 @@ import { connection, QUEUE_NAME, ScanJobData, scanQueue } from '../lib/bullmq';
 import { processLink } from '../lib/crawler/processor';
 import { getDb, db as centralDb } from '../lib/db';
 import { scans, links } from '../lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
@@ -47,6 +47,9 @@ const worker = new Worker<ScanJobData>(
       return;
     }
 
+    // Mark as PROCESSING to prevent race conditions during completion check
+    await userDb.update(links).set({ status: 'PROCESSING' }).where(eq(links.id, link.id));
+
     const scan = await userDb.select().from(scans).where(eq(scans.id, scanId)).then(res => res[0]);
     if (!scan || scan.status !== 'RUNNING') {
       console.log(`Scan ${scanId} is not running. Skipping job.`);
@@ -73,13 +76,18 @@ const worker = new Worker<ScanJobData>(
       await scanQueue.addBulk(jobs);
     }
 
-    const pendingCount = await userDb.select({ id: links.id })
+    // Scan-specific completion check:
+    // A scan is complete if there are no PENDING or PROCESSING links left in the database.
+    const activeLinksCount = await userDb.select({ id: links.id })
       .from(links)
-      .where(and(eq(links.scanId, scanId), eq(links.status, 'PENDING')))
+      .where(and(
+        eq(links.scanId, scanId), 
+        or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+      ))
       .limit(1);
 
-    if (pendingCount.length === 0) {
-      console.log(`Scan ${scanId} appears to be completed.`);
+    if (activeLinksCount.length === 0) {
+      console.log(`Scan ${scanId} completed (No PENDING or PROCESSING links left).`);
       await userDb.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scanId));
     }
   },

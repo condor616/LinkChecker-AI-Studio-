@@ -22,14 +22,18 @@ export function ScanSelectionProvider({ children, hasSession }: { children: Reac
   const [isOpen, setIsOpen] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [preferences, setPreferences] = useState<UserPreferences>({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (hasSession) {
       fetchPreferences();
+    } else {
+      setLoading(false);
     }
   }, [hasSession]);
 
   const fetchPreferences = async () => {
+    setLoading(true);
     try {
       const res = await fetch('/api/user/preferences');
       if (res.ok) {
@@ -38,6 +42,8 @@ export function ScanSelectionProvider({ children, hasSession }: { children: Reac
       }
     } catch (err) {
       console.error('Failed to fetch preferences:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -61,7 +67,9 @@ export function ScanSelectionProvider({ children, hasSession }: { children: Reac
     if (forceWizard) {
       setShowWizard(true);
     } else {
-      setShowWizard(!preferences.skipWizard);
+      // If still loading, default to showing wizard (safe default)
+      // If loaded, respect the skipWizard preference
+      setShowWizard(loading ? true : !preferences?.skipWizard);
     }
   };
   

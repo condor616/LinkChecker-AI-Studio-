@@ -29,7 +29,7 @@ describe('Skipped Links Feature Verification', () => {
         return scanId;
     }
 
-    it('should record skipped links when saveSkippedLinks is true', async () => {
+    it('should record skipped links when saveSkippedLinks is true (Regex)', async () => {
         const config = {
             startUrl: baseUrl,
             saveSkippedLinks: true,
@@ -50,14 +50,14 @@ describe('Skipped Links Feature Verification', () => {
         
         expect(skippedLink).toBeDefined();
         expect(skippedLink?.url).toContain('/it-it');
-        expect(skippedLink?.error).toContain('Regex: it-it');
+        expect(skippedLink?.error).toContain('Regex Rule: it-it'); // New error msg format
         
         // Ensure it's NOT in the returned newLinks list (so it's not queued for worker)
         const inNewLinks = newLinks?.find(l => l.url === skippedLink?.url);
         expect(inNewLinks).toBeUndefined();
     });
 
-    it('should NOT record skipped links when saveSkippedLinks is false', async () => {
+    it('should NOT record skipped links when saveSkippedLinks is false (Regex)', async () => {
         const config = {
             startUrl: baseUrl,
             saveSkippedLinks: false,
@@ -76,7 +76,7 @@ describe('Skipped Links Feature Verification', () => {
         expect(skippedLinks.length).toBe(0);
     });
 
-    it('should correctly identify external link skip reason', async () => {
+    it('should verify external links and mark them SKIPPED if successful', async () => {
         const config = {
             startUrl: baseUrl,
             saveSkippedLinks: true,
@@ -84,42 +84,89 @@ describe('Skipped Links Feature Verification', () => {
         };
         const scanId = await setupScan(config);
         
-        // Mock a discovery of an external link on the index page
-        // The index page has a link to google.com (if not, we can assume it finds one if we mock the HTML or just check logic)
-        // Actually, serve-mock-site index.html has external links.
-        
+        // Discovering links on index page
         const link = { url: baseUrl, scanId, depth: 0, status: 'PENDING' };
-        await processLink(testDb, link, { id: scanId }, config);
+        const discovered = await processLink(testDb, link, { id: scanId }, config);
         
-        const externalSkip = await testDb.select().from(links).where(and(
+        // Find an external link that was added as PENDING
+        const externalPending = discovered?.find(l => !l.url.startsWith(baseUrl));
+        expect(externalPending).toBeDefined();
+        expect(externalPending?.status).toBe('PENDING');
+
+        // Now process that external link
+        await processLink(testDb, externalPending, { id: scanId }, config);
+
+        // Check it was marked as SKIPPED but with verified reason
+        const result = await testDb.select().from(links).where(and(
             eq(links.scanId, scanId),
-            eq(links.status, 'SKIPPED')
-        )).then(res => res.find(l => !l.url.startsWith(baseUrl)));
-        
-        if (externalSkip) {
-            expect(externalSkip.error).toContain('External link (skipExternal enabled)');
-        }
+            eq(links.url, externalPending!.url)
+        )).then(res => res[0]);
+
+        expect(result.status).toBe('SKIPPED');
+        expect(result.error).toContain('External link (Verified)');
     });
 
-    it('should record skipped links found on targeted pages', async () => {
+    it('should verify external links and mark them BROKEN if they fail', async () => {
         const config = {
             startUrl: baseUrl,
-            isTargeted: true,
-            targetUrls: [baseUrl], // Only target the index page
             saveSkippedLinks: true,
-            regexRules: ['it-it'] 
+            skipExternal: true
         };
         const scanId = await setupScan(config);
         
-        const link = { url: baseUrl, scanId, depth: 0, status: 'PENDING' };
+        // Mock a broken external link (using 127.0.0.1 to make it "external" to localhost)
+        const brokenUrl = `http://127.0.0.1:${port}/external-broken`;
+        
+        // Add it to the DB manually since we want to test its processing
+        await testDb.insert(links).values({
+            id: crypto.randomUUID(),
+            scanId,
+            url: brokenUrl,
+            status: 'PENDING',
+            depth: 1
+        });
+
+        const link = { url: brokenUrl, scanId, depth: 1, status: 'PENDING' };
         await processLink(testDb, link, { id: scanId }, config);
-        
-        const skippedLink = await testDb.select().from(links).where(and(
+
+        // Check it was marked as BROKEN
+        const result = await testDb.select().from(links).where(and(
             eq(links.scanId, scanId),
-            eq(links.status, 'SKIPPED')
+            eq(links.url, brokenUrl)
         )).then(res => res[0]);
+
+        expect(result.status).toBe('BROKEN');
+        expect(result.statusCode).toBe(404);
+    });
+
+    it('should DELETE successful external links if saveSkippedLinks is false', async () => {
+        const config = {
+            startUrl: baseUrl,
+            saveSkippedLinks: false,
+            skipExternal: true
+        };
+        const scanId = await setupScan(config);
         
-        expect(skippedLink).toBeDefined();
-        expect(skippedLink?.url).toContain('/it-it');
+        // Use a working external link (google.com might work but let's use our mock site with 127.0.0.1)
+        const workingUrl = `http://127.0.0.1:${port}/`;
+        
+        await testDb.insert(links).values({
+            id: crypto.randomUUID(),
+            scanId,
+            url: workingUrl,
+            status: 'PENDING',
+            depth: 1
+        });
+
+        const link = { url: workingUrl, scanId, depth: 1, status: 'PENDING' };
+        await processLink(testDb, link, { id: scanId }, config);
+
+        // Check it was DELETED
+        const result = await testDb.select().from(links).where(and(
+            eq(links.scanId, scanId),
+            eq(links.url, workingUrl)
+        ));
+
+        expect(result.length).toBe(0);
     });
 });

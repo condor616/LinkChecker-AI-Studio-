@@ -12,6 +12,24 @@ try {
   // Using 'docker compose' (V2) instead of 'docker-compose' (V1)
   execSync('docker compose --env-file .env -f docker/services/docker-compose.yml up -d', { stdio: 'inherit' });
   console.log('✅ Backend services started gracefully.');
+
+  console.log('📦 Ensuring database schema is up to date...');
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      execSync('npx drizzle-kit push', { stdio: 'inherit' });
+      console.log('✅ Database schema is up to date.');
+      break;
+    } catch (error) {
+      retries--;
+      if (retries === 0) {
+        console.error('❌ Failed to push schema after multiple attempts. You may need to run `npx drizzle-kit push` manually.');
+      } else {
+        console.log('⏳ Waiting for database to be ready before pushing schema...');
+        execSync('sleep 2');
+      }
+    }
+  }
 } catch (error) {
   console.error('\n' + '='.repeat(64));
   console.error('❌ ERROR: Docker is not running, not available, or failed to start.');

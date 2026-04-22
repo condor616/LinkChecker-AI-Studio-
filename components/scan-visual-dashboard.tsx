@@ -141,10 +141,12 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       totalPenalty += (penalty * originMultiplier);
     });
 
-    const sensitivity = 5.0; 
-    const calculatedHealth = total > 0 
+    const sensitivity = 10.0; 
+    const healthValue = total > 0 
       ? Math.max(0, 100 - (totalPenalty / total) * 100 * sensitivity) 
       : 100;
+    
+    const finalHealth = broken > 0 ? Math.min(99, Math.round(healthValue)) : 100;
 
     // Group by parent page for prioritized fix list (normalizing URLs to avoid duplication)
     const brokenByPage: Record<string, { count: number, originalUrl: string }> = {};
@@ -172,7 +174,7 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       pending,
       skipped,
       topPagesToFix,
-      health: Math.round(calculatedHealth)
+      health: finalHealth
     };
   }, [data]);
 

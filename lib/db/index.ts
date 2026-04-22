@@ -5,14 +5,17 @@ import { parseDatabaseUrl } from '../utils/db-command';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Force load .env.test if NODE_ENV is test
-if (process.env.NODE_ENV === 'test') {
+// Force load .env.test if NODE_ENV is test or IS_TESTING is true
+if (process.env.NODE_ENV === 'test' || process.env.IS_TESTING === 'true') {
     dotenv.config({ path: path.join(process.cwd(), '.env.test'), override: true });
 } else {
     dotenv.config();
 }
 
-const baseConnectionString = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan';
+const pgUser = process.env.POSTGRES_USER || 'lynx_scan';
+const pgPassword = process.env.POSTGRES_PASSWORD || 'localpass';
+const pgDb = process.env.POSTGRES_DB || 'lynx_scan';
+const baseConnectionString = process.env.DATABASE_URL || `postgres://${pgUser}:${pgPassword}@localhost:5432/${pgDb}`;
 const info = parseDatabaseUrl(baseConnectionString);
 
 // Cache for connection pools: dbName -> Pool
@@ -31,7 +34,7 @@ function getConnectionString(dbName: string) {
  * including the test suffix if in test mode.
  */
 export function getUserDbName(userId: string) {
-  const suffix = process.env.NODE_ENV === 'test' ? '_test' : '';
+  const suffix = (process.env.NODE_ENV === 'test' || process.env.IS_TESTING === 'true') ? '_test' : '';
   return `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}${suffix}`;
 }
 

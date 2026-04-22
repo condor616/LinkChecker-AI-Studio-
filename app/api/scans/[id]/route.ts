@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireApprovedUser } from '@/lib/auth';
-import { getDb } from '@/lib/db';
-import { scans, links } from '@/lib/db/schema';
+import { getDb, db as centralDb } from '@/lib/db';
+import { scans, links, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -50,6 +50,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     // Delete the scan (links will cascade)
     await userDb.delete(scans).where(eq(scans.id, id));
+
+    // Reset user's active scan status in central DB if it was the last running scan
+    // For simplicity, we just check if they have any other running scans
+    const otherRunningScans = await userDb.select().from(scans).where(and(eq(scans.userId, session.id), eq(scans.status, 'RUNNING'))).limit(1);
+    if (otherRunningScans.length === 0) {
+      await centralDb.update(users).set({ hasActiveScan: false }).where(eq(users.id, session.id));
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

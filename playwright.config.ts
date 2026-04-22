@@ -47,6 +47,7 @@ export default defineConfig({
     env: {
 
       NODE_ENV: 'test',
+      IS_TESTING: 'true',
       DATABASE_URL: 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan_test',
     }
   },

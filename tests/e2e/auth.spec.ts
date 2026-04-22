@@ -21,27 +21,63 @@ test.beforeAll(async () => {
 test.describe('Authentication Flow', () => {
 
 
-  test('should register a new user as admin and login', async ({ page }) => {
-    // Go to login page
-    await page.goto('/login');
+  test('First user auto-admin flow: popup, UI warning, and subsequent users', async ({ page }) => {
+    // Ensure DB is clean before this specific test to guarantee first-user state
+    const db = getDb();
+    await db.delete(users);
 
-    // Toggle to Sign Up
-    await page.click('button:has-text("Don\'t have an account? Sign up")');
-    await expect(page.locator('text=Create an account')).toBeVisible();
+    // 1. Visit homepage
+    await page.goto('/');
 
+    // 2. Expect the FirstUserPopup to appear
+    await expect(page.locator('text=System Uninitialized')).toBeVisible();
+    await expect(page.locator('text=Register your first user')).toBeVisible();
 
-    // Fill registration form
-    await page.fill('#email', 'admin-e2e@example.com');
+    // 3. Click the link to register
+    await page.click('text=Register your first user');
+
+    // 4. Expect redirection to /login?register=true
+    await expect(page).toHaveURL(/.*\/login\?register=true/);
+
+    // 5. Expect the Auto-admin UI message to be visible
+    await expect(page.locator('text=You\'ll be granted admin access upon registration.')).toBeVisible();
+
+    // 6. Register the FIRST user
+    await page.fill('#email', 'first-admin@example.com');
     await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
 
-    // Should be redirected to dashboard
+    // 7. Should be redirected to dashboard
     await expect(page).toHaveURL('/');
     await expect(page.locator('h1')).toContainText('Lynx Scan');
-    
-    // Verify session by opening profile dropdown and checking for logout
+
+    // 8. Logout
     await page.click('button[title="Account Settings"]');
-    await expect(page.locator('button:has-text("Logout")')).toBeVisible();
+    await page.click('button:has-text("Logout")');
+    await expect(page).toHaveURL('/login');
+
+    // 9. Go to registration page for a SECOND user
+    await page.goto('/login?register=true');
+
+    // 10. Expect the Auto-admin UI message NOT to be visible
+    await expect(page.locator('text=You\'ll be granted admin access upon registration.')).not.toBeVisible();
+
+    // 11. Register the SECOND user
+    await page.fill('#email', 'second-user@example.com');
+    await page.fill('#password', 'password123');
+    await page.click('button[type="submit"]');
+
+    // 12. Should be redirected to dashboard but show pending status
+    await page.waitForURL('/');
+    await expect(page.locator('text=Account Pending Approval')).toBeVisible();
+
+    // 13. Verify backend roles directly
+    const allUsers = await db.select().from(users);
+    const firstUserDb = allUsers.find((u: any) => u.email === 'first-admin@example.com');
+    const secondUserDb = allUsers.find((u: any) => u.email === 'second-user@example.com');
+    
+    expect(firstUserDb?.role).toBe('ADMIN');
+    expect(secondUserDb?.role).toBe('PENDING');
   });
 
   test('should show error for existing user', async ({ page }) => {

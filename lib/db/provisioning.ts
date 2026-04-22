@@ -2,7 +2,10 @@ import { Pool } from 'pg';
 import { parseDatabaseUrl } from '../utils/db-command';
 import { getDb, closePool, getUserDbName } from './index';
 
-const baseConnectionString = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan';
+const pgUser = process.env.POSTGRES_USER || 'lynx_scan';
+const pgPassword = process.env.POSTGRES_PASSWORD || 'localpass';
+const pgDb = process.env.POSTGRES_DB || 'lynx_scan';
+const baseConnectionString = process.env.DATABASE_URL || `postgres://${pgUser}:${pgPassword}@localhost:5432/${pgDb}`;
 const info = parseDatabaseUrl(baseConnectionString);
 
 // Simple in-memory cache to avoid redundant provisioning checks in the same process lifetime.

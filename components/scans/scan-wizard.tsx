@@ -482,7 +482,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     <SummaryItem label="Project" value={data.name} icon={<Activity className="h-3.5 w-3.5" />} />
                     <SummaryItem label="Start URL" value={data.startUrl} icon={<Globe className="h-3.5 w-3.5" />} />
                     <SummaryItem label="Mode" value={data.isTargeted ? "Targeted Audit" : "Recursive Crawl"} icon={<Shield className="h-3.5 w-3.5" />} />
-                    <SummaryItem label="Performance" value={`${data.rateLimit} req/min | Depth: ${data.maxDepth}`} icon={<Zap className="h-3.5 w-3.5" />} />
+                    <SummaryItem label="Performance" value={`${data.rateLimit} req/min | Depth: ${data.maxDepth === 0 ? 'Infinite' : data.maxDepth}`} icon={<Zap className="h-3.5 w-3.5" />} />
                     <SummaryItem label="Restrictions" value={`${[data.skipExternal && 'No External', data.excludeSubdomains && 'No Subdomains'].filter(Boolean).join(', ') || 'None'}`} icon={<Settings2 className="h-3.5 w-3.5" />} />
                 </div>
 

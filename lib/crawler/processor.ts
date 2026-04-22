@@ -69,7 +69,11 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         error: checkComplete.error,
         checkedAt: new Date(),
         snippet: `[Reused Result] ` + (link.snippet || '')
-      }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING')));
+      }).where(and(
+        eq(links.scanId, scan.id), 
+        eq(links.url, link.url), 
+        or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+      ));
       return; 
     }
 
@@ -78,8 +82,8 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       headers
     });
 
-    // Smart Retry: If blocked (403/400), try with Minimalist headers
-    if (!response.ok && (response.status === 403 || response.status === 400)) {
+    // Smart Retry: If blocked (403/400/429), try with Minimalist headers
+    if (!response.ok && (response.status === 403 || response.status === 400 || response.status === 429)) {
         console.log(`[Smart Retry] Detected ${response.status} for ${link.url}. Retrying with minimalist headers...`);
         const fallbackHeaders: Record<string, string> = {
             'User-Agent': 'curl/8.17.0',
@@ -101,26 +105,76 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     clearTimeout(timeoutId);
 
     const contentType = (response.headers.get('content-type') || '').split(';')[0];
-    const status = response.ok ? 'SUCCESS' : 'BROKEN';
+    let status = response.ok ? 'SUCCESS' : 'BROKEN';
     const statusCode = response.status;
+
+    // Evaluate Traversal Rules before finalizing status
+    const startUrlObj = new URL(config.startUrl);
+    const currentUrlObj = new URL(link.url);
+    const startHost = startUrlObj.hostname.toLowerCase().replace(/^www\./, '');
+    const currentHost = currentUrlObj.hostname.toLowerCase().replace(/^www\./, '');
     
+    const isExactHost = currentHost === startHost;
+    const isSubdomain = currentHost.endsWith('.' + startHost);
+    const isInternal = isExactHost || isSubdomain;
+
+    let skipReason: string | null = null;
+    if (status === 'SUCCESS') {
+        if (!isInternal && config.skipExternal) {
+            skipReason = `External link (Verified)`;
+        } else if (isSubdomain && !isExactHost && config.excludeSubdomains) {
+            skipReason = `Subdomain excluded (Verified)`;
+        } else if (config.doNotTraverseBackward) {
+            const normalize = (u: string) => u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+            const normalizedStart = normalize(config.startUrl);
+            const normalizedCurrent = normalize(link.url);
+
+            if (!normalizedCurrent.startsWith(normalizedStart)) {
+                skipReason = `Stay in Subpath (Verified)`;
+            } else {
+                const remaining = normalizedCurrent.slice(normalizedStart.length);
+                if (remaining.length > 0 && !remaining.startsWith('/')) {
+                    skipReason = `Stay in Subpath (Verified)`;
+                }
+            }
+        }
+    }
+
+    if (skipReason) {
+        // We record the reason but don't overwrite SUCCESS/BROKEN status from the fetch.
+        // This ensures external links show up in the correct list (Successful/Broken)
+        // while still allowing us to skip their traversal.
+        console.log(`[Info] ${link.url} identified for crawl skip: ${skipReason}`);
+    }
+
     // Bulk update all pending instances of this URL in this scan
     const updateData: any = {
       status,
       statusCode,
       type: contentType,
-      checkedAt: new Date()
+      checkedAt: new Date(),
+      error: skipReason
     };
     
     if (status === 'SUCCESS' && !isTargeted) {
         updateData.parentUrl = null; // Performance optimization for successful links
     }
 
+    // If it's a skipped link and we don't want to save them, delete instead of update
+    if (status === 'SKIPPED' && !config.saveSkippedLinks) {
+        await userDb.delete(links).where(and(
+            eq(links.scanId, scan.id),
+            eq(links.url, link.url),
+            or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+        ));
+        return [];
+    }
+
     await userDb.update(links).set(updateData)
       .where(and(
         eq(links.scanId, scan.id),
         eq(links.url, link.url),
-        eq(links.status, 'PENDING')
+        or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
       ));
 
     // Post-Process Cleanup for Success: Remove duplicates for healthy links
@@ -144,49 +198,18 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     }
 
     // Recursive Extraction logic
-    const maxDepth = config.maxDepth ?? 0;
+    // depth=0 means unlimited. If missing, we default to 2 levels.
+    const maxDepth = (config.maxDepth !== undefined) ? config.maxDepth : 2;
     const currentDepth = link.depth || 0;
 
-    const startUrlObj = new URL(config.startUrl);
-    const currentUrlObj = new URL(link.url);
-    const startHost = startUrlObj.hostname.toLowerCase().replace(/^www\./, '');
-    const currentHost = currentUrlObj.hostname.toLowerCase().replace(/^www\./, '');
-    
-    // 1. Determine if Internal
-    const isExactHost = currentHost === startHost;
-    const isSubdomain = currentHost.endsWith('.' + startHost);
-    const isInternal = isExactHost || isSubdomain;
+    // 2. Traversal Rules (Check but don't traverse if skipReason is set)
+    let shouldTraverse = response.ok && !skipReason && contentType.includes('text/html') && (maxDepth === 0 || currentDepth < maxDepth);
 
-    // 2. Traversal Rules (Check but don't traverse)
-    let shouldTraverse = response.ok && contentType.includes('text/html') && (maxDepth === 0 || currentDepth < maxDepth);
+    if (status === 'SKIPPED') {
+        console.log(`[Skip] ${link.url} (Depth: ${currentDepth}) - Reason: ${skipReason}`);
+    }
 
     if (shouldTraverse) {
-        // Rule: If skipExternal is enabled, do not traverse external links
-        if (!isInternal && config.skipExternal !== false) { // Default to true if we want to be safe, but UI defaults to false. Let's use config.skipExternal explicitly.
-            if (config.skipExternal) shouldTraverse = false;
-        }
-
-        // Rule: If excludeSubdomains is enabled, do not traverse subdomains
-        if (isSubdomain && !isExactHost && config.excludeSubdomains) {
-            shouldTraverse = false;
-        }
-
-        // Rule: If doNotTraverseBackward is enabled, check path
-        if (config.doNotTraverseBackward) {
-            const normalize = (u: string) => u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
-            const normalizedStart = normalize(config.startUrl);
-            const normalizedCurrent = normalize(link.url);
-
-            if (!normalizedCurrent.startsWith(normalizedStart)) {
-                shouldTraverse = false;
-            } else {
-                const remaining = normalizedCurrent.slice(normalizedStart.length);
-                if (remaining.length > 0 && !remaining.startsWith('/')) {
-                    shouldTraverse = false;
-                }
-            }
-        }
-
         // Rule: Regex/Wildcard Exclusions
         if (shouldExclude(link.url, config).excluded) {
             shouldTraverse = false;
@@ -304,7 +327,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
               type: null
           };
 
-          const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN');
+          const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN' || o.status === 'SKIPPED');
           if (definitive) {
               if (definitive.status === 'SUCCESS' && !isTargeted) {
                   continue; 
@@ -335,7 +358,11 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       status: 'BROKEN',
       error: errorMsg,
       checkedAt: new Date()
-    }).where(and(eq(links.scanId, scan.id), eq(links.url, link.url), eq(links.status, 'PENDING')));
+    }).where(and(
+      eq(links.scanId, scan.id), 
+      eq(links.url, link.url), 
+      or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+    ));
     return [];
   } finally {
     activeCrawls.delete(crawlKey);
@@ -353,15 +380,20 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
         return cleaned;
     };
 
-    try {
-        const startUrlObj = new URL(config.startUrl);
-        const currentUrlObj = new URL(urlStr);
-        
-        const startHost = startUrlObj.hostname.toLowerCase().replace(/^www\./, '');
-        const currentHost = currentUrlObj.hostname.toLowerCase().replace(/^www\./, '');
+    // 1. Legacy excludeRegex (Single string)
+    if (config.excludeRegex) {
+        const cleanRule = sanitizePattern(config.excludeRegex);
+        if (cleanRule) {
+            try {
+                const re = new RegExp(cleanRule);
+                if (re.test(urlStr) || re.test(normalizedUrl)) {
+                    return { excluded: true, reason: `Legacy Regex Rule: ${cleanRule}` };
+                }
+            } catch (e) {}
+        }
+    }
 
-    } catch (e) {}
-
+    // 2. Modern regexRules (Array of strings)
     if (config.regexRules && Array.isArray(config.regexRules)) {
         for (const rule of config.regexRules) {
             const cleanRule = sanitizePattern(rule);
@@ -369,12 +401,13 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
             try {
                 const re = new RegExp(cleanRule);
                 if (re.test(urlStr) || re.test(normalizedUrl)) {
-                    return { excluded: true, reason: `Regex: ${cleanRule}` };
+                    return { excluded: true, reason: `Regex Rule: ${cleanRule}` };
                 }
             } catch (e) {}
         }
     }
 
+    // 3. Wildcard Exclusions
     if (config.wildcardExclusions && Array.isArray(config.wildcardExclusions)) {
         for (const pattern of config.wildcardExclusions) {
             const cleanPattern = sanitizePattern(pattern);
@@ -387,7 +420,7 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
                 
                 const re = new RegExp(regexStr); // Removed strict anchors for better wildcard flexibility
                 if (re.test(urlStr) || re.test(normalizedUrl)) {
-                    return { excluded: true, reason: `Wildcard: ${cleanPattern}` };
+                    return { excluded: true, reason: `Wildcard Rule: ${cleanPattern}` };
                 }
             } catch (res: any) {}
         }
@@ -400,6 +433,8 @@ function getSkipReason(urlStr: string, config: any): string | null {
     try {
         const startUrlObj = new URL(config.startUrl);
         const currentUrlObj = new URL(urlStr);
+        
+        // Normalize hostnames (remove www. and lowercase)
         const startHost = startUrlObj.hostname.toLowerCase().replace(/^www\./, '');
         const currentHost = currentUrlObj.hostname.toLowerCase().replace(/^www\./, '');
         
@@ -408,38 +443,41 @@ function getSkipReason(urlStr: string, config: any): string | null {
         const isInternal = isExactHost || isSubdomain;
 
         // 1. External
-        if (!isInternal && config.skipExternal) {
-            return "External link (skipExternal enabled)";
-        }
+        // REMOVED: Now handled in processLink to allow "Verify but not crawl"
+        // if (!isInternal && config.skipExternal) {
+        //     return `External link (Target: ${currentHost} vs Start: ${startHost})`;
+        // }
 
         // 2. Subdomain
-        if (isSubdomain && !isExactHost && config.excludeSubdomains) {
-            return "Subdomain (excludeSubdomains enabled)";
-        }
+        // REMOVED: Now handled in processLink to allow "Verify but not crawl"
+        // if (isSubdomain && !isExactHost && config.excludeSubdomains) {
+        //     return `Subdomain excluded: ${currentHost}`;
+        // }
 
         // 3. Backward
-        if (config.doNotTraverseBackward) {
-            const normalize = (u: string) => u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
-            const normalizedStart = normalize(config.startUrl);
-            const normalizedCurrent = normalize(urlStr);
+        // REMOVED: Now handled in processLink for consistency
+        // if (config.doNotTraverseBackward) {
+        //     const normalize = (u: string) => u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+        //     const normalizedStart = normalize(config.startUrl);
+        //     const normalizedCurrent = normalize(urlStr);
 
-            if (!normalizedCurrent.startsWith(normalizedStart)) {
-                return "Stay in Subpath (traversing backward)";
-            } else {
-                const remaining = normalizedCurrent.slice(normalizedStart.length);
-                if (remaining.length > 0 && !remaining.startsWith('/')) {
-                    return "Stay in Subpath (not a sub-folder)";
-                }
-            }
-        }
+        //     if (!normalizedCurrent.startsWith(normalizedStart)) {
+        //         return `Stay in Subpath: ${normalizedCurrent} does not start with ${normalizedStart}`;
+        //     } else {
+        //         const remaining = normalizedCurrent.slice(normalizedStart.length);
+        //         if (remaining.length > 0 && !remaining.startsWith('/')) {
+        //             return "Stay in Subpath: Not a sub-folder";
+        //         }
+        //     }
+        // }
 
         // 4. Regex/Wildcard
         const exclusion = shouldExclude(urlStr, config);
         if (exclusion.excluded) {
             return exclusion.reason || "Matches exclusion rule";
         }
-    } catch (e) {
-        return "Invalid URL format";
+    } catch (e: any) {
+        return `Invalid URL format: ${e.message}`;
     }
 
     return null;

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { ShieldAlert } from 'lucide-react';
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,7 +14,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isFirstUser, setIsFirstUser] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    // Check URL search params
+    if (typeof window !== 'undefined' && window.location.search.includes('register=true')) {
+      setIsLogin(false);
+    }
+
+    // Check if this is the first user
+    fetch('/api/auth/register', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkOnly: true }) 
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.exists === false) {
+          setIsFirstUser(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +70,14 @@ export default function LoginPage() {
           <CardDescription>
             {isLogin ? 'Enter your credentials to access the dashboard' : 'Sign up to start checking links'}
           </CardDescription>
+          {!isLogin && isFirstUser && (
+            <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5 text-emerald-500" />
+              <div className="text-sm text-emerald-400">
+                <span className="font-bold">System Uninitialized:</span> You'll be granted admin access upon registration.
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

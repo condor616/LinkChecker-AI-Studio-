@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Pause, Play, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2 } from 'lucide-react';
+import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initialStatus: string }) {
   const searchParams = useSearchParams();
@@ -25,6 +25,9 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [isSearching, setIsSearching] = useState(false);
   const [viewMode, setViewMode] = useState<'url' | 'source'>('url');
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const router = useRouter();
   const pageSize = 30;
 
   const fetchData = async (searchOverride?: string) => {
@@ -92,6 +95,21 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     });
     setStatus(newStatus);
     fetchData();
+  };
+
+  const handleStop = async () => {
+    setIsStopping(true);
+    try {
+      const res = await fetch(`/api/scans/${scanId}`, { method: 'DELETE' });
+      if (res.ok) {
+        window.location.href = '/scans/history';
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsStopping(false);
+      setShowStopConfirm(false);
+    }
   };
 
   const handleRecheck = async (linkId: string) => {
@@ -215,11 +233,24 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     }
 
     if (isTargeted) {
-      return targetUrls.some((t: string) => {
+      // If the link itself is a target, show it
+      const isTarget = targetUrls.some((t: string) => {
         const cleanT = t.trim().replace(/\/$/, '');
         const cleanL = l.url.replace(/\/$/, '');
         return cleanL === cleanT || cleanL.includes(cleanT);
       });
+      if (isTarget) return true;
+
+      // If the link is BROKEN and found on a target page, show it (important for reporting broken external links)
+      if (l.status === 'BROKEN' && l.parentUrl) {
+        return targetUrls.some((t: string) => {
+          const cleanT = t.trim().replace(/\/$/, '');
+          const cleanP = l.parentUrl.replace(/\/$/, '');
+          return cleanP === cleanT || cleanP.includes(cleanT);
+        });
+      }
+
+      return false;
     }
     
     const parent = l.parentUrl;
@@ -279,17 +310,27 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="flex items-center gap-4">
           {status !== 'COMPLETED' && (
-            <Button 
-              onClick={toggleStatus} 
-              variant={status === 'RUNNING' ? 'secondary' : 'default'}
-              className="w-32 shadow-lg"
-            >
-              {status === 'RUNNING' ? (
-                <><Pause className="mr-2 h-4 w-4" /> Pause</>
-              ) : (
-                <><Play className="mr-2 h-4 w-4" /> Resume</>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button 
+                onClick={toggleStatus} 
+                variant={status === 'RUNNING' ? 'secondary' : 'default'}
+                className="w-32 shadow-lg rounded-xl h-10 font-bold"
+              >
+                {status === 'RUNNING' ? (
+                  <><Pause className="mr-2 h-4 w-4" /> Pause</>
+                ) : (
+                  <><Play className="mr-2 h-4 w-4" /> Resume</>
+                )}
+              </Button>
+              <Button 
+                onClick={() => setShowStopConfirm(true)} 
+                variant="outline"
+                className="h-10 px-3 text-red-500 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/50 rounded-xl group transition-all"
+                title="Stop and Delete Scan"
+              >
+                <Square className="h-4 w-4 fill-red-500/20 group-hover:fill-red-500 transition-all" />
+              </Button>
+            </div>
           )}
           <div className="text-sm font-medium">
             <span className={status === 'RUNNING' ? 'text-green-500 animate-pulse' : status === 'COMPLETED' ? 'text-green-500' : 'text-yellow-500'}>
@@ -625,6 +666,61 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                 </p>
             </div>
         )}
+
+        {/* Stop Confirmation Modal */}
+        <AnimatePresence>
+          {showStopConfirm && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="bg-[#1a1a1e] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full p-8 space-y-6 relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500" />
+                
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500 shrink-0">
+                    <AlertTriangle className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Stop and Remove Scan?</h3>
+                    <p className="text-sm text-slate-400 mt-1 font-medium">This action cannot be undone.</p>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                  <p className="text-sm leading-relaxed text-slate-300">
+                    Stopping this scan will <span className="text-red-400 font-bold underline decoration-red-400/30 underline-offset-4">immediately terminate</span> all active processing and <span className="text-white font-bold">permanently remove</span> all discovered links from the database.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setShowStopConfirm(false)} 
+                    disabled={isStopping}
+                    className="hover:bg-white/5 rounded-xl font-bold"
+                  >
+                    Keep Scanning
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={handleStop} 
+                    disabled={isStopping}
+                    className="bg-red-600 hover:bg-red-700 shadow-lg shadow-red-900/20 px-6 rounded-xl font-black uppercase tracking-widest text-xs h-11"
+                  >
+                    {isStopping ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Stopping...</>
+                    ) : (
+                      'Stop and Delete'
+                    )}
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>

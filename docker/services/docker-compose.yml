@@ -38,7 +38,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - DATABASE_URL=postgres://lynx_scan:localpass@db:5432/lynx_scan
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
     depends_on:

@@ -11,6 +11,7 @@
     "stop-docker": "npx tsx scripts/stop-docker.ts",
     "lint": "eslint .",
     "clean": "next clean",
+    "nuke": "npx tsx scripts/nuke.ts",
     "reset-all": "npx tsx scripts/reset-all.ts && npx drizzle-kit push --force",
     "test:setup": "npx tsx scripts/setup-test-db.ts",
     "test:teardown": "npx tsx scripts/teardown-test-db.ts",

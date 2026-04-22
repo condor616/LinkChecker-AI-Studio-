@@ -108,24 +108,42 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
         </motion.div>
 
         {showConfirm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                <div className="bg-card border rounded-xl shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in fade-in zoom-in duration-200">
-                    <div className="flex items-center gap-3 text-red-600">
-                         <div className="p-2 bg-red-100 rounded-full">
-                            <AlertTriangle className="h-5 w-5" />
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="bg-[#1a1a1e] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full p-8 space-y-6 relative overflow-hidden"
+                >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500" />
+                    
+                    <div className="flex items-center gap-4 text-red-500">
+                         <div className="h-12 w-12 rounded-2xl bg-red-500/10 flex items-center justify-center shrink-0">
+                            <AlertTriangle className="h-6 w-6" />
                         </div>
-                        <h3 className="text-lg font-bold">Delete Scan?</h3>
+                        <div>
+                            <h3 className="text-xl font-bold text-white">Delete Scan?</h3>
+                            <p className="text-sm text-slate-400 mt-1 font-medium">This action cannot be undone.</p>
+                        </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                        Are you sure you want to delete <span className="font-bold text-foreground">"{scan.name}"</span>? All link results will be permanently removed.
-                    </p>
+
+                    <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                        <p className="text-sm leading-relaxed text-slate-300">
+                            Are you sure you want to delete <span className="font-bold text-white">"{scan.name}"</span>? All results and discovered links will be <span className="text-red-400 font-bold">permanently removed</span> from the database.
+                        </p>
+                    </div>
+
                     <div className="flex items-center justify-end gap-3 pt-2">
-                        <Button variant="outline" size="sm" onClick={() => setShowConfirm(false)} disabled={isDeleting}>Cancel</Button>
-                        <Button variant="destructive" size="sm" onClick={confirmDelete} disabled={isDeleting}>
-                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'Delete Scan'}
+                        <Button variant="ghost" onClick={() => setShowConfirm(false)} disabled={isDeleting} className="hover:bg-white/5 rounded-xl font-bold">Cancel</Button>
+                        <Button 
+                            variant="destructive" 
+                            onClick={confirmDelete} 
+                            disabled={isDeleting}
+                            className="bg-red-600 hover:bg-red-700 shadow-lg shadow-red-900/20 px-6 rounded-xl font-black uppercase tracking-widest text-xs h-11"
+                        >
+                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'Delete Permanently'}
                         </Button>
                     </div>
-                </div>
+                </motion.div>
             </div>
         )}
         </>
