@@ -35,7 +35,13 @@
    npm install
    ```
 
-3. **Launch the application**:
+3. **Set up environment variables**:
+   Copy the example environment file and configure it:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Launch the application**:
    ```bash
    npm run dev
    ```
