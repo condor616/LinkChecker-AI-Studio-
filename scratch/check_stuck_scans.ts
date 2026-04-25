@@ -13,7 +13,7 @@ async function checkScans() {
     console.log(` - Scans found: ${userScans.length}`);
 
     for (const scan of userScans) {
-      if (scan.status === 'RUNNING') {
+      if (scan.status === 'RUNNING' || scan.status === 'PAUSED') {
         const activeLinks = await userDb.select()
           .from(links)
           .where(and(
@@ -21,7 +21,7 @@ async function checkScans() {
             or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
           ));
 
-        console.log(`   [RUNNING] Scan ID: ${scan.id} (${scan.name})`);
+        console.log(`   [${scan.status}] Scan ID: ${scan.id} (${scan.name})`);
         console.log(`   Active Links Count: ${activeLinks.length}`);
         
         if (activeLinks.length > 0) {
@@ -29,8 +29,13 @@ async function checkScans() {
           activeLinks.slice(0, 5).forEach(l => {
             console.log(`    - [${l.status}] ${l.url}`);
           });
+
+          // Cleanup: Mark as COMPLETED if we think it should be done.
+          console.log(`   FIXING: Marking scan as COMPLETED...`);
+          await userDb.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scan.id));
         } else {
-          console.log(`   NO ACTIVE LINKS FOUND! This scan is stuck in RUNNING status.`);
+          console.log(`   NO ACTIVE LINKS FOUND! Marking as COMPLETED.`);
+          await userDb.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scan.id));
         }
       } else {
         console.log(`   [${scan.status}] Scan ID: ${scan.id} (${scan.name})`);

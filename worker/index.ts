@@ -38,19 +38,27 @@ const worker = new Worker<ScanJobData>(
 
     const userDb = getDb(userId);
     
-    let link = linkId 
-        ? await userDb.select().from(links).where(eq(links.id, linkId)).then(res => res[0])
-        : await userDb.select().from(links).where(and(eq(links.scanId, scanId), eq(links.url, url))).then(res => res[0]);
+    const linkResult = linkId 
+        ? await userDb.select().from(links).where(eq(links.id, linkId)).limit(1)
+        : await userDb.select().from(links).where(and(eq(links.scanId, scanId), eq(links.url, url))).limit(1);
+
+    const link = linkResult[0];
 
     if (!link) {
       console.warn(`Link not found for URL ${url} in scan ${scanId}`);
       return;
     }
 
+    if (link.status !== 'PENDING') {
+      console.log(`Link ${link.url} is already ${link.status}. Skipping job ${job.id}.`);
+      return;
+    }
+
     // Mark as PROCESSING to prevent race conditions during completion check
     await userDb.update(links).set({ status: 'PROCESSING' }).where(eq(links.id, link.id));
 
-    const scan = await userDb.select().from(scans).where(eq(scans.id, scanId)).then(res => res[0]);
+    const scanResult = await userDb.select().from(scans).where(eq(scans.id, scanId)).limit(1);
+    const scan = scanResult[0];
     if (!scan || scan.status !== 'RUNNING') {
       console.log(`Scan ${scanId} is not running. Skipping job.`);
       return;
@@ -89,6 +97,29 @@ const worker = new Worker<ScanJobData>(
     if (activeLinksCount.length === 0) {
       console.log(`Scan ${scanId} completed (No PENDING or PROCESSING links left).`);
       await userDb.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scanId));
+    } else {
+      // Fallback: If the DB thinks there are active links but the BullMQ queue is empty, 
+      // it means those links are orphans (missed enqueuing due to race conditions or crashes).
+      const counts = await scanQueue.getJobCounts('waiting', 'active');
+      
+      // If no one is waiting and we are the only active one (or no one is active), we are done or stuck.
+      if (counts.waiting === 0 && counts.active <= 1) {
+        const orphans = await userDb.select().from(links).where(and(eq(links.scanId, scanId), eq(links.status, 'PENDING')));
+        
+        if (orphans.length > 0) {
+          console.log(`Scan ${scanId} has ${orphans.length} orphaned PENDING links. Re-enqueuing...`);
+          const scanConfig = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
+          const jobs = orphans.map(l => ({
+            name: `scan-link-${l.id}`,
+            data: { userId, scanId, url: l.url, depth: l.depth, config: scanConfig, linkId: l.id },
+            opts: { jobId: `scan-link-${l.id}` }
+          }));
+          await scanQueue.addBulk(jobs);
+        } else {
+          console.log(`Scan ${scanId} has stuck PROCESSING links but queue is empty. Marking as COMPLETED.`);
+          await userDb.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scanId));
+        }
+      }
     }
   },
   {

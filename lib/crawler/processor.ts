@@ -1,6 +1,6 @@
 import { getDb, db as centralDb } from '../db';
 import { scans, links, users } from '../db/schema';
-import { eq, and, or, inArray } from 'drizzle-orm';
+import { eq, and, or, inArray, sql } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 
@@ -257,28 +257,31 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       const allUrls = Array.from(foundLinks.keys());
       if (allUrls.length === 0) return [];
 
-      const existingLinks = await userDb.select({ 
-        id: links.id,
-        url: links.url, 
-        parentUrl: links.parentUrl,
-        status: links.status,
-        statusCode: links.statusCode,
-        error: links.error,
-        type: links.type
-      })
-        .from(links)
-        .where(and(eq(links.scanId, scan.id), inArray(links.url, allUrls)));
-      
-      const linksByUrl = new Map<string, any[]>();
-      existingLinks.forEach((l: any) => {
-          if (!linksByUrl.has(l.url)) linksByUrl.set(l.url, []);
-          linksByUrl.get(l.url)!.push(l);
-      });
+
       
       const targetUrls = (config.targetUrls || []).map((t: string) => t.trim().replace(/\/$/, ''));
       const newLinksToAdd: any[] = [];
 
       await userDb.transaction(async (tx: any) => {
+        // Fetch latest statuses inside the transaction to avoid race conditions with other concurrent jobs
+        const latestOccurrences = await tx.select({ 
+            id: links.id, 
+            url: links.url, 
+            parentUrl: links.parentUrl,
+            status: links.status, 
+            statusCode: links.statusCode, 
+            error: links.error, 
+            type: links.type 
+        })
+        .from(links)
+        .where(and(eq(links.scanId, scan.id), inArray(links.url, allUrls)));
+
+        const latestByUrl = new Map<string, any[]>();
+        latestOccurrences.forEach((l: any) => {
+            if (!latestByUrl.has(l.url)) latestByUrl.set(l.url, []);
+            latestByUrl.get(l.url)!.push(l);
+        });
+
         for (const [urlStr, info] of foundLinks) {
           const skipReason = getSkipReason(urlStr, config);
           if (skipReason) {
@@ -303,7 +306,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
           }
 
           if (isTargeted && !targetUrls.includes(urlStr)) continue;
-          const occurrences = linksByUrl.get(urlStr) || [];
+          const occurrences = latestByUrl.get(urlStr) || [];
 
           if (isTargeted) {
               if (occurrences.some(o => o.parentUrl === link.url)) continue;
@@ -340,8 +343,39 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
           }
 
           await tx.insert(links).values(finalLink);
+          
+          // NEW: Immediate Status Inheritance
+          // If another task already finished this URL during this transaction's window, pull its status now.
+          // This prevents the race condition where we insert as PENDING just as another worker finishes.
+          await tx.execute(sql`
+            UPDATE links l1
+            SET status = l2.status, 
+                status_code = l2.status_code, 
+                error = l2.error, 
+                type = l2.type, 
+                checked_at = l2.checked_at
+            FROM links l2
+            WHERE l1.id = ${finalLink.id}
+              AND l2.scan_id = ${scan.id}
+              AND l2.url = ${urlStr}
+              AND l2.status IN ('SUCCESS', 'BROKEN', 'SKIPPED')
+              AND l1.status = 'PENDING'
+          `);
+
+          // Re-fetch status to ensure enqueuing logic is accurate
+          const updatedLinkResults = await tx.select({ status: links.status })
+            .from(links)
+            .where(eq(links.id, finalLink.id))
+            .limit(1);
+
+          const updatedLink = updatedLinkResults[0];
+
+          if (updatedLink) finalLink.status = updatedLink.status;
+          
+          // Only enqueue if this is the very first time we've seen this URL in a PENDING state for this scan
           if (finalLink.status === 'PENDING') {
-              if (occurrences.length === 0) {
+              const isAlreadyQueued = occurrences.some(o => o.status === 'PENDING' || o.status === 'PROCESSING');
+              if (!isAlreadyQueued) {
                   newLinksToAdd.push(finalLink);
               }
           }
