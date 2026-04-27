@@ -5,7 +5,7 @@
   "scripts": {
     "predev": "npx tsx scripts/cleanup-processes.ts && npx tsx scripts/start-docker.ts",
     "dev": "next dev",
-    "build": "next build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && cp -r docker .next/standalone/docker",
+    "build": "next build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && cp -r docker .next/standalone/docker && cp -r drizzle .next/standalone/drizzle",
     "prestart": "npx tsx scripts/cleanup-processes.ts && npx tsx scripts/start-docker.ts",
     "start": "node .next/standalone/server.js",
     "stop-docker": "npx tsx scripts/stop-docker.ts",
@@ -20,7 +20,8 @@
     "test:watch": "vitest",
     "test:e2e": "npm run test:setup && (npx playwright test; npm run test:teardown)",
     "test:ui": "vitest --ui",
-    "worker": "tsx worker/index.ts"
+    "worker": "tsx worker/index.ts",
+    "build:worker": "tsc -p worker/tsconfig.json"
   },
   "dependencies": {
     "@bull-board/api": "^6.20.6",
@@ -52,7 +53,8 @@
     "react-dom": "^19.2.1",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.3.6",
-    "zustand": "^5.0.12"
+    "zustand": "^5.0.12",
+    "dotenv": "^17.4.0"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.12",
@@ -68,7 +70,6 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/ui": "^4.1.2",
-    "dotenv": "^17.4.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "9.39.1",
     "eslint-config-next": "16.0.8",

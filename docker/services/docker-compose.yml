@@ -1,3 +1,5 @@
+name: lynxscan-dev
+
 services:
   # Persistent Postgres Database
   db:

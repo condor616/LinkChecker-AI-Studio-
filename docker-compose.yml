@@ -1,0 +1,93 @@
+name: lynxscan-app
+
+services:
+  # Main Next.js Application
+  app:
+    image: ${DOCKER_IMAGE_APP:-lynxscan}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-at-least-32-chars-long}
+      - NEXTAUTH_URL=http://localhost:3001
+      - NODE_ENV=production
+      - RUN_MIGRATIONS=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  # Background Worker
+  worker:
+    image: ${DOCKER_IMAGE_WORKER:-lynxscan-worker}
+    build:
+      context: .
+      dockerfile: docker/services/worker.Dockerfile
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+      - BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY:-10}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  # Persistent Postgres Database
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lynx_scan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localpass}
+      POSTGRES_DB: ${POSTGRES_DB:-lynx_scan}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lynx_scan} -d ${POSTGRES_DB:-lynx_scan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for BullMQ
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin for Database Management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    ports:
+      - "5051:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@lynxscan.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/services/pgadmin-servers.json:/pgadmin4/servers.json
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:

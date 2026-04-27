@@ -11,3 +11,4 @@ tests/mock-site/
 playwright-report/
 test-results/
 
+dist/

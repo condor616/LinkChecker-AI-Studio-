@@ -10,6 +10,17 @@ export async function POST(req: Request) {
   try {
     const { email, password, checkOnly } = await req.json();
 
+    // If migrations are supposed to run, wait for them to finish
+    if (process.env.RUN_MIGRATIONS === 'true') {
+        const { isDbReady } = await import('@/lib/db/migrate');
+        let attempts = 0;
+        while (!isDbReady() && attempts < 10) {
+            console.log('⏳ Waiting for migrations to complete before serving request...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+    }
+
     // Check if any users exist
     const allUsers = await db.select().from(users);
     const isFirstUser = allUsers.length === 0;

@@ -8,6 +8,13 @@
       "when": 1775144542768,
       "tag": "0000_sweet_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777109337959,
+      "tag": "0001_curious_next_avengers",
+      "breakpoints": true
     }
   ]
 }

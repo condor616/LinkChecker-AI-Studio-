@@ -8,6 +8,17 @@ import { cookies } from 'next/headers';
 export async function POST(req: Request) {
   try {
     const { email, password } = await req.json();
+
+    // If migrations are supposed to run, wait for them to finish
+    if (process.env.RUN_MIGRATIONS === 'true') {
+        const { isDbReady } = await import('@/lib/db/migrate');
+        let attempts = 0;
+        while (!isDbReady() && attempts < 10) {
+            console.log('⏳ Waiting for migrations to complete before serving request...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+    }
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
     }
