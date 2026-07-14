@@ -1,10 +1,8 @@
 import { beforeAll, afterAll } from 'vitest';
 import { closeAllPools } from '@/lib/db';
-import * as dotenv from 'dotenv';
-import path from 'path';
+import { loadTestEnv } from '@/scripts/test-env';
 
-// Load .env.test
-dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
+loadTestEnv();
 
 beforeAll(async () => {
   // Any global setup before tests run

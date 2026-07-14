@@ -1,12 +1,14 @@
 import { execSync } from 'child_process';
 import { Client } from 'pg';
-import * as dotenv from 'dotenv';
-import path from 'path';
+import { getTestDatabaseUrl, loadTestEnv } from '@/scripts/test-env';
 
 export async function setup() {
-  dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
+  const { hasEnvTest } = loadTestEnv();
+  if (!hasEnvTest) {
+    console.warn('⚠️ .env.test not found; using .env credentials with an auto-suffixed _test database.');
+  }
 
-  const dbUrl = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan_test';
+  const dbUrl = getTestDatabaseUrl();
   const url = new URL(dbUrl);
   const dbName = url.pathname.slice(1);
   url.pathname = '/postgres';

@@ -1,11 +1,10 @@
-import { getDb } from '@/lib/db';
 import { users, scans, links, templates } from '@/lib/db/schema';
-import dotenv from 'dotenv';
-import path from 'path';
+import { loadTestEnv } from './test-env';
 
-dotenv.config({ path: path.join(process.cwd(), '.env.test') });
+loadTestEnv();
 
 async function main() {
+    const { getDb } = await import('@/lib/db');
     const db = getDb(); // Use base DB connection from DATABASE_URL
 
     console.log('Wiping test database tables...');

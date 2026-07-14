@@ -1,10 +1,12 @@
 import { Client } from 'pg';
-import * as dotenv from 'dotenv';
-import path from 'path';
+import { getTestDatabaseUrl, loadTestEnv } from './test-env';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
+const { hasEnvTest } = loadTestEnv();
+if (!hasEnvTest) {
+  console.warn('⚠️ .env.test not found; using .env credentials with an auto-suffixed _test database.');
+}
 
-const dbUrl = process.env.DATABASE_URL || 'postgres://lynx_scan:localpass@localhost:5432/lynx_scan_test';
+const dbUrl = getTestDatabaseUrl();
 const url = new URL(dbUrl);
 url.pathname = '/postgres'; // Connect to default postgres DB to drop the test databases
 
