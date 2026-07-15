@@ -7,11 +7,14 @@ try {
   console.log('🔍 Verifying Docker connection...');
   execSync('docker info', { stdio: 'ignore' });
   
-  console.log('🛑 Stopping backend services (PostgreSQL, Redis)...');
-  // Stop and remove containers/networks
-  // Using 'docker compose' (V2) instead of 'docker-compose' (V1)
-  execSync('docker compose --env-file .env -f docker/services/docker-compose.yml down', { stdio: 'inherit' });
-  console.log('✅ Backend services stopped successfully.');
+  console.log('🛑 Stopping all project containers (Dev & Prod)...');
+  try {
+    execSync('docker compose down', { stdio: 'inherit' });
+  } catch (e) {}
+  try {
+    execSync('docker compose --env-file .env -f docker/services/docker-compose.yml down', { stdio: 'inherit' });
+  } catch (e) {}
+  console.log('✅ All backend services stopped successfully.');
 } catch (error) {
   console.error('\n' + '='.repeat(64));
   console.error('❌ ERROR: Could not connect to Docker or failed to stop services.');

@@ -108,6 +108,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     let status = response.ok ? 'SUCCESS' : 'BROKEN';
     const statusCode = response.status;
 
+
     // Evaluate Traversal Rules before finalizing status
     const startUrlObj = new URL(config.startUrl);
     const currentUrlObj = new URL(link.url);
@@ -141,10 +142,23 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     }
 
     if (skipReason) {
-        // We record the reason but don't overwrite SUCCESS/BROKEN status from the fetch.
-        // This ensures external links show up in the correct list (Successful/Broken)
-        // while still allowing us to skip their traversal.
-        console.log(`[Info] ${link.url} identified for crawl skip: ${skipReason}`);
+        // Verified links should retain their real HTTP outcome (SUCCESS/BROKEN).
+        // skipReason here only controls traversal, not triage status.
+        console.log(`[Info] ${link.url} traversal disabled after verification: ${skipReason}`);
+    }
+
+    let errorDetail = skipReason;
+    if (!response.ok) {
+        try {
+            if (contentType.includes('text') || contentType.includes('json') || contentType.includes('xml')) {
+                const text = await response.text();
+                errorDetail = `[Response] ${text.slice(0, 500)}`;
+            } else {
+                errorDetail = `[Status] ${response.statusText || 'Error'}`;
+            }
+        } catch (e) {
+            errorDetail = `[Status] ${response.statusText || 'Error'}`;
+        }
     }
 
     // Bulk update all pending instances of this URL in this scan
@@ -153,21 +167,11 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       statusCode,
       type: contentType,
       checkedAt: new Date(),
-      error: skipReason
+      error: errorDetail
     };
     
     if (status === 'SUCCESS' && !isTargeted) {
         updateData.parentUrl = null; // Performance optimization for successful links
-    }
-
-    // If it's a skipped link and we don't want to save them, delete instead of update
-    if (status === 'SKIPPED' && !config.saveSkippedLinks) {
-        await userDb.delete(links).where(and(
-            eq(links.scanId, scan.id),
-            eq(links.url, link.url),
-            or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
-        ));
-        return [];
     }
 
     await userDb.update(links).set(updateData)
@@ -205,16 +209,19 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     // 2. Traversal Rules (Check but don't traverse if skipReason is set)
     let shouldTraverse = response.ok && !skipReason && contentType.includes('text/html') && (maxDepth === 0 || currentDepth < maxDepth);
 
-    if (status === 'SKIPPED') {
-        console.log(`[Skip] ${link.url} (Depth: ${currentDepth}) - Reason: ${skipReason}`);
-    }
-
+        let traversalSkipReason: string | null = skipReason;
     if (shouldTraverse) {
         // Rule: Regex/Wildcard Exclusions
-        if (shouldExclude(link.url, config).excluded) {
+            const exclusion = shouldExclude(link.url, config);
+            if (exclusion.excluded) {
             shouldTraverse = false;
+                traversalSkipReason = exclusion.reason || 'Excluded by rule';
         }
     }
+
+        if (!shouldTraverse && traversalSkipReason) {
+            console.log(`[Skip Traversal] ${link.url} (Depth: ${currentDepth}) - Reason: ${traversalSkipReason}`);
+        }
 
     if (shouldTraverse) {
       const html = await response.text();
@@ -387,7 +394,10 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     return [];
 
   } catch (error: any) {
-    const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
+    let errorMsg = error.name === 'AbortError' ? 'Timeout (15s limit)' : error.message;
+    if (error.code) {
+        errorMsg = `[${error.code}] ${errorMsg}`;
+    }
     await userDb.update(links).set({
       status: 'BROKEN',
       error: errorMsg,

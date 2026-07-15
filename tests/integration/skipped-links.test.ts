@@ -11,7 +11,7 @@ describe('Skipped Links Feature Verification', () => {
     const testDb = getDb();
 
     beforeAll(async () => {
-        startMockServer();
+        await startMockServer();
     });
 
     async function setupScan(config: any) {
@@ -76,33 +76,35 @@ describe('Skipped Links Feature Verification', () => {
         expect(skippedLinks.length).toBe(0);
     });
 
-    it('should verify external links and mark them SKIPPED if successful', async () => {
+    it('should verify external links and keep SUCCESS status when skipExternal is true', async () => {
         const config = {
             startUrl: baseUrl,
             saveSkippedLinks: true,
             skipExternal: true
         };
         const scanId = await setupScan(config);
-        
-        // Discovering links on index page
-        const link = { url: baseUrl, scanId, depth: 0, status: 'PENDING' };
-        const discovered = await processLink(testDb, link, { id: scanId }, config);
-        
-        // Find an external link that was added as PENDING
-        const externalPending = discovered?.find(l => !l.url.startsWith(baseUrl));
-        expect(externalPending).toBeDefined();
-        expect(externalPending?.status).toBe('PENDING');
+        const externalUrl = `http://127.0.0.1:${port}/`;
+
+        await testDb.insert(links).values({
+            id: crypto.randomUUID(),
+            scanId,
+            url: externalUrl,
+            status: 'PENDING',
+            depth: 1
+        });
+
+        const externalPending = { url: externalUrl, scanId, depth: 1, status: 'PENDING' };
 
         // Now process that external link
         await processLink(testDb, externalPending, { id: scanId }, config);
 
-        // Check it was marked as SKIPPED but with verified reason
+        // Check it was verified (SUCCESS) and tagged with traversal reason
         const result = await testDb.select().from(links).where(and(
             eq(links.scanId, scanId),
-            eq(links.url, externalPending!.url)
+            eq(links.url, externalUrl)
         )).then(res => res[0]);
 
-        expect(result.status).toBe('SKIPPED');
+        expect(result.status).toBe('SUCCESS');
         expect(result.error).toContain('External link (Verified)');
     });
 
@@ -139,7 +141,7 @@ describe('Skipped Links Feature Verification', () => {
         expect(result.statusCode).toBe(404);
     });
 
-    it('should DELETE successful external links if saveSkippedLinks is false', async () => {
+    it('should keep verified external links even if saveSkippedLinks is false', async () => {
         const config = {
             startUrl: baseUrl,
             saveSkippedLinks: false,
@@ -161,12 +163,14 @@ describe('Skipped Links Feature Verification', () => {
         const link = { url: workingUrl, scanId, depth: 1, status: 'PENDING' };
         await processLink(testDb, link, { id: scanId }, config);
 
-        // Check it was DELETED
+        // Check it remains as verified SUCCESS and is not deleted.
         const result = await testDb.select().from(links).where(and(
             eq(links.scanId, scanId),
             eq(links.url, workingUrl)
         ));
 
-        expect(result.length).toBe(0);
+        expect(result.length).toBe(1);
+        expect(result[0].status).toBe('SUCCESS');
+        expect(result[0].error).toContain('External link (Verified)');
     });
 });

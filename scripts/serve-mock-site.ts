@@ -5,9 +5,44 @@ import { basicAuth } from 'hono/basic-auth';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
+import { execSync } from 'child_process';
 
 const app = new Hono();
-const MOCK_SITE_ROOT = path.join(process.cwd(), 'tests/mock-site');
+const MOCK_SITE_ROOT = path.resolve(__dirname, '..', 'tests', 'mock-site');
+const START_LOCK_FILE = path.resolve(__dirname, '..', '.mock-site-server.lock');
+
+function ensureMockSiteExists() {
+    if (fs.existsSync(MOCK_SITE_ROOT)) {
+        return;
+    }
+    console.log(`Mock site root not found. Generating fixtures at ${MOCK_SITE_ROOT}...`);
+    execSync('npx tsx scripts/generate-mock-site.ts', { stdio: 'inherit' });
+    if (!fs.existsSync(MOCK_SITE_ROOT)) {
+        throw new Error(`Mock site root not found after generation: ${MOCK_SITE_ROOT}`);
+    }
+}
+
+async function acquireStartLock(retries = 100): Promise<boolean> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const fd = fs.openSync(START_LOCK_FILE, 'wx');
+            fs.closeSync(fd);
+            return true;
+        } catch (e: any) {
+            if (e.code !== 'EEXIST') throw e;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    }
+    return false;
+}
+
+function releaseStartLock() {
+    if (fs.existsSync(START_LOCK_FILE)) {
+        fs.unlinkSync(START_LOCK_FILE);
+    }
+}
+
+ensureMockSiteExists();
 
 // ... (rest of the app logic)
 
@@ -42,7 +77,7 @@ app.use('/*', async (c, next) => {
 
 // Serve static files (fallback)
 app.use('/*', serveStatic({ 
-    root: './tests/mock-site',
+    root: MOCK_SITE_ROOT,
     rewriteRequestPath: (path) => path.startsWith('/protected') ? '/__forbidden__' : path
 }));
 
@@ -85,7 +120,7 @@ app.get('/external-broken', (c) => {
     return c.text('Not Found', { status: 404 });
 });
 
-const port = 3002;
+const port = 3102;
 
 let serverInstance: any = null;
 
@@ -109,26 +144,56 @@ async function isPortInUse(port: number): Promise<boolean> {
 
 export async function startMockServer() {
     if (serverInstance) return serverInstance;
-    
-    const inUse = await isPortInUse(port);
-    if (inUse) {
-        console.log(`Mock Site Server already running on port ${port}.`);
-        return null;
-    }
+    ensureMockSiteExists();
 
+    const lockAcquired = await acquireStartLock();
+    if (!lockAcquired) {
+        const inUseFallback = await isPortInUse(port);
+        if (inUseFallback) {
+            await waitForServerReady(port);
+            return null;
+        }
+        throw new Error('Unable to acquire mock-site startup lock.');
+    }
+    
     try {
+        const inUse = await isPortInUse(port);
+        if (inUse) {
+            console.log(`Mock Site Server already running on port ${port}.`);
+            await waitForServerReady(port);
+            return null;
+        }
+
         console.log(`Mock Site Server starting on http://localhost:${port}`);
         serverInstance = serve({
             fetch: app.fetch,
             port
         });
+        await waitForServerReady(port);
         return serverInstance;
     } catch (e: any) {
         if (e.code === 'EADDRINUSE') {
             return null;
         }
         throw e;
+    } finally {
+        releaseStartLock();
     }
+}
+
+async function waitForServerReady(portToCheck: number, retries = 30): Promise<void> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(`http://localhost:${portToCheck}/`);
+            if (res.ok || res.status === 401 || res.status === 404) {
+                return;
+            }
+        } catch (e) {
+            // Keep retrying until the server is ready.
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error(`Mock Site Server failed to start on port ${portToCheck}`);
 }
 
 

@@ -25,6 +25,12 @@ try {
   }
   
   console.log('🚀 Starting backend services (PostgreSQL, Redis) using Docker Compose...');
+  // Ensure the production stack is down to avoid port conflicts
+  try {
+    console.log('🧹 Stopping any existing production containers...');
+    execSync('docker compose down', { stdio: 'ignore' });
+  } catch (e) {}
+
   // Start the services in detached mode
   try {
     execSync('docker compose --env-file .env -f docker/services/docker-compose.yml up -d', { stdio: 'inherit' });

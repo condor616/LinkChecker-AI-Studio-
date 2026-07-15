@@ -27,6 +27,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const [viewMode, setViewMode] = useState<'url' | 'source'>('url');
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [isRecheckingAll, setIsRecheckingAll] = useState(false);
   const router = useRouter();
   const pageSize = 30;
 
@@ -116,6 +117,21 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     const res = await fetch(`/api/links/${linkId}/recheck`, { method: 'POST' });
     if (res.ok) {
       fetchData();
+    }
+  };
+
+  const handleRecheckBroken = async () => {
+    if (isRecheckingAll) return;
+    setIsRecheckingAll(true);
+    try {
+      const res = await fetch(`/api/scans/${scanId}/recheck-broken`, { method: 'POST' });
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRecheckingAll(false);
     }
   };
 
@@ -523,6 +539,25 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                 <EmptyState message="No broken links found. Looking good!" />
                             ) : (
                                 <>
+                                    <div className="flex items-center justify-between px-4 py-3 bg-red-500/5 border-b border-red-500/10">
+                                        <div className="flex items-center gap-2">
+                                            <AlertCircle className="h-4 w-4 text-red-500" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Broken Links Detected ({currentBrokenGroups.length})</span>
+                                        </div>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest border-red-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500 transition-all shadow-sm"
+                                            onClick={handleRecheckBroken}
+                                            disabled={isRecheckingAll || currentBrokenGroups.length === 0}
+                                        >
+                                            {isRecheckingAll ? (
+                                                <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Re-checking...</>
+                                            ) : (
+                                                <><RefreshCw className="mr-2 h-3 w-3" /> Re-check All Broken</>
+                                            )}
+                                        </Button>
+                                    </div>
                                     <PaginationControls 
                                         currentPage={brokenPage} 
                                         totalItems={currentBrokenGroups.length} 
@@ -849,9 +884,14 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                     >
                         <div className="p-4 space-y-4">
                             {link.error && isBroken && (
-                                <div className="space-y-1">
-                                    <p className="text-[10px] font-bold text-red-500/50 uppercase tracking-tight">Error:</p>
-                                    <p className="text-[10px] font-mono bg-red-500/5 p-2 rounded border border-red-500/10 text-red-500">{link.error}</p>
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black text-red-500/60 uppercase tracking-widest flex items-center gap-2">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Technical Details:
+                                    </p>
+                                    <div className="text-[11px] font-mono bg-red-500/5 p-3 rounded-lg border border-red-500/10 text-red-600 dark:text-red-400 whitespace-pre-wrap leading-relaxed">
+                                        {link.error}
+                                    </div>
                                 </div>
                             )}
                             {visibleInstances.map((inst: any, i: number) => (
@@ -957,9 +997,14 @@ function TriageItem({ group, onRecheck }: any) {
                     >
                         <div className="p-4 space-y-4">
                             {link.error && (
-                                <div className="space-y-1">
-                                    <p className="text-[10px] font-bold text-red-500/50 uppercase tracking-tight">Error:</p>
-                                    <p className="text-[10px] font-mono bg-red-500/5 p-2 rounded border border-red-500/10 text-red-500">{link.error}</p>
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black text-red-500/60 uppercase tracking-widest flex items-center gap-2">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Technical Details:
+                                    </p>
+                                    <div className="text-[11px] font-mono bg-red-500/5 p-3 rounded-lg border border-red-500/10 text-red-600 dark:text-red-400 whitespace-pre-wrap leading-relaxed">
+                                        {link.error}
+                                    </div>
                                 </div>
                             )}
                             {visibleInstances.map((inst: any, i: number) => (
@@ -1190,9 +1235,14 @@ function TriageItemRechecked({ group, onRecheck }: any) {
                     >
                         <div className="p-4 space-y-4">
                             {link.error && isBroken && (
-                                <div className="space-y-1">
-                                    <p className="text-[10px] font-bold text-red-500/50 uppercase tracking-tight">Error:</p>
-                                    <p className="text-[10px] font-mono bg-red-500/5 p-2 rounded border border-red-500/10 text-red-500">{link.error}</p>
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black text-red-500/60 uppercase tracking-widest flex items-center gap-2">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Technical Details:
+                                    </p>
+                                    <div className="text-[11px] font-mono bg-red-500/5 p-3 rounded-lg border border-red-500/10 text-red-600 dark:text-red-400 whitespace-pre-wrap leading-relaxed">
+                                        {link.error}
+                                    </div>
                                 </div>
                             )}
                             {visibleInstances.map((inst: any, i: number) => (
@@ -1300,7 +1350,12 @@ function TriageItemSource({ group, onRecheck }: any) {
                                                 <ExternalLink className="h-3.5 w-3.5" />
                                             </a>
                                         </div>
-                                        {inst.error && <p className="text-[10px] font-mono text-red-400/80 mt-1.5 leading-relaxed break-all">{inst.error}</p>}
+                                        {inst.error && (
+                                            <div className="mt-2 p-2 rounded bg-red-500/5 border border-red-500/10">
+                                                <p className="text-[9px] font-black text-red-500/40 uppercase tracking-widest mb-1">Error Detail</p>
+                                                <p className="text-[10px] font-mono text-red-600 dark:text-red-400 leading-relaxed break-all">{inst.error}</p>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-3 shrink-0">
                                         <span className={cn(

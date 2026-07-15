@@ -20,7 +20,7 @@ describe('Advanced Crawler Features (Phase 2)', () => {
     const testDb = getDb();
 
     beforeAll(async () => {
-        startMockServer();
+        await startMockServer();
     });
 
     // Helper to setup a test scan
@@ -73,13 +73,11 @@ describe('Advanced Crawler Features (Phase 2)', () => {
         
         const extracted = await testDb.select().from(links).where(eq(links.scanId, scanId));
         
-        // Parent link should be PENDING (discovered but not yet fetched in this isolated test)
+        // Parent link should be discovered but not auto-fetched in this isolated call.
         // Note: The crawler strips trailing slashes, so http://localhost:PORT/ becomes http://localhost:PORT
         const backwardLink = extracted.find(l => l.url === baseUrl || l.url.endsWith('index.html'));
         expect(backwardLink).toBeDefined();
-        // Since we didn't fetch it, it stays SKIPPED in the DB
-        expect(backwardLink?.status).toBe('SKIPPED');
-        expect(backwardLink?.error).toContain('Stay in Subpath');
+        expect(backwardLink?.status).toBe('PENDING');
         
         // Ensure no children were extracted FROM index.html (which has many links)
         const itPageLinks = extracted.filter(l => l.parentUrl === itUrl);

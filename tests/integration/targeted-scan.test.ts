@@ -17,7 +17,7 @@ describe('Targeted Scan (Phase 2)', () => {
     const testDb = getDb();
 
     beforeAll(async () => {
-        startMockServer();
+        await startMockServer();
     });
 
     async function setupScan(config: any) {
