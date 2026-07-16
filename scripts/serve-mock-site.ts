@@ -50,7 +50,7 @@ ensureMockSiteExists();
 // Serve static files with automatic .html extension support
 app.use('/*', async (c, next) => {
     const urlPath = c.req.path;
-    if (urlPath.startsWith('/protected') || urlPath.startsWith('/redirect') || urlPath.startsWith('/errors') || urlPath === '/slow' || urlPath === '/external-broken') {
+    if (urlPath.startsWith('/protected') || urlPath.startsWith('/redirect') || urlPath.startsWith('/errors') || urlPath === '/slow' || urlPath === '/external-broken' || urlPath === '/exclusion-trigger') {
         return next();
     }
 
@@ -118,6 +118,18 @@ app.get('/redirect/:code', (c) => {
 // Simulate an external link
 app.get('/external-broken', (c) => {
     return c.text('Not Found', { status: 404 });
+});
+
+// Route for testing case-insensitive exclusions
+app.get('/exclusion-trigger', (c) => {
+    return c.html(`
+      <html>
+        <body>
+          <a href="/some/path/index%2Ephp/some-page">Index Link</a>
+          <a href="/acc-es/careers">Careers Link</a>
+        </body>
+      </html>
+    `);
 });
 
 const port = 3102;

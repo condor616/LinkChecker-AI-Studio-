@@ -17,6 +17,16 @@ describe('Crawler Link Processing', () => {
     app.get('/success', (c) => c.html('<html><body><a href="/broken">Broken</a></body></html>'));
     app.get('/broken', (c) => c.text('Not Found', 404));
     app.get('/external', (c) => c.redirect('https://google.com'));
+    app.get('/drupal-pollution', (c) => c.html(`
+      <html>
+        <body>
+          <a href="/index%2ephp/about">About</a>
+          <a href="/index.php/contact">Contact</a>
+          <a href="/index%2Ephp/careers">Careers</a>
+          <a href="/some/path/index.php/not-normalized">Sub path</a>
+        </body>
+      </html>
+    `));
 
     // Use port 0 for dynamic port assignment
     server = serve({ fetch: app.fetch, port: 0 });
@@ -121,5 +131,43 @@ describe('Crawler Link Processing', () => {
     const updatedLink = await db.select().from(links).where(eq(links.url, link.url)).then(res => res[0]);
     expect(updatedLink?.status).toBe('BROKEN');
     expect(updatedLink?.statusCode).toBe(404);
+  });
+
+  it('normalizes out Drupal/PHP front controllers from extracted links', async () => {
+    const link = {
+        id: crypto.randomUUID(),
+        scanId: TEST_SCAN_ID,
+        url: `${baseUrl}/drupal-pollution`,
+        status: 'PENDING',
+        depth: 0,
+    };
+
+    await db.insert(links).values(link);
+
+    const scan = await db.select().from(scans).where(eq(scans.id, TEST_SCAN_ID)).then(res => res[0]);
+    const config = JSON.parse(scan?.config as string);
+
+    await processLink(db, link, scan, config);
+
+    // Verify all enqueued links
+    const allLinks = await db.select().from(links).where(eq(links.scanId, TEST_SCAN_ID));
+    
+    // Check that we normalized:
+    // /index%2ephp/about -> /about
+    // /index.php/contact -> /contact
+    // /index%2Ephp/careers -> /careers
+    // But kept /some/path/index.php/not-normalized as-is
+    
+    const urls = allLinks.map(l => l.url);
+    
+    expect(urls).toContain(`${baseUrl}/about`);
+    expect(urls).toContain(`${baseUrl}/contact`);
+    expect(urls).toContain(`${baseUrl}/careers`);
+    expect(urls).toContain(`${baseUrl}/some/path/index.php/not-normalized`);
+    
+    // Ensure none of the index.php/index%2ephp polluted links were enqueued at the root
+    expect(urls).not.toContain(`${baseUrl}/index%2ephp/about`);
+    expect(urls).not.toContain(`${baseUrl}/index.php/contact`);
+    expect(urls).not.toContain(`${baseUrl}/index%2Ephp/careers`);
   });
 });

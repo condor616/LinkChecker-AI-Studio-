@@ -173,4 +173,40 @@ describe('Skipped Links Feature Verification', () => {
         expect(result[0].status).toBe('SUCCESS');
         expect(result[0].error).toContain('External link (Verified)');
     });
+
+    it('should match regexRules and wildcardExclusions case-insensitively', async () => {
+        const config = {
+            startUrl: baseUrl,
+            saveSkippedLinks: true,
+            regexRules: ['.*index%2ephp.*'],
+            wildcardExclusions: ['*ACC-ES*']
+        };
+        const scanId = await setupScan(config);
+
+        // Fetch /exclusion-trigger, which contains links that match the rules
+        const link = { id: crypto.randomUUID(), url: `${baseUrl}/exclusion-trigger`, scanId, depth: 0, status: 'PENDING' };
+        await testDb.insert(links).values(link);
+
+        await processLink(testDb, link, { id: scanId }, config);
+
+        // Verify the uppercase %2E index link was discovered and skipped
+        const skippedLinkE = await testDb.select().from(links).where(and(
+            eq(links.scanId, scanId),
+            eq(links.url, `${baseUrl}/some/path/index%2Ephp/some-page`)
+        )).then(res => res[0]);
+        
+        expect(skippedLinkE).toBeDefined();
+        expect(skippedLinkE.status).toBe('SKIPPED');
+        expect(skippedLinkE.error).toContain('Regex Rule: .*index%2ephp.*');
+
+        // Verify the lowercase acc-es wildcard link was discovered and skipped
+        const skippedWildcard = await testDb.select().from(links).where(and(
+            eq(links.scanId, scanId),
+            eq(links.url, `${baseUrl}/acc-es/careers`)
+        )).then(res => res[0]);
+
+        expect(skippedWildcard).toBeDefined();
+        expect(skippedWildcard.status).toBe('SKIPPED');
+        expect(skippedWildcard.error).toContain('Wildcard Rule: *ACC-ES*');
+    });
 });
