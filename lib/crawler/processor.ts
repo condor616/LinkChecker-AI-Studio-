@@ -250,6 +250,12 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
           const urlObj = new URL(href, link.url);
           if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
             urlObj.hash = '';
+            
+            // Normalize out Drupal/PHP front controllers (index.php and index%2ephp) at the root of the path
+            urlObj.pathname = urlObj.pathname
+              .replace(/^\/index\.php\/?/i, '/')
+              .replace(/^\/index%2[eE]php\/?/i, '/');
+            
             const urlStr = urlObj.toString().replace(/\/$/, '');
             
             const snippet = $.html(el).slice(0, 500); 
@@ -312,11 +318,31 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
               continue; // Do not fetch/queue if skipped by rules
           }
 
-          if (isTargeted && !targetUrls.includes(urlStr)) continue;
+          const isTarget = isTargeted && targetUrls.includes(urlStr);
+
+          if (isTargeted && !isTarget) {
+              // In targeted mode, still traverse internal pages so we can find which page
+              // links to the target URL (full-site crawl, results focused on targets).
+              // Skip non-internal (external / subdomain-excluded) URLs.
+              try {
+                  const startHost = new URL(config.startUrl).hostname.toLowerCase().replace(/^www\./, '');
+                  const urlHost = new URL(urlStr).hostname.toLowerCase().replace(/^www\./, '');
+                  const isInternalTraversable = urlHost === startHost ||
+                      (!config.excludeSubdomains && urlHost.endsWith('.' + startHost));
+                  if (!isInternalTraversable) continue;
+              } catch (e) {
+                  continue;
+              }
+          }
+
           const occurrences = latestByUrl.get(urlStr) || [];
 
-          if (isTargeted) {
+          if (isTarget) {
+              // Target URL: record every unique parentUrl to build a full backlink map.
               if (occurrences.some(o => o.parentUrl === link.url)) continue;
+          } else if (isTargeted) {
+              // Internal traversal page in targeted mode: visit only once (like normal mode).
+              if (occurrences.some(o => o.status === 'SUCCESS' || o.status === 'PENDING' || o.status === 'PROCESSING')) continue;
           } else {
               // Discovery Logic: Skip if already known as SUCCESS
               if (occurrences.some(o => o.status === 'SUCCESS')) continue;
@@ -429,7 +455,7 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
         const cleanRule = sanitizePattern(config.excludeRegex);
         if (cleanRule) {
             try {
-                const re = new RegExp(cleanRule);
+                const re = new RegExp(cleanRule, 'i');
                 if (re.test(urlStr) || re.test(normalizedUrl)) {
                     return { excluded: true, reason: `Legacy Regex Rule: ${cleanRule}` };
                 }
@@ -443,7 +469,7 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
             const cleanRule = sanitizePattern(rule);
             if (!cleanRule) continue;
             try {
-                const re = new RegExp(cleanRule);
+                const re = new RegExp(cleanRule, 'i');
                 if (re.test(urlStr) || re.test(normalizedUrl)) {
                     return { excluded: true, reason: `Regex Rule: ${cleanRule}` };
                 }
@@ -462,7 +488,7 @@ function shouldExclude(urlStr: string, config: any): { excluded: boolean, reason
                     .replace(/\\\*/g, '.*')
                     .replace(/\\\?/g, '.');
                 
-                const re = new RegExp(regexStr); // Removed strict anchors for better wildcard flexibility
+                const re = new RegExp(regexStr, 'i'); // Removed strict anchors for better wildcard flexibility
                 if (re.test(urlStr) || re.test(normalizedUrl)) {
                     return { excluded: true, reason: `Wildcard Rule: ${cleanPattern}` };
                 }
