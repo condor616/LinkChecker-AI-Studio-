@@ -73,6 +73,8 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<WizardData>(INITIAL_DATA);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isValidatingAuth, setIsValidatingAuth] = useState(false);
+  const [authValidation, setAuthValidation] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const totalSteps = 7;
 
@@ -122,6 +124,60 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
       console.error('Failed to start scan:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const validateCredentials = async () => {
+    if (!data.startUrl) {
+      setAuthValidation({ type: 'error', message: 'Enter a starting URL first.' });
+      return;
+    }
+
+    const username = data.auth.username?.trim() || '';
+    const password = data.auth.password?.trim() || '';
+    if (!username || !password) {
+      setAuthValidation({ type: 'error', message: 'Both username and password are required.' });
+      return;
+    }
+
+    setIsValidatingAuth(true);
+    setAuthValidation(null);
+
+    try {
+      const res = await fetch('/api/scans/validate-auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startUrl: data.startUrl,
+          auth: { username, password },
+        }),
+      });
+
+      const payload = await res.json().catch(() => ({}));
+
+      if (res.status === 401 && payload?.error === 'Unauthorized') {
+        setAuthValidation({ type: 'error', message: 'Session expired. Please sign in again.' });
+        router.push('/login');
+        return;
+      }
+
+      if (!res.ok || payload.valid === false) {
+        setAuthValidation({
+          type: 'error',
+          message: payload.message || payload.error || 'Credential validation failed.',
+        });
+        return;
+      }
+
+      setAuthValidation({
+        type: 'success',
+        message: payload.message || 'Credentials validated successfully.',
+      });
+    } catch (error) {
+      console.error(error);
+      setAuthValidation({ type: 'error', message: 'Network error while validating credentials.' });
+    } finally {
+      setIsValidatingAuth(false);
     }
   };
 
@@ -460,6 +516,25 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                   <p className="text-[10px] text-muted-foreground leading-relaxed pt-2">
                     Note: These credentials are sent in the header of every request using standard HTTP Basic authentication.
                   </p>
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={validateCredentials}
+                      disabled={isValidatingAuth}
+                      className="h-9 rounded-xl border-white/10 bg-white/5"
+                    >
+                      {isValidatingAuth ? 'Validating...' : 'Validate Credentials'}
+                    </Button>
+                    {authValidation && (
+                      <span className={cn(
+                        'text-[11px] font-semibold',
+                        authValidation.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+                      )}>
+                        {authValidation.message}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="bg-amber-500/5 border border-amber-500/20 p-4 rounded-xl flex gap-3">

@@ -9,6 +9,44 @@ import { isIP } from 'node:net';
 const activeCrawls = new Map<string, Promise<void>>(); // Scan-scoped fetch cache
 const hostSafetyCache = new Map<string, boolean>();
 
+function normalizeHostname(hostname: string): string {
+    return hostname.toLowerCase().replace(/^www\./, '');
+}
+
+function isSameOrSubdomain(hostname: string, rootHostname: string): boolean {
+    return hostname === rootHostname || hostname.endsWith(`.${rootHostname}`);
+}
+
+async function fetchWithRedirects(
+    inputUrl: string,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+    maxRedirects = 5,
+): Promise<Response> {
+    let currentUrl = inputUrl;
+
+    for (let i = 0; i <= maxRedirects; i++) {
+        const response = await fetch(currentUrl, {
+            signal,
+            headers,
+            redirect: 'manual',
+        });
+
+        if (response.status < 300 || response.status >= 400) {
+            return response;
+        }
+
+        const location = response.headers.get('location');
+        if (!location) {
+            return response;
+        }
+
+        currentUrl = new URL(location, currentUrl).toString();
+    }
+
+    throw new Error(`Too many redirects for ${inputUrl}`);
+}
+
 function isPrivateIpAddress(address: string): boolean {
     if (address === '::1') return true;
 
@@ -80,8 +118,11 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
   try {
         const currentTarget = new URL(link.url);
+      const scanRootHost = normalizeHostname(new URL(config.startUrl).hostname);
+        const targetHost = normalizeHostname(currentTarget.hostname);
+      const isWithinStartHostScope = isSameOrSubdomain(targetHost, scanRootHost);
         const isSafeTarget = await isSafeHostname(currentTarget.hostname);
-        if (!isSafeTarget) {
+        if (!isSafeTarget && !isWithinStartHostScope) {
             await userDb.update(links).set({
                 status: 'SKIPPED',
                 statusCode: null,
@@ -147,10 +188,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       return; 
     }
 
-    let response = await fetch(link.url, {
-      signal: controller.signal,
-      headers
-    });
+        let response = await fetchWithRedirects(link.url, headers, controller.signal);
 
     // Smart Retry: If blocked (403/400/429), try with Minimalist headers
     if (!response.ok && (response.status === 403 || response.status === 400 || response.status === 429)) {
@@ -163,10 +201,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         // Preserve auth if present
         if (headers['Authorization']) fallbackHeaders['Authorization'] = headers['Authorization'];
         
-        const retryResponse = await fetch(link.url, {
-            signal: controller.signal,
-            headers: fallbackHeaders
-        });
+        const retryResponse = await fetchWithRedirects(link.url, fallbackHeaders, controller.signal);
         if (retryResponse.ok || (retryResponse.status !== 403 && retryResponse.status !== 400)) {
             response = retryResponse;
         }
@@ -319,10 +354,6 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         try {
           const urlObj = new URL(href, link.url);
           if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
-                        const host = urlObj.hostname.toLowerCase();
-                        if (host === 'localhost' || host.endsWith('.localhost')) return;
-                        if (isIP(host) && isPrivateIpAddress(host)) return;
-
             urlObj.hash = '';
             
             // Normalize out Drupal/PHP front controllers (index.php and index%2ephp) at the root of the path
@@ -495,6 +526,10 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
   } catch (error: any) {
     let errorMsg = error.name === 'AbortError' ? 'Timeout (15s limit)' : error.message;
+    const causeMessage = error?.cause?.message;
+    if (causeMessage && typeof causeMessage === 'string') {
+        errorMsg = `${errorMsg} | cause: ${causeMessage}`;
+    }
     if (error.code) {
         errorMsg = `[${error.code}] ${errorMsg}`;
     }

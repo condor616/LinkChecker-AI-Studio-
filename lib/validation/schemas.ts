@@ -71,3 +71,11 @@ export const AdminUserUpdateSchema = z
 export const ProfilePasswordUpdateSchema = z.object({
   password: z.string().min(8).max(128),
 });
+
+export const ScanAuthValidationSchema = z.object({
+  startUrl: z.string().url(),
+  auth: z.object({
+    username: z.string().min(1).max(256),
+    password: z.string().min(1).max(256),
+  }),
+});

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Play, Save, Copy, Check, Trash2, LayoutTemplate, Plus, X, Shield, Filter, Globe, Code, ChevronDown, Key } from 'lucide-react';
+import { Play, Save, Copy, Check, Trash2, LayoutTemplate, Plus, X, Shield, Filter, Globe, Code, ChevronDown, Key, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { USER_AGENTS, DEFAULT_USER_AGENT } from '@/lib/crawler/agents';
@@ -85,6 +85,9 @@ export default function NewScanPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showCode, setShowCode] = useState(false);
   const [targetUrlsRaw, setTargetUrlsRaw] = useState('');
+    const [startError, setStartError] = useState('');
+    const [isValidatingAuth, setIsValidatingAuth] = useState(false);
+    const [authValidation, setAuthValidation] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Ref to track if the change is coming from the JSON editor to avoid circular updates that lose cursor focus
   const isUpdatingFromJson = useRef(false);
@@ -193,6 +196,8 @@ export default function NewScanPage() {
   };
 
   const handleStart = async () => {
+        setStartError('');
+
     // Validation
     if (config.isTargeted && (!config.targetUrls || config.targetUrls.length === 0)) {
         alert("Please enter target URLs for the targeted audit.");
@@ -209,15 +214,82 @@ export default function NewScanPage() {
             isTargeted: !!config.isTargeted // Force boolean
         }),
       });
-      if (!res.ok) throw new Error('Failed to start scan');
-      const data = await res.json();
-      router.push(`/scans/${data.id}`);
+
+            const payload = await res.json().catch(() => ({}));
+
+            if (res.status === 401) {
+                setStartError('Your session expired. Please sign in again.');
+                router.push('/login');
+                return;
+            }
+
+            if (!res.ok) {
+                throw new Error(payload.error || 'Failed to start scan');
+            }
+
+            router.push(`/scans/${payload.id}`);
     } catch (err) {
-      console.error(err);
+            const message = err instanceof Error ? err.message : 'Failed to start scan';
+            console.error(err);
+            setStartError(message);
     } finally {
       setLoading(false);
     }
   };
+
+    const validateCredentials = async () => {
+        if (!config.startUrl) {
+            setAuthValidation({ type: 'error', message: 'Enter a starting URL first.' });
+            return;
+        }
+
+        const username = config.auth?.username?.trim() || '';
+        const password = config.auth?.password?.trim() || '';
+        if (!username || !password) {
+            setAuthValidation({ type: 'error', message: 'Both username and password are required.' });
+            return;
+        }
+
+        setIsValidatingAuth(true);
+        setAuthValidation(null);
+
+        try {
+            const res = await fetch('/api/scans/validate-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    startUrl: config.startUrl,
+                    auth: { username, password },
+                }),
+            });
+
+            const payload = await res.json().catch(() => ({}));
+
+            if (res.status === 401 && payload?.error === 'Unauthorized') {
+                setAuthValidation({ type: 'error', message: 'Session expired. Please sign in again.' });
+                router.push('/login');
+                return;
+            }
+
+            if (!res.ok || payload.valid === false) {
+                setAuthValidation({
+                    type: 'error',
+                    message: payload.message || payload.error || 'Credential validation failed.',
+                });
+                return;
+            }
+
+            setAuthValidation({
+                type: 'success',
+                message: payload.message || 'Credentials look valid for the starting URL.',
+            });
+        } catch (error) {
+            console.error(error);
+            setAuthValidation({ type: 'error', message: 'Network error while validating credentials.' });
+        } finally {
+            setIsValidatingAuth(false);
+        }
+    };
 
   const handleSaveTemplate = async () => {
     setSavingTemplate(true);
@@ -451,6 +523,31 @@ export default function NewScanPage() {
                                             className="h-8 text-xs"
                                         />
                                     </div>
+                                </div>
+                                <div className="mt-3 flex items-center justify-between gap-3">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={validateCredentials}
+                                        disabled={isValidatingAuth}
+                                        className="h-8"
+                                    >
+                                        {isValidatingAuth ? 'Validating...' : 'Validate Credentials'}
+                                    </Button>
+                                    {authValidation && (
+                                        <div className={cn(
+                                            'text-xs flex items-center gap-1.5',
+                                            authValidation.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+                                        )}>
+                                            {authValidation.type === 'success' ? (
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                            ) : (
+                                                <AlertTriangle className="h-3.5 w-3.5" />
+                                            )}
+                                            <span>{authValidation.message}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </motion.div>
                         )}
@@ -823,6 +920,9 @@ https://mysite.com/assets/banner.png"
                 <p className="text-[10px] text-center text-muted-foreground mt-4 px-4 italic leading-relaxed">
                     By clicking Ignite, you confirm that you have permission to crawl the target domain and will adhere to its robots.txt policies.
                 </p>
+                                {startError && (
+                                    <p className="text-xs text-red-400 mt-3 text-center">{startError}</p>
+                                )}
             </motion.div>
         </div>
       </div>
