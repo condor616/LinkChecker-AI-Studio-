@@ -4,12 +4,13 @@ import { getDb, db as centralDb } from '@/lib/db';
 import { scans, links, users } from '@/lib/db/schema';
 import { scanQueue } from '@/lib/bullmq';
 import { eq } from 'drizzle-orm';
+import { ScanConfigSchema } from '@/lib/validation/schemas';
 
 export async function POST(req: Request) {
   try {
     const session = await requireApprovedUser();
 
-    const config = await req.json();
+    const config = ScanConfigSchema.parse(await req.json());
     const id = crypto.randomUUID();
     const userDb = getDb(session.id);
 
@@ -50,6 +51,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ id });
   } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({ error: 'Invalid scan configuration', details: error.issues }, { status: 400 });
+    }
     console.error('Failed to start scan:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -4,11 +4,12 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { deleteUserDb, provisionUserDb } from '@/lib/db/provisioning';
+import { AdminUserUpdateSchema } from '@/lib/validation/schemas';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAdmin();
-    const updates = await req.json();
+    const updates = AdminUserUpdateSchema.parse(await req.json());
     const { id } = await params;
 
     console.log(`PATCH /api/admin/users/${id} called with updates:`, updates);
@@ -27,6 +28,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({ error: 'Invalid update payload', details: error.issues }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

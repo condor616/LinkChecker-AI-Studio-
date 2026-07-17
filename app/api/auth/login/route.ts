@@ -4,10 +4,24 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { createToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
+import { verifyPassword } from '@/lib/security/password';
+import { enforceRateLimit, getClientIp } from '@/lib/security/rate-limit';
+import { LoginRequestSchema } from '@/lib/validation/schemas';
+import { hashPassword } from '@/lib/security/password';
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const { email, password } = LoginRequestSchema.parse(await req.json());
+
+    const ip = getClientIp(req);
+    const rateKey = `auth:login:${ip}`;
+    const { limited, retryAfterSeconds } = enforceRateLimit(rateKey, 10, 15 * 60 * 1000);
+    if (limited) {
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+      );
+    }
 
     // If migrations are supposed to run, wait for them to finish
     if (process.env.RUN_MIGRATIONS === 'true') {
@@ -19,17 +33,24 @@ export async function POST(req: Request) {
             attempts++;
         }
     }
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
-    }
-
     const user = await db.select().from(users).where(eq(users.email, email)).then(res => res[0]);
     if (!user) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const passwordHash = Buffer.from(password).toString('base64');
-    if (user.passwordHash !== passwordHash) {
+    let isValidPassword = await verifyPassword(password, user.passwordHash);
+
+    // One-time migration support for legacy base64-stored passwords.
+    if (!isValidPassword) {
+      const legacyHash = Buffer.from(password).toString('base64');
+      if (legacyHash === user.passwordHash) {
+        isValidPassword = true;
+        const upgradedHash = await hashPassword(password);
+        await db.update(users).set({ passwordHash: upgradedHash }).where(eq(users.id, user.id));
+      }
+    }
+
+    if (!isValidPassword) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
@@ -38,12 +59,15 @@ export async function POST(req: Request) {
     cookieStore.set('session', token, {
       httpOnly: true,
       secure: true,
-      sameSite: 'none',
+      sameSite: 'strict',
       path: '/',
     });
 
     return NextResponse.json({ user: { id: user.id, email: user.email, role: user.role } });
   } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({ error: 'Invalid request payload', details: error.issues }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

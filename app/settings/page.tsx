@@ -17,8 +17,6 @@ import {
   FileArchive,
   History,
   ShieldCheck,
-  Server,
-  Activity,
   Plus,
   UploadCloud,
   ChevronDown,
@@ -61,11 +59,6 @@ export default function SettingsPage() {
   const [customName, setCustomName] = useState('');
   const [filenameValue, setFilenameValue] = useState('');
 
-  // Docker state
-  const [dockerRunning, setDockerRunning] = useState<boolean | null>(null);
-  const [isDockerLoading, setIsDockerLoading] = useState(false);
-  const [dockerModalType, setDockerModalType] = useState<'stop' | 'start' | null>(null);
-
   // User Preferences from global context
   const { preferences, updatePreferences } = useScanSelection();
   const [prefsLoading, setPrefsLoading] = useState(false);
@@ -83,7 +76,6 @@ export default function SettingsPage() {
         if (role === 'ADMIN' || role === 'USER') {
           if (role === 'ADMIN') {
             setIsAdmin(true);
-            fetchDockerStatus();
             fetchUsers();
           }
         } else {
@@ -263,34 +255,6 @@ export default function SettingsPage() {
     }
   }
 
-  // --- Docker Logic ---
-  async function fetchDockerStatus() {
-    try {
-      const res = await fetch('/api/docker/status');
-      const data = await res.json();
-      setDockerRunning(data.running);
-    } catch (e) {
-      setDockerRunning(false);
-    }
-  }
-
-  async function executeToggleDocker(type: 'start' | 'stop') {
-    setDockerModalType(null);
-    setIsDockerLoading(true);
-    try {
-      if (type === 'stop') {
-        await fetch('/api/docker/stop', { method: 'POST' });
-        setDockerRunning(false);
-      } else {
-        await fetch('/api/docker/start', { method: 'POST' });
-        setDockerRunning(true);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    setIsDockerLoading(false);
-  }
-
   const formatSize = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 
 
@@ -335,11 +299,6 @@ export default function SettingsPage() {
           <TabsTrigger value="backup" className="px-8 py-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all rounded-lg font-bold">
             <Database className="h-4 w-4 mr-2" /> Backup & Restore
           </TabsTrigger>
-          {isAdmin && (
-            <TabsTrigger value="docker" className="px-8 py-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-500 transition-all rounded-lg font-bold">
-              <Server className="h-4 w-4 mr-2" /> Docker Services
-            </TabsTrigger>
-          )}
           <TabsTrigger value="preferences" className="px-8 py-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-500 transition-all rounded-lg font-bold">
             <User className="h-4 w-4 mr-2" /> User Preferences
           </TabsTrigger>
@@ -468,52 +427,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* --- Docker Services Tab Content --- */}
-        <TabsContent value="docker" className="space-y-6">
-          <Card className="border-white/10 bg-card/50 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl">
-            <CardHeader className="bg-white/[0.03] border-b border-white/10 p-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-2xl font-black text-white">Database Infrastructure</CardTitle>
-                  <CardDescription className="text-muted-foreground/80 text-base">Control the underlying PostgreSQL and Redis containers.</CardDescription>
-                </div>
-                <div className={cn("px-5 py-2.5 rounded-xl border-2 flex items-center gap-3 text-xs font-black tracking-widest shadow-xl backdrop-blur-md", 
-                  dockerRunning ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-500/5" : "bg-red-500/10 text-red-400 border-red-500/20 shadow-red-500/5")}>
-                  {isDockerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
-                  {isDockerLoading ? 'UPDATING...' : dockerRunning ? 'STACK RUNNING' : 'STACK OFFLINE'}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-20 text-center space-y-10">
-              <div className="max-w-xl mx-auto">
-                <div className={cn("w-28 h-28 rounded-[2rem] mx-auto flex items-center justify-center mb-10 shadow-3xl transition-all duration-700 rotate-3 group-hover:rotate-0", 
-                  dockerRunning ? "bg-emerald-500 text-white shadow-emerald-500/30 scale-110" : "bg-white/5 text-muted-foreground grayscale scale-95 border border-white/10")}>
-                  <Server className="h-14 w-14" />
-                </div>
-                <h3 className="text-3xl font-black mb-4 text-white leading-tight">{dockerRunning ? 'All systems operational' : 'Infrastructure Offline'}</h3>
-                <p className="text-muted-foreground/70 text-lg max-w-md mx-auto leading-relaxed">
-                  The Docker stack includes the primary PostgreSQL database and Redis worker queue. 
-                  Stopping the services will put the app into read-only mode.
-                </p>
-              </div>
-
-              <div className="flex justify-center gap-6">
-                {dockerRunning ? (
-                  <Button size="lg" variant="destructive" className="h-14 px-10 rounded-2xl shadow-xl shadow-destructive/20 font-black text-lg hover:scale-105 active:scale-95 transition-all" onClick={() => setDockerModalType('stop')} disabled={isDockerLoading}>
-                    Stop Docker Stack
-                  </Button>
-                ) : (
-                  <Button size="lg" className="h-14 px-10 rounded-2xl bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/20 font-black text-lg hover:scale-105 active:scale-95 transition-all" onClick={() => setDockerModalType('start')} disabled={isDockerLoading}>
-                    Start Docker Stack
-                  </Button>
-                )}
-                <Button variant="outline" size="lg" className="h-14 px-6 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10 transition-all font-bold" onClick={fetchDockerStatus} disabled={isDockerLoading}>
-                  <RefreshCw className={cn("h-5 w-5 mr-2", isDockerLoading && "animate-spin")} /> Refresh
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
         {/* --- User Preferences Tab Content --- */}
         <TabsContent value="preferences" className="space-y-6">
           <Card className="border-white/10 bg-card/50 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl">
@@ -617,29 +530,6 @@ export default function SettingsPage() {
         )}
       </AnimatePresence>
 
-      {/* Confirmation Modal for Docker */}
-      <AnimatePresence>
-        {dockerModalType && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" onClick={() => setDockerModalType(null)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} 
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-full max-w-lg p-8 bg-card border border-white/10 shadow-3xl rounded-3xl">
-              <div className="flex flex-col space-y-3 text-center sm:text-left">
-                <h2 className="text-2xl font-black text-white tracking-tight">{dockerModalType === 'stop' ? 'Stop Infrastructure?' : 'Start Infrastructure?'}</h2>
-                <div className="text-muted-foreground text-base leading-relaxed">
-                  {dockerModalType === 'stop' 
-                    ? "This will halt PostgreSQL and Redis. Scans will be paused and the app will enter Offline mode."
-                    : "This will start the backend services. The database will become available shortly."}
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 mt-10">
-                <Button variant="ghost" className="h-12 px-6 rounded-xl font-bold transition-all" onClick={() => setDockerModalType(null)}>Cancel</Button>
-                <Button size="lg" variant={dockerModalType === 'stop' ? 'destructive' : 'default'} className="h-12 px-8 rounded-xl font-black transition-all active:scale-95 shadow-xl" onClick={() => executeToggleDocker(dockerModalType)}>Confirm Action</Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

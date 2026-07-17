@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
+import { getJwtSecretKey } from '@/lib/security/jwt';
 
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'super-secret-key-for-local-dev-only-change-in-prod'
-);
+const SECRET_KEY = getJwtSecretKey();
 
 export async function middleware(request: NextRequest) {
   const token = request.cookies.get('session')?.value;
@@ -65,7 +64,7 @@ export async function middleware(request: NextRequest) {
     }
 
     return NextResponse.next();
-  } catch (error) {
+  } catch {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }

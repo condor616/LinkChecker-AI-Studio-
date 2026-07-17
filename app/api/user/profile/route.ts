@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
+import { hashPassword } from '@/lib/security/password';
+import { ProfilePasswordUpdateSchema } from '@/lib/validation/schemas';
 
 export async function PATCH(req: Request) {
   try {
@@ -11,17 +13,8 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { password } = await req.json();
-    if (!password) {
-      return NextResponse.json({ error: 'Password is required' }, { status: 400 });
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
-    }
-
-    // Following existing pattern for hashing (base64)
-    const passwordHash = Buffer.from(password).toString('base64');
+    const { password } = ProfilePasswordUpdateSchema.parse(await req.json());
+    const passwordHash = await hashPassword(password);
 
     await db.update(users)
       .set({ passwordHash })
@@ -30,6 +23,9 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({ error: 'Invalid request payload', details: error.issues }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

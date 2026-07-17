@@ -5,10 +5,24 @@ import { eq } from 'drizzle-orm';
 import { createToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { provisionUserDb } from '@/lib/db/provisioning';
+import { hashPassword } from '@/lib/security/password';
+import { enforceRateLimit, getClientIp } from '@/lib/security/rate-limit';
+import { RegisterRequestSchema } from '@/lib/validation/schemas';
 
 export async function POST(req: Request) {
   try {
-    const { email, password, checkOnly } = await req.json();
+    const body = RegisterRequestSchema.parse(await req.json());
+    const { email, password, checkOnly } = body;
+
+    const ip = getClientIp(req);
+    const rateKey = `auth:register:${ip}`;
+    const { limited, retryAfterSeconds } = enforceRateLimit(rateKey, 5, 15 * 60 * 1000);
+    if (limited) {
+      return NextResponse.json(
+        { error: 'Too many registration attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+      );
+    }
 
     // If migrations are supposed to run, wait for them to finish
     if (process.env.RUN_MIGRATIONS === 'true') {
@@ -40,8 +54,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User already exists' }, { status: 400 });
     }
 
-    // Simple hash for local dev (in prod use bcrypt/argon2)
-    const passwordHash = Buffer.from(password).toString('base64');
+    const passwordHash = await hashPassword(password);
     const id = email.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const role = isFirstUser ? 'ADMIN' : 'PENDING';
 
@@ -66,12 +79,15 @@ export async function POST(req: Request) {
     cookieStore.set('session', token, {
       httpOnly: true,
       secure: true,
-      sameSite: 'none',
+      sameSite: 'strict',
       path: '/',
     });
 
     return NextResponse.json({ user: { id, email, role } });
   } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({ error: 'Invalid request payload', details: error.issues }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

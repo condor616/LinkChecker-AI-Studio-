@@ -14,9 +14,20 @@ export interface DbConnectionInfo {
  * Format: postgres://user:pass@host:port/db
  */
 export function parseDatabaseUrl(url: string): DbConnectionInfo {
+  if (!url || !url.trim()) {
+    return {
+      user: process.env.POSTGRES_USER || 'lynx_scan',
+      pass: process.env.POSTGRES_PASSWORD || 'localpass',
+      host: process.env.POSTGRES_HOST || 'localhost',
+      port: process.env.POSTGRES_PORT || '5432',
+      db: process.env.POSTGRES_DB || 'lynx_scan',
+    };
+  }
+
   try {
+    const normalizedUrl = url.replace(/^postgresql:\/\//, 'postgres://');
     const regex = /postgres:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/;
-    const match = url.match(regex);
+    const match = normalizedUrl.match(regex);
 
     if (match) {
       return {
@@ -29,7 +40,7 @@ export function parseDatabaseUrl(url: string): DbConnectionInfo {
     }
 
     // Fallback for simpler URLs (no password or port)
-    const urlObj = new URL(url);
+    const urlObj = new URL(normalizedUrl);
     return {
       user: urlObj.username || 'postgres',
       pass: urlObj.password || '',
@@ -38,14 +49,14 @@ export function parseDatabaseUrl(url: string): DbConnectionInfo {
       db: urlObj.pathname.split('/')[1] || 'postgres',
     };
   } catch (error) {
-    console.error('Failed to parse DATABASE_URL:', error);
+    console.warn('Failed to parse DATABASE_URL. Falling back to POSTGRES_* variables.');
     // Return defaults as last resort
     return {
-      user: 'lynx_scan',
-      pass: 'localpass',
-      host: 'localhost',
-      port: '5432',
-      db: 'lynx_scan',
+      user: process.env.POSTGRES_USER || 'lynx_scan',
+      pass: process.env.POSTGRES_PASSWORD || 'localpass',
+      host: process.env.POSTGRES_HOST || 'localhost',
+      port: process.env.POSTGRES_PORT || '5432',
+      db: process.env.POSTGRES_DB || 'lynx_scan',
     };
   }
 }

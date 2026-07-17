@@ -4,10 +4,9 @@ import { db } from './db';
 import { users } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { provisionUserDb } from './db/provisioning';
+import { getJwtSecretKey } from './security/jwt';
 
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'super-secret-key-for-local-dev-only-change-in-prod'
-);
+const SECRET_KEY = getJwtSecretKey();
 
 export async function createToken(payload: { id: string; role: string; email: string }) {
   return new SignJWT(payload)
@@ -21,7 +20,7 @@ export async function verifyToken(token: string) {
   try {
     const { payload } = await jwtVerify(token, SECRET_KEY);
     return payload as { id: string; role: string; email: string };
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -30,7 +29,7 @@ export async function getSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get('session')?.value;
   if (!token) return null;
-  
+
   const payload = await verifyToken(token);
   if (!payload) return null;
 

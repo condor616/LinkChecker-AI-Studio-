@@ -3,8 +3,61 @@ import { scans, links, users } from '../db/schema';
 import { eq, and, or, inArray, sql } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 
 const activeCrawls = new Map<string, Promise<void>>(); // Scan-scoped fetch cache
+const hostSafetyCache = new Map<string, boolean>();
+
+function isPrivateIpAddress(address: string): boolean {
+    if (address === '::1') return true;
+
+    if (address.startsWith('fc') || address.startsWith('fd') || address.startsWith('fe80:')) {
+        return true;
+    }
+
+    const parts = address.split('.').map((part) => Number.parseInt(part, 10));
+    if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return false;
+
+    const [a, b] = parts;
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 0) return true;
+
+    return false;
+}
+
+async function isSafeHostname(hostname: string): Promise<boolean> {
+    const normalized = hostname.toLowerCase();
+
+    if (hostSafetyCache.has(normalized)) {
+        return hostSafetyCache.get(normalized)!;
+    }
+
+    if (normalized === 'localhost' || normalized.endsWith('.localhost')) {
+        hostSafetyCache.set(normalized, false);
+        return false;
+    }
+
+    if (isIP(normalized) && isPrivateIpAddress(normalized)) {
+        hostSafetyCache.set(normalized, false);
+        return false;
+    }
+
+    try {
+        const results = await lookup(normalized, { all: true, verbatim: true });
+        const isSafe = results.every((result) => !isPrivateIpAddress(result.address));
+        hostSafetyCache.set(normalized, isSafe);
+        return isSafe;
+    } catch {
+        // If DNS lookup fails, allow normal fetch handling to determine status.
+        hostSafetyCache.set(normalized, true);
+        return true;
+    }
+}
 
 export async function processLink(userDb: any, link: any, scan: any, config: any) {
 
@@ -26,6 +79,23 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
   activeCrawls.set(crawlKey, crawlPromise);
 
   try {
+        const currentTarget = new URL(link.url);
+        const isSafeTarget = await isSafeHostname(currentTarget.hostname);
+        if (!isSafeTarget) {
+            await userDb.update(links).set({
+                status: 'SKIPPED',
+                statusCode: null,
+                type: null,
+                checkedAt: new Date(),
+                error: 'Blocked by SSRF protection policy'
+            }).where(and(
+                eq(links.scanId, scan.id),
+                eq(links.url, link.url),
+                or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+            ));
+            return;
+        }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
     
@@ -249,6 +319,10 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         try {
           const urlObj = new URL(href, link.url);
           if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
+                        const host = urlObj.hostname.toLowerCase();
+                        if (host === 'localhost' || host.endsWith('.localhost')) return;
+                        if (isIP(host) && isPrivateIpAddress(host)) return;
+
             urlObj.hash = '';
             
             // Normalize out Drupal/PHP front controllers (index.php and index%2ephp) at the root of the path
@@ -264,7 +338,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
                 foundLinks.set(urlStr, { snippet });
             }
           }
-        } catch (e) {}
+                } catch {}
       });
 
       const allUrls = Array.from(foundLinks.keys());
