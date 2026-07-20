@@ -4,7 +4,7 @@ import { Home } from 'lucide-react';
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-[#0c0c0e] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 relative overflow-hidden">
       {/* Background Glows */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/10 blur-[150px] rounded-full" />
@@ -21,7 +21,7 @@ export default function NotFound() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight leading-tight">
             Oops! Playing <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-cyan-400 to-emerald-400">Hide and Seek.</span>
           </h1>
-          <p className="text-xl text-slate-400 max-w-md mx-auto leading-relaxed">
+          <p className="text-xl text-muted-foreground max-w-md mx-auto leading-relaxed">
             Our Lynx looked everywhere, but it seems this resource has escaped into the digital wilderness.
           </p>
         </div>

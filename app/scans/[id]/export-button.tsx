@@ -48,11 +48,11 @@ export function ExportButton({ scanId, scanName }: { scanId: string, scanName: s
                     Export Data
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 glass-vibrant border-white/10 text-white">
-                <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+            <DropdownMenuContent align="end" className="w-56 glass-vibrant border-border text-foreground">
+                <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                     Export Format
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator className="bg-white/5" />
+                <DropdownMenuSeparator className="bg-border" />
                 
                 <DropdownMenuItem 
                     className="gap-2 focus:bg-primary/20 cursor-pointer"
@@ -83,7 +83,7 @@ export function ExportButton({ scanId, scanName }: { scanId: string, scanName: s
                     Quick Filters
                 </DropdownMenuLabel>
                 <DropdownMenuItem 
-                    className="gap-2 focus:bg-red-500/20 cursor-pointer text-red-400"
+                    className="gap-2 focus:bg-destructive/20 cursor-pointer text-destructive"
                     onClick={() => handleExport('csv', 'broken')}
                 >
                     <FileText className="h-4 w-4" />

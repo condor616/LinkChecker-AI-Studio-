@@ -46,7 +46,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             className={cn(
-                "relative w-full overflow-hidden rounded-[32px] border border-white/10 bg-[#0c0c0e] shadow-2xl shadow-primary/20 transition-all duration-500",
+                "relative w-full overflow-hidden rounded-[32px] border border-border bg-card shadow-2xl shadow-primary/20 transition-all duration-500",
                 showWizard ? "max-w-2xl" : "max-w-4xl"
             )}
           >
@@ -56,7 +56,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
             {!showWizard && (
               <button
                 onClick={onClose}
-                className="absolute right-6 top-6 p-2 text-muted-foreground hover:text-white hover:bg-white/10 rounded-full transition-all z-10"
+                className="absolute right-6 top-6 p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all z-10"
               >
                 <X className="h-6 w-6" />
               </button>
@@ -85,7 +85,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-widest">
                   <Zap className="h-3 w-3 fill-current" /> Initialize engine
                 </div>
-                <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-white">
+                <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-foreground">
                   Choose your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-cyan-400">Scan Mode</span>
                 </h2>
                 <p className="text-muted-foreground text-lg max-w-xl mx-auto">
@@ -112,8 +112,8 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                       <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform mb-6">
                         <Globe className="h-7 w-7" />
                       </div>
-                      <CardTitle className="text-2xl font-bold text-white mb-3">Normal Scan</CardTitle>
-                      <CardDescription className="text-slate-400 text-base leading-relaxed">
+                      <CardTitle className="text-2xl font-bold text-foreground mb-3">Normal Scan</CardTitle>
+                      <CardDescription className="text-muted-foreground text-base leading-relaxed">
                         Comprehensive site-wide audit. Recursively crawls your entire domain to verify every internal and external connection.
                       </CardDescription>
                     </CardHeader>
@@ -153,8 +153,8 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                       <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform mb-6">
                         <Target className="h-7 w-7" />
                       </div>
-                      <CardTitle className="text-2xl font-bold text-white mb-3">Targeted Scan</CardTitle>
-                      <CardDescription className="text-slate-400 text-base leading-relaxed">
+                      <CardTitle className="text-2xl font-bold text-foreground mb-3">Targeted Scan</CardTitle>
+                      <CardDescription className="text-muted-foreground text-base leading-relaxed">
                         Precision asset verification. Focuses exclusively on a list of specific URLs, PDFs, or images for immediate feedback.
                       </CardDescription>
                     </CardHeader>

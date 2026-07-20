@@ -4,6 +4,7 @@ import './globals.css';
 import { getSession } from '@/lib/auth';
 import { Navbar } from '@/components/navbar';
 import { ScanSelectionProvider } from '@/components/scans/scan-selection-provider';
+import { ThemeProvider } from '@/components/theme-provider';
 import { db } from '@/lib/db';
 import { sql, count } from 'drizzle-orm';
 import { users } from '@/lib/db/schema';
@@ -41,19 +42,37 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const theme = localStorage.getItem('theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const shouldBeDark = theme === 'dark' || (!theme && prefersDark);
+                if (shouldBeDark) {
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased text-foreground">
-        <ScanSelectionProvider hasSession={!!session}>
-          <Navbar user={session} />
-          <main>
-            {isDbOnline ? (
-              <>
-                {children}
-                {isFirstUser && <FirstUserPopup />}
-              </>
-            ) : <DatabaseOffline />}
-          </main>
-        </ScanSelectionProvider>
+        <ThemeProvider>
+          <ScanSelectionProvider hasSession={!!session}>
+            <Navbar user={session} />
+            <main>
+              {isDbOnline ? (
+                <>
+                  {children}
+                  {isFirstUser && <FirstUserPopup />}
+                </>
+              ) : <DatabaseOffline />}
+            </main>
+          </ScanSelectionProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -100,10 +100,10 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                   onChange={(e) => updateUser(user.id, { role: e.target.value })}
                   disabled={updatingUserId === user.id}
                   className={cn(
-                    "bg-[#1a1a1e]/90 backdrop-blur-md border border-white/10 hover:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer shadow-xl",
+                    "bg-card/90 backdrop-blur-md border border-border hover:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer shadow-xl",
                     updatingUserId === user.id && "opacity-50 cursor-not-allowed",
                     user.role === 'ADMIN' ? 'text-blue-400' : 
-                    user.role === 'BLOCKED' ? 'text-red-400' : 'text-emerald-400'
+                    user.role === 'BLOCKED' ? 'text-destructive' : 'text-emerald-400'
                   )}
                 >
                   <option value="ADMIN">ADMIN</option>
@@ -205,7 +205,7 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-card border rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="p-6 space-y-4">
-                    <div className="flex items-center gap-3 text-red-600">
+                    <div className="flex items-center gap-3 text-destructive">
                         <div className="p-2 bg-red-100 rounded-full">
                             <AlertTriangle className="h-6 w-6" />
                         </div>

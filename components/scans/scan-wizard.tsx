@@ -198,7 +198,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step}
           </div>
           <div>
-            <h3 className="font-bold text-white">Scan Setup Wizard</h3>
+            <h3 className="font-bold text-foreground">Scan Setup Wizard</h3>
             <p className="text-xs text-muted-foreground">Step {step} of {totalSteps}</p>
           </div>
         </div>
@@ -229,7 +229,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 1 && (
               <div className="space-y-6">
                 <div className="text-center space-y-2">
-                  <h2 className="text-2xl font-black text-white">Choose Scan Mode</h2>
+                  <h2 className="text-2xl font-black text-foreground">Choose Scan Mode</h2>
                   <p className="text-muted-foreground">Select how the engine should navigate through your site.</p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -243,7 +243,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary mb-4 group-hover:scale-110 transition-transform">
                       <Globe className="h-5 w-5" />
                     </div>
-                    <h4 className="font-bold text-white mb-2">Recursive Discovery</h4>
+                    <h4 className="font-bold text-foreground mb-2">Recursive Discovery</h4>
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       Crawls your entire site from the start URL. Perfect for a full site audit to find all broken links.
                     </p>
@@ -259,7 +259,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     <div className="h-10 w-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4 group-hover:scale-110 transition-transform">
                       <Target className="h-5 w-5" />
                     </div>
-                    <h4 className="font-bold text-white mb-2">Targeted Audit</h4>
+                    <h4 className="font-bold text-foreground mb-2">Targeted Audit</h4>
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       Focuses ONLY on a specific list of pages, PDFs, or images. Faster and avoids noise from large sites.
                     </p>
@@ -271,7 +271,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 2 && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-black text-white">Basic Details</h2>
+                  <h2 className="text-2xl font-black text-foreground">Basic Details</h2>
                   <p className="text-muted-foreground italic text-sm">Every engine needs a name and a starting point.</p>
                 </div>
                 
@@ -289,7 +289,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     />
                     <p className="text-[10px] text-muted-foreground flex items-center gap-1.5 px-1 font-medium">
                       {step === 2 && !data.name.trim() ? (
-                        <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Project name is required</span>
+                        <span className="text-destructive flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Project name is required</span>
                       ) : (
                         <span className="flex items-center gap-1"><Info className="h-3 w-3" /> Used to identify this report later in your history.</span>
                       )}
@@ -309,7 +309,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     />
                     <p className="text-[10px] text-muted-foreground flex items-center gap-1.5 px-1 font-medium">
                       {step === 2 && (!data.startUrl.trim() || data.startUrl === 'https://') ? (
-                        <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Valid entry point is required</span>
+                        <span className="text-destructive flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Valid entry point is required</span>
                       ) : (
                         <span className="flex items-center gap-1"><Info className="h-3 w-3" /> The crawler will begin its journey from this address.</span>
                       )}
@@ -335,7 +335,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                       />
                       <p className="text-[10px] text-emerald-400/70 flex items-center gap-1.5 px-1 font-medium">
                         {step === 2 && data.targetUrls.length === 0 ? (
-                           <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> At least one target URL is required for targeted scans</span>
+                           <span className="text-destructive flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> At least one target URL is required for targeted scans</span>
                         ) : (
                            <span className="flex items-center gap-1"><Info className="h-3 w-3" /> List specifically which assets or pages are critically important to audit.</span>
                         )}
@@ -349,7 +349,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 3 && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-black text-white">Crawling Rules</h2>
+                  <h2 className="text-2xl font-black text-foreground">Crawling Rules</h2>
                   <p className="text-muted-foreground italic text-sm">Define the boundaries for the spider's web.</p>
                 </div>
 
@@ -382,7 +382,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 4 && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-black text-white">Performance Tuning</h2>
+                  <h2 className="text-2xl font-black text-foreground">Performance Tuning</h2>
                   <p className="text-muted-foreground italic text-sm">Balance speed with server respect.</p>
                 </div>
 
@@ -445,7 +445,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 5 && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-black text-white">Browser Identity</h2>
+                  <h2 className="text-2xl font-black text-foreground">Browser Identity</h2>
                   <p className="text-muted-foreground italic text-sm">Choose how the crawler presents itself to the webserver.</p>
                 </div>
 
@@ -458,7 +458,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                       onChange={e => setData({...data, userAgent: e.target.value})}
                     >
                       {USER_AGENTS.map(agent => (
-                        <option key={agent.name} value={agent.value} className="bg-slate-900">{agent.name}</option>
+                        <option key={agent.name} value={agent.value} className="bg-card">{agent.name}</option>
                       ))}
                     </select>
                   </div>
@@ -482,7 +482,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 6 && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-black text-white">Advanced Authentication</h2>
+                  <h2 className="text-2xl font-black text-foreground">Advanced Authentication</h2>
                   <p className="text-muted-foreground italic text-sm">Crawl behind protected directories using Basic Auth.</p>
                 </div>
 
@@ -529,7 +529,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     {authValidation && (
                       <span className={cn(
                         'text-[11px] font-semibold',
-                        authValidation.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+                        authValidation.type === 'success' ? 'text-emerald-400' : 'text-destructive'
                       )}>
                         {authValidation.message}
                       </span>
@@ -549,7 +549,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 7 && (
               <div className="space-y-6">
                 <div className="text-center space-y-2">
-                  <h2 className="text-3xl font-black text-white">Review Configuration</h2>
+                  <h2 className="text-3xl font-black text-foreground">Review Configuration</h2>
                   <p className="text-muted-foreground">Ready to initialize the Lynx Engine v4.0</p>
                 </div>
 
@@ -570,9 +570,9 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                       "w-4 h-4 rounded border transition-all flex items-center justify-center",
                       dontShowAgain ? "bg-primary border-primary" : "border-white/20 group-hover:border-white/40"
                     )}>
-                      {dontShowAgain && <CheckCircle2 className="h-3 w-3 text-white" />}
+                      {dontShowAgain && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
                     </div>
-                    <span className="text-[11px] font-bold text-muted-foreground group-hover:text-white transition-colors">Do not show this wizard again</span>
+                    <span className="text-[11px] font-bold text-muted-foreground group-hover:text-foreground transition-colors">Do not show this wizard again</span>
                   </div>
                 </div>
 
@@ -592,7 +592,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
         <Button 
           variant="ghost" 
           onClick={handleSkip}
-          className="text-xs text-muted-foreground hover:text-white"
+          className="text-xs text-muted-foreground hover:text-foreground"
         >
           Skip to Manual Setup
         </Button>
@@ -642,13 +642,13 @@ function SelectionToggle({ icon, title, description, active, onClick }: { icon: 
     >
       <div className={cn(
         "h-10 w-10 shrink-0 rounded-lg flex items-center justify-center transition-all",
-        active ? "bg-primary text-white shadow-xl" : "bg-white/5 text-muted-foreground group-hover:bg-white/10"
+        active ? "bg-primary text-primary-foreground shadow-xl" : "bg-muted text-muted-foreground group-hover:bg-muted/80"
       )}>
         {icon}
       </div>
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <h4 className="font-bold text-sm text-white">{title}</h4>
+          <h4 className="font-bold text-sm text-foreground">{title}</h4>
           {active && <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
         </div>
         <p className="text-[10px] text-muted-foreground leading-relaxed leading-snug">
@@ -667,7 +667,7 @@ function SummaryItem({ label, value, icon }: { label: string, value: string, ico
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{label}</p>
-        <p className="text-xs text-white font-semibold truncate">{value || 'Not configured'}</p>
+        <p className="text-xs text-foreground font-semibold truncate">{value || 'Not configured'}</p>
       </div>
     </div>
   );

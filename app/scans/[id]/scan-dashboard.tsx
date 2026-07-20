@@ -2,6 +2,17 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+function getStatusBadgeClass(statusCode: string | number | undefined, isBroken: boolean, isPending?: boolean): string {
+  if (isPending) return "bg-blue-500 text-white";
+  const code = typeof statusCode === 'string' ? parseInt(statusCode, 10) : (statusCode || 0);
+  if (code >= 500) return "bg-orange-500/15 text-orange-600 dark:text-orange-400";
+  if (code >= 400) return "bg-destructive/15 text-destructive";
+  if (code >= 300) return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400";
+  if (code >= 200) return "bg-green-500/10 text-green-500";
+  if (isBroken) return "bg-destructive/15 text-destructive";
+  return "bg-muted text-muted-foreground";
+}
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle } from 'lucide-react';
@@ -19,6 +30,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const [successPage, setSuccessPage] = useState(1);
   const [skippedPage, setSkippedPage] = useState(1);
   const [recheckedPage, setRecheckedPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<'broken' | 'rechecked' | 'success' | 'skipped' | null>('broken');
   
   const initialSearch = searchParams.get('search') || '';
   const [searchQuery, setSearchQuery] = useState(initialSearch);
@@ -341,7 +353,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
               <Button 
                 onClick={() => setShowStopConfirm(true)} 
                 variant="outline"
-                className="h-10 px-3 text-red-500 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/50 rounded-xl group transition-all"
+                className="h-10 px-3 text-destructive border-destructive/20 hover:bg-destructive/10 hover:border-destructive/50 rounded-xl group transition-all"
                 title="Stop and Delete Scan"
               >
                 <Square className="h-4 w-4 fill-red-500/20 group-hover:fill-red-500 transition-all" />
@@ -378,7 +390,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                 <StatCard title="Target Assets" value={targetUrls.length} icon={<Link2 className="h-4 w-4" />} color="text-primary" />
                 <StatCard title="Pages Crawled" value={pagesCrawled} icon={<Globe className="h-4 w-4" />} />
                 <StatCard title="Inst. Found" value={successCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
-                <StatCard title="Missing Targets" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-red-500" />
+                <StatCard title="Missing Targets" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" />
                 <StatCard title="Crawl Queue" value={globalPending} icon={<RefreshCw className={cn("h-4 w-4", status === 'RUNNING' && "animate-spin")} />} color="text-blue-500" />
             </>
         ) : (
@@ -391,7 +403,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                     color="text-blue-500" 
                 />
                 <StatCard title="Healthy" value={successCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
-                <StatCard title="Broken" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-red-500" />
+                <StatCard title="Broken" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" highlight={brokenCount > 0} />
                 <StatCard title="Skipped" value={skippedCount} icon={<Ghost className="h-4 w-4" />} color="text-slate-500" />
             </>
         )}
@@ -425,11 +437,11 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                     {missingTargets.length > 0 && (
                         <div className="text-center">
                             <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">Missing</div>
-                            <div className="text-3xl font-black text-red-500 leading-none">{missingTargets.length}</div>
+                            <div className="text-3xl font-black text-destructive leading-none">{missingTargets.length}</div>
                         </div>
                     )}
-                    <div className="h-10 w-px bg-white/10 hidden md:block" />
-                    <Button variant="glow" size="sm" onClick={downloadBacklinkCSV} className="h-10 px-4">
+                    <div className="h-10 w-px bg-border hidden md:block" />
+                    <Button size="sm" onClick={downloadBacklinkCSV} className="h-10 px-4">
                         <ExternalLink className="mr-2 h-4 w-4" /> Export Backlinks
                     </Button>
                 </div>
@@ -437,9 +449,9 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
         )}
 
         {isTargeted && missingTargets.length > 0 && (
-            <Card className="border-red-500/20 bg-red-500/5">
+            <Card className="border-destructive/20 bg-destructive/5">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-red-500 flex items-center gap-2">
+                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-destructive flex items-center gap-2">
                         <AlertCircle className="h-4 w-4" />
                         Missing / Orphaned Targets ({missingTargets.length})
                     </CardTitle>
@@ -448,7 +460,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                     <p className="text-[11px] text-muted-foreground mb-3">The following requested URLs were not found after crawling the site. These assets are either unlinked or the crawler could not discover a path to them.</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {missingTargets.map((t: string) => (
-                            <div key={t} className="px-3 py-1.5 rounded bg-black/20 border border-white/5 text-[10px] font-mono text-red-400/80 break-all flex items-center justify-between group">
+                            <div key={t} className="px-3 py-1.5 rounded bg-black/20 border border-white/5 text-[10px] font-mono text-destructive/80 break-all flex items-center justify-between group">
                                 {t}
                                 <Ghost className="h-3 w-3 opacity-20 group-hover:opacity-100 transition-opacity" />
                             </div>
@@ -461,19 +473,20 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
         {/* Triage Section (Now at the top) */}
         <div className="w-full order-1">
             <Card className="min-h-[500px] flex flex-col shadow-xl border-primary/5">
-                <Tabs defaultValue={isTargeted ? (brokenCount > 0 ? "broken" : "success") : "broken"} className="flex flex-col h-full">
-                    <CardHeader className="py-3 px-4 border-b sticky top-0 bg-background/80 backdrop-blur-md z-10">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <CardTitle className="text-lg flex items-center gap-2">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+                    <CardHeader className="py-3 px-4 border-b sticky top-0 bg-background/80 backdrop-blur-md z-10 space-y-0">
+                        {/* Row 1: Title + Search + View Toggle */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3">
+                            <CardTitle className="text-lg flex items-center gap-2 shrink-0">
                                 {isTargeted ? 'Audit Results' : 'Report Triage'}
                                 {isSearching && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
                             </CardTitle>
                             
-                            <div className="flex items-center gap-4">
-                                <div className="relative w-full md:w-64">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto sm:justify-end">
+                                <div className="relative w-full sm:max-w-xs">
                                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input
-                                        placeholder="Search URLs (min 3 chars)..."
+                                        placeholder="Search URLs..."
                                         className="pl-9 h-9"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -481,11 +494,11 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                 </div>
                                 
                                 {!isTargeted && (
-                                    <div className="flex border rounded-lg bg-muted/30 p-0.5">
+                                    <div className="flex border rounded-lg bg-muted/30 p-0.5 shrink-0 w-full sm:w-auto">
                                         <Button 
                                             variant="ghost" 
                                             size="sm" 
-                                            className={cn("h-7 px-2 text-[10px] font-bold uppercase tracking-tight", viewMode === 'url' ? "bg-background shadow-sm" : "opacity-50")}
+                                            className={cn("h-7 px-3 text-[10px] font-bold uppercase tracking-tight flex-1 sm:flex-none", viewMode === 'url' ? "bg-background shadow-sm" : "opacity-50")}
                                             onClick={() => setViewMode('url')}
                                         >
                                             By URL
@@ -493,7 +506,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                         <Button 
                                             variant="ghost" 
                                             size="sm" 
-                                            className={cn("h-7 px-2 text-[10px] font-bold uppercase tracking-tight", viewMode === 'source' ? "bg-background shadow-sm" : "opacity-50")}
+                                            className={cn("h-7 px-3 text-[10px] font-bold uppercase tracking-tight flex-1 sm:flex-none", viewMode === 'source' ? "bg-background shadow-sm" : "opacity-50")}
                                             onClick={() => setViewMode('source')}
                                         >
                                             By Page
@@ -501,26 +514,76 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                     </div>
                                 )}
 
-                                {!isTargeted && (
-                                    <TabsList>
-                                        <TabsTrigger value="broken" className="text-red-500 data-[state=active]:bg-red-500/10">
-                                            Broken ({currentBrokenGroups.length})
-                                        </TabsTrigger>
-                                        <TabsTrigger value="rechecked" className="text-blue-500 data-[state=active]:bg-blue-500/10">
-                                            Re-checked ({currentRecheckedGroups.length})
-                                        </TabsTrigger>
-                                        <TabsTrigger value="success">Success ({currentSuccessGroups.length})</TabsTrigger>
-                                        <TabsTrigger value="skipped">Skipped ({currentSkippedGroups.length})</TabsTrigger>
-                                    </TabsList>
+                                {isTargeted && (
+                                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted px-2 py-1 rounded">
+                                        LIVE AUDIT ACTIVE
+                                    </div>
                                 )}
                             </div>
-
-                            {isTargeted && (
-                                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted px-2 py-1 rounded">
-                                    LIVE AUDIT ACTIVE
-                                </div>
-                            )}
                         </div>
+
+                        {/* Row 2: Filter Tabs - Desktop */}
+                        {!isTargeted && (
+                            <>
+                                {/* Mobile: Compact Filter Buttons */}
+                                <div className="flex md:hidden gap-1.5 pt-3 pb-2 overflow-x-auto scrollbar-hide">
+                                    <Button
+                                        variant={activeTab === 'broken' ? 'default' : 'outline'}
+                                        size="sm"
+                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        onClick={() => setActiveTab('broken')}
+                                    >
+                                        <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentBrokenGroups.length}</span>
+                                        Broken
+                                    </Button>
+                                    <Button
+                                        variant={activeTab === 'rechecked' ? 'default' : 'outline'}
+                                        size="sm"
+                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        onClick={() => setActiveTab('rechecked')}
+                                    >
+                                        <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentRecheckedGroups.length}</span>
+                                        Checked
+                                    </Button>
+                                    <Button
+                                        variant={activeTab === 'success' ? 'default' : 'outline'}
+                                        size="sm"
+                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        onClick={() => setActiveTab('success')}
+                                    >
+                                        <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentSuccessGroups.length}</span>
+                                        OK
+                                    </Button>
+                                    <Button
+                                        variant={activeTab === 'skipped' ? 'default' : 'outline'}
+                                        size="sm"
+                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        onClick={() => setActiveTab('skipped')}
+                                    >
+                                        <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentSkippedGroups.length}</span>
+                                        Skip
+                                    </Button>
+                                </div>
+
+                                {/* Desktop: Full Tabs */}
+                                <div className="hidden md:block w-full overflow-x-auto -mx-6 px-6 scrollbar-hide pt-3 pb-2">
+                                    <TabsList className="w-full justify-start inline-flex">
+                                        <TabsTrigger value="broken" className="text-destructive data-[state=active]:border-b-destructive flex-shrink-0">
+                                            Broken <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">{currentBrokenGroups.length}</span>
+                                        </TabsTrigger>
+                                        <TabsTrigger value="rechecked" className="text-blue-500 data-[state=active]:border-b-blue-500 flex-shrink-0">
+                                            Re-checked <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500">{currentRecheckedGroups.length}</span>
+                                        </TabsTrigger>
+                                        <TabsTrigger value="success" className="flex-shrink-0">
+                                            Success <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-green-500/10 text-green-600">{currentSuccessGroups.length}</span>
+                                        </TabsTrigger>
+                                        <TabsTrigger value="skipped" className="flex-shrink-0">
+                                            Skipped <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{currentSkippedGroups.length}</span>
+                                        </TabsTrigger>
+                                    </TabsList>
+                                </div>
+                            </>
+                        )}
                     </CardHeader>
                     <CardContent ref={triageContentRef} className="flex-1 overflow-auto p-0 flex flex-col">
                         {isTargeted ? (
@@ -539,15 +602,15 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                 <EmptyState message="No broken links found. Looking good!" />
                             ) : (
                                 <>
-                                    <div className="flex items-center justify-between px-4 py-3 bg-red-500/5 border-b border-red-500/10">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 bg-destructive/5 border-b border-destructive/10">
                                         <div className="flex items-center gap-2">
-                                            <AlertCircle className="h-4 w-4 text-red-500" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Broken Links Detected ({currentBrokenGroups.length})</span>
+                                            <AlertCircle className="h-4 w-4 text-destructive" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-destructive">Broken Links Detected ({currentBrokenGroups.length})</span>
                                         </div>
                                         <Button 
                                             variant="outline" 
                                             size="sm" 
-                                            className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest border-red-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500 transition-all shadow-sm"
+                                            className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest border-destructive/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive transition-all shadow-sm w-full sm:w-auto"
                                             onClick={handleRecheckBroken}
                                             disabled={isRecheckingAll || currentBrokenGroups.length === 0}
                                         >
@@ -710,23 +773,23 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-[#1a1a1e] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full p-8 space-y-6 relative overflow-hidden"
+                className="bg-card border border-white/10 rounded-2xl shadow-2xl max-w-md w-full p-8 space-y-6 relative overflow-hidden"
               >
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500" />
                 
                 <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500 shrink-0">
+                  <div className="h-12 w-12 rounded-2xl bg-destructive/10 flex items-center justify-center text-destructive shrink-0">
                     <AlertTriangle className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Stop and Remove Scan?</h3>
-                    <p className="text-sm text-slate-400 mt-1 font-medium">This action cannot be undone.</p>
+                    <h3 className="text-xl font-bold text-foreground">Stop and Remove Scan?</h3>
+                    <p className="text-sm text-muted-foreground mt-1 font-medium">This action cannot be undone.</p>
                   </div>
                 </div>
 
-                <div className="bg-white/5 rounded-xl p-4 border border-white/5">
-                  <p className="text-sm leading-relaxed text-slate-300">
-                    Stopping this scan will <span className="text-red-400 font-bold underline decoration-red-400/30 underline-offset-4">immediately terminate</span> all active processing and <span className="text-white font-bold">permanently remove</span> all discovered links from the database.
+                <div className="bg-muted/30 rounded-xl p-4 border border-border">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Stopping this scan will <span className="text-destructive font-bold underline decoration-destructive/30 underline-offset-4">immediately terminate</span> all active processing and <span className="text-foreground font-bold">permanently remove</span> all discovered links from the database.
                   </p>
                 </div>
 
@@ -743,7 +806,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                     variant="destructive" 
                     onClick={handleStop} 
                     disabled={isStopping}
-                    className="bg-red-600 hover:bg-red-700 shadow-lg shadow-red-900/20 px-6 rounded-xl font-black uppercase tracking-widest text-xs h-11"
+                    className="bg-destructive hover:bg-destructive/90 shadow-lg shadow-destructive/20 px-6 rounded-xl font-black uppercase tracking-widest text-xs h-11 text-white"
                   >
                     {isStopping ? (
                       <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Stopping...</>
@@ -767,47 +830,97 @@ function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, p
     const totalPages = Math.ceil(totalItems / pageSize);
     if (totalPages <= 1) return null;
 
+    // Build page number array with ellipsis
+    const getPages = () => {
+        const pages: (number | '...')[] = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (currentPage > 3) pages.push('...');
+            const start = Math.max(2, currentPage - 1);
+            const end = Math.min(totalPages - 1, currentPage + 1);
+            for (let i = start; i <= end; i++) pages.push(i);
+            if (currentPage < totalPages - 2) pages.push('...');
+            pages.push(totalPages);
+        }
+        return pages;
+    };
+
     return (
         <div className={cn(
-            "flex items-center justify-between px-4 py-2 bg-muted/5",
+            "flex items-center justify-between px-4 py-2.5 bg-muted/5",
             position === 'bottom' ? "border-t" : "border-b"
         )}>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                Page {currentPage} of {totalPages} <span className="ml-2 opacity-50">({totalItems} total)</span>
+            <div className="text-[10px] text-muted-foreground font-medium">
+                <span className="font-bold text-foreground">{totalItems.toLocaleString()}</span> results &middot; page <span className="font-bold text-foreground">{currentPage}</span> of <span className="font-bold text-foreground">{totalPages}</span>
             </div>
             <div className="flex items-center gap-1">
-                <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-7 w-7" 
+                <button
+                    className={cn(
+                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border",
+                        currentPage === 1
+                            ? "opacity-30 cursor-not-allowed border-transparent"
+                            : "hover:bg-muted border-border hover:border-primary/30 cursor-pointer"
+                    )}
                     disabled={currentPage === 1}
                     onClick={() => onPageChange(currentPage - 1)}
+                    aria-label="Previous page"
                 >
-                    <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-7 w-7" 
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+
+                {getPages().map((page, i) =>
+                    page === '...' ? (
+                        <span key={`ellipsis-${i}`} className="h-8 w-8 flex items-center justify-center text-xs text-muted-foreground">…</span>
+                    ) : (
+                        <button
+                            key={page}
+                            onClick={() => onPageChange(page)}
+                            className={cn(
+                                "h-8 w-8 rounded-md flex items-center justify-center text-xs font-medium transition-colors border",
+                                page === currentPage
+                                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                    : "hover:bg-muted border-border hover:border-primary/30 text-muted-foreground cursor-pointer"
+                            )}
+                            aria-current={page === currentPage ? 'page' : undefined}
+                        >
+                            {page}
+                        </button>
+                    )
+                )}
+
+                <button
+                    className={cn(
+                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border",
+                        currentPage === totalPages
+                            ? "opacity-30 cursor-not-allowed border-transparent"
+                            : "hover:bg-muted border-border hover:border-primary/30 cursor-pointer"
+                    )}
                     disabled={currentPage === totalPages}
                     onClick={() => onPageChange(currentPage + 1)}
+                    aria-label="Next page"
                 >
-                    <ChevronRight className="h-4 w-4" />
-                </Button>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                </button>
             </div>
         </div>
     );
 }
 
-function StatCard({ title, value, icon, color = "" }: any) {
+function StatCard({ title, value, icon, color = "", highlight = false }: any) {
+    const displayValue = typeof value === 'number' ? value.toLocaleString() : value;
     return (
-        <Card className="bg-card/50 backdrop-blur-sm shadow-md border-primary/10">
+        <Card className={cn(
+            "bg-card/50 backdrop-blur-sm shadow-md transition-colors",
+            highlight ? "border-destructive/30 bg-destructive/5" : "border-primary/10"
+        )}>
             <CardHeader className="p-4 pb-0 flex flex-row items-center justify-between space-y-0 text-muted-foreground">
                 <CardTitle className="text-[10px] font-bold uppercase tracking-widest">{title}</CardTitle>
                 {icon}
             </CardHeader>
             <CardContent className="p-4 pt-1">
-                <div className={`text-2xl font-bold ${color}`}>{value}</div>
+                <div className={`text-2xl font-bold ${color}`}>{displayValue}</div>
             </CardContent>
         </Card>
     );
@@ -836,7 +949,7 @@ function TriageItemGeneral({ group, onRecheck }: any) {
             animate={{ opacity: 1 }}
             className={cn(
                 "border-l-4 transition-colors overflow-hidden",
-                isBroken ? "border-l-red-500 hover:bg-red-500/5" : "border-l-green-500 hover:bg-green-500/5"
+                isBroken ? "border-l-destructive hover:bg-destructive/5" : "border-l-green-500 hover:bg-green-500/5"
             )}
         >
             <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
@@ -847,8 +960,8 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                         </span>
                     )}
                     <span className={cn(
-                        "font-medium text-sm truncate",
-                        isBroken ? "text-red-500" : "text-green-600 dark:text-green-400"
+                        "font-medium text-sm break-words",
+                        isBroken ? "text-destructive" : "text-green-600 dark:text-green-400"
                     )}>
                         {link.url}
                     </span>
@@ -866,7 +979,7 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                 <div className="flex items-center gap-3 shrink-0">
                      <span className={cn(
                         "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
-                        isBroken ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
+                        getStatusBadgeClass(link.statusCode, isBroken)
                     )}>
                         {link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
                     </span>
@@ -962,15 +1075,18 @@ function TriageItem({ group, onRecheck }: any) {
                         href={link.url} 
                         target="_blank" 
                         rel="noreferrer" 
-                        className="font-medium text-sm text-red-500 hover:underline truncate"
+                        className="font-medium text-sm text-destructive hover:underline break-words"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {link.url}
                     </a>
-                    <ExternalLink className="h-3 w-3 text-red-400/50 shrink-0" />
+                    <ExternalLink className="h-3 w-3 text-destructive/50 shrink-0" />
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded">
+                    <span className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                        getStatusBadgeClass(link.statusCode, true)
+                    )}>
                         {link.statusCode || 'FAIL'}
                     </span>
                     <Button 
@@ -1058,7 +1174,7 @@ function TriageItemSuccess({ group }: any) {
         <div className="border-l-4 border-l-green-500 hover:bg-green-500/5 transition-colors overflow-hidden">
             <div className="h-12 px-4 flex items-center justify-between gap-4 select-none">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="font-medium text-sm text-green-600 dark:text-green-400 truncate">{link.url}</span>
+                    <span className="font-medium text-sm text-green-600 dark:text-green-400 break-words">{link.url}</span>
                     <a 
                         href={link.url} 
                         target="_blank" 
@@ -1070,7 +1186,10 @@ function TriageItemSuccess({ group }: any) {
                     </a>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                    <span className="bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-sm font-bold text-[10px]">{link.statusCode || 200} OK</span>
+                    <span className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-tighter",
+                        getStatusBadgeClass(link.statusCode, false)
+                    )}>{link.statusCode || 200} OK</span>
                 </div>
             </div>
         </div>
@@ -1093,7 +1212,7 @@ function TriageItemSkipped({ group }: any) {
                             {group.count}
                         </span>
                     )}
-                    <span className="font-medium text-slate-400 text-sm truncate">{link.url}</span>
+                    <span className="font-medium text-slate-400 text-sm break-words">{link.url}</span>
                     <a 
                         href={link.url} 
                         target="_blank" 
@@ -1175,7 +1294,7 @@ function TriageItemRechecked({ group, onRecheck }: any) {
             animate={{ opacity: 1 }}
             className={cn(
                 "border-l-4 transition-colors overflow-hidden",
-                isBroken ? "border-l-red-500 hover:bg-red-500/5 text-slate-800 dark:text-slate-200" : 
+                isBroken ? "border-l-destructive hover:bg-destructive/5 text-slate-800 dark:text-slate-200" : 
                 isSuccess ? "border-l-green-500 hover:bg-green-500/5" :
                 "border-l-blue-500 hover:bg-blue-500/5"
             )}
@@ -1192,20 +1311,20 @@ function TriageItemRechecked({ group, onRecheck }: any) {
                         target="_blank" 
                         rel="noreferrer" 
                         className={cn(
-                            "font-medium text-sm truncate hover:underline",
-                            isBroken ? "text-red-500" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
+                            "font-medium text-sm break-words hover:underline",
+                            isBroken ? "text-destructive" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
                         )}
                         onClick={(e) => e.stopPropagation()}
                     >
                         {link.url}
                     </a>
-                    <ExternalLink className={cn("h-3 w-3 shrink-0", isBroken ? "text-red-400/50" : "text-muted-foreground/40")} />
+                    <ExternalLink className={cn("h-3 w-3 shrink-0", isBroken ? "text-destructive/50" : "text-muted-foreground/40")} />
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                     <span className={cn(
                         "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
                         isPending ? "bg-blue-500 text-white flex items-center gap-1" :
-                        isBroken ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
+                        getStatusBadgeClass(link.statusCode, isBroken)
                     )}>
                         {isPending && <RefreshCw className="h-3 w-3 animate-spin inline mr-1" />}
                         {isPending ? 'CHECKING' : link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
@@ -1299,7 +1418,7 @@ function TriageItemSource({ group, onRecheck }: any) {
             animate={{ opacity: 1 }}
             className={cn(
                 "border-l-4 transition-colors overflow-hidden",
-                hasBroken ? "border-l-red-500 hover:bg-red-500/5 shadow-[inset_4px_0_0_rgba(239,68,68,0.2)]" : "border-l-green-500 hover:bg-green-500/5"
+                hasBroken ? "border-l-destructive hover:bg-destructive/5 shadow-[inset_4px_0_0_rgba(var(--destructive),0.2)]" : "border-l-green-500 hover:bg-green-500/5"
             )}
         >
             <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
@@ -1308,8 +1427,8 @@ function TriageItemSource({ group, onRecheck }: any) {
                         {group.count} {group.count === 1 ? 'link' : 'links'}
                     </span>
                     <span className={cn(
-                        "font-medium text-sm truncate",
-                        hasBroken ? "text-red-500" : "text-green-600 dark:text-green-400"
+                        "font-medium text-sm break-words",
+                        hasBroken ? "text-destructive" : "text-green-600 dark:text-green-400"
                     )}>
                         {group.url}
                     </span>
@@ -1318,7 +1437,7 @@ function TriageItemSource({ group, onRecheck }: any) {
                 <div className="flex items-center gap-3 shrink-0">
                      <span className={cn(
                         "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
-                        hasBroken ? "bg-red-500 text-white shadow-sm" : "bg-green-500/10 text-green-500"
+                        hasBroken ? "bg-destructive/15 text-destructive shadow-sm" : "bg-green-500/10 text-green-500"
                     )}>
                         {hasBroken ? 'FIX NEEDED' : 'CLEAN'}
                     </span>
@@ -1342,7 +1461,7 @@ function TriageItemSource({ group, onRecheck }: any) {
                                         <div className="flex items-center gap-2">
                                             <span className={cn(
                                                 "text-xs font-bold leading-none",
-                                                inst.status === 'BROKEN' ? "text-red-500" : "text-green-500"
+                                                inst.status === 'BROKEN' ? "text-destructive" : "text-green-500"
                                             )}>
                                                 {inst.url}
                                             </span>
@@ -1351,16 +1470,16 @@ function TriageItemSource({ group, onRecheck }: any) {
                                             </a>
                                         </div>
                                         {inst.error && (
-                                            <div className="mt-2 p-2 rounded bg-red-500/5 border border-red-500/10">
-                                                <p className="text-[9px] font-black text-red-500/40 uppercase tracking-widest mb-1">Error Detail</p>
-                                                <p className="text-[10px] font-mono text-red-600 dark:text-red-400 leading-relaxed break-all">{inst.error}</p>
+                                            <div className="mt-2 p-2 rounded bg-destructive/5 border border-destructive/10">
+                                                <p className="text-[9px] font-black text-destructive/40 uppercase tracking-widest mb-1">Error Detail</p>
+                                                <p className="text-[10px] font-mono text-destructive dark:text-destructive/80 leading-relaxed break-all">{inst.error}</p>
                                             </div>
                                         )}
                                     </div>
                                     <div className="flex items-center gap-3 shrink-0">
                                         <span className={cn(
                                             "text-[10px] font-black px-2 py-0.5 rounded shadow-sm",
-                                            inst.status === 'BROKEN' ? "bg-red-500 text-white" : "bg-green-500/10 text-green-500"
+                                            inst.status === 'BROKEN' ? getStatusBadgeClass(inst.statusCode, true) : "bg-green-500/10 text-green-500"
                                         )}>
                                             {inst.statusCode || (inst.status === 'BROKEN' ? 'FAIL' : '200')}
                                         </span>

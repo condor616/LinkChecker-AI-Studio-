@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface StartScanButtonProps {
   className?: string;
-  variant?: 'default' | 'outline' | 'glow' | 'ghost' | 'secondary' | 'destructive' | 'link';
+  variant?: 'default' | 'outline' | 'ghost' | 'secondary' | 'destructive' | 'link';
   size?: 'default' | 'sm' | 'lg' | 'icon';
   children: React.ReactNode;
 }

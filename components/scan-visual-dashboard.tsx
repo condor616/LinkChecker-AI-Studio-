@@ -203,8 +203,8 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                 <LayoutDashboard className="h-6 w-6 text-primary" />
              </div>
              <div>
-                <h1 className="text-3xl font-black tracking-tight text-white">{scan.name} Dashboard</h1>
-                <p className="text-slate-400 text-sm">Visual analysis of your site's health and issues.</p>
+                <h1 className="text-3xl font-black tracking-tight text-foreground">{scan.name} Dashboard</h1>
+                <p className="text-muted-foreground text-sm">Visual analysis of your site's health and issues.</p>
              </div>
           </div>
         </div>
@@ -223,7 +223,7 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       {/* Top Row: Stats & Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Health Shield */}
-        <Card className="lg:col-span-1 bg-gradient-to-br from-slate-900/50 to-slate-950 border-primary/10 overflow-hidden relative group shadow-2xl">
+        <Card className="lg:col-span-1 bg-card border-primary/10 overflow-hidden relative group shadow-2xl">
            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
               <CheckCircle2 className="h-40 w-40 text-primary rotate-12" />
            </div>
@@ -244,7 +244,7 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                       stroke="currentColor"
                       strokeWidth="12"
                       fill="transparent"
-                      className="text-slate-800"
+                      className="text-muted"
                     />
                     <motion.circle
                       cx="96"
@@ -264,14 +264,14 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                     <motion.span 
                       initial={{ opacity: 0, scale: 0.5 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="text-5xl font-black text-white"
+                      className="text-5xl font-black text-foreground"
                     >
                       {stats.health}%
                     </motion.span>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SCORE</span>
                  </div>
               </div>
-              <p className="text-sm font-medium text-slate-300">
+              <p className="text-sm font-medium text-muted-foreground">
                 {stats.health === 100 ? "Perfect Health! No broken links found." : 
                  stats.health > 90 ? "Excellent. Minor issues to resolve." : 
                  stats.health > 70 ? "Needs attention. Several broken links discovered." :
@@ -323,11 +323,11 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
 
       {/* Priority Fix List */}
       <div className="grid grid-cols-1 gap-8">
-        <Card className="bg-slate-900 border-primary/5 shadow-xl flex flex-col">
+        <Card className="bg-card border-primary/5 shadow-xl flex flex-col">
            <CardHeader className="flex flex-row items-center justify-between border-b border-primary/5 pb-4">
               <div>
                 <CardTitle className="text-xl font-black tracking-tight italic">Priority: Pages to Fix</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1 text-red-400/70 flex items-center gap-2 font-bold">
+                <p className="text-sm text-muted-foreground mt-1 text-destructive/70 flex items-center gap-2 font-bold">
                    <AlertTriangle className="h-4 w-4" />
                    {stats.broken} broken links found across {stats.topPagesToFix.length} pages.
                 </p>
@@ -363,18 +363,18 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                                  href={page.url} 
                                  target="_blank" 
                                  rel="noreferrer" 
-                                 className="text-sm font-bold text-slate-300 truncate max-w-md hover:text-primary transition-colors flex items-center gap-2"
+                                 className="text-sm font-bold text-foreground break-words hover:text-primary transition-colors flex items-center gap-2 group/link"
                                  title="Visit page in new tab"
                                >
                                   {page.url}
-                                  <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  <ExternalLink className="h-3 w-3 opacity-0 group-hover/link:opacity-100 transition-opacity shrink-0 mt-0.5" />
                                </a>
                                <p className="text-[10px] text-muted-foreground mt-1">Found {page.count} broken links on this page.</p>
                             </div>
                             <div className="flex items-center gap-6 shrink-0">
                                <div className="text-right">
-                                  <div className="text-lg font-black text-white leading-tight">{page.count}</div>
-                                  <div className="text-[10px] font-bold uppercase tracking-tighter text-red-400">ERRORS</div>
+                                  <div className="text-lg font-black text-foreground leading-tight">{page.count}</div>
+                                  <div className="text-[10px] font-bold uppercase tracking-tighter text-destructive">ERRORS</div>
                                </div>
                                <Button 
                                  variant="ghost" 
@@ -405,11 +405,11 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                    <div className="p-4 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                       <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                    </div>
-                   <p className="text-sm font-bold text-slate-400 uppercase tracking-widest italic">All pages are healthy</p>
+                   <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest italic">All pages are healthy</p>
                 </div>
               )}
            </CardContent>
-           <div className="p-4 border-t border-primary/5 bg-slate-950/30">
+           <div className="p-4 border-t border-primary/5 bg-muted/30">
               <Button variant="ghost" className="w-full text-xs font-black uppercase tracking-widest opacity-50 hover:opacity-100 h-8 gap-2" asChild>
                  <Link href={`/scans/${scanId}`}>
                     Go to detailed triage <ExternalLink className="h-3 w-3" />
@@ -445,33 +445,79 @@ function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, p
     const totalPages = Math.ceil(totalItems / pageSize);
     if (totalPages <= 1) return null;
 
+    // Build page number array with ellipsis
+    const getPages = () => {
+        const pages: (number | '...')[] = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (currentPage > 3) pages.push('...');
+            const start = Math.max(2, currentPage - 1);
+            const end = Math.min(totalPages - 1, currentPage + 1);
+            for (let i = start; i <= end; i++) pages.push(i);
+            if (currentPage < totalPages - 2) pages.push('...');
+            pages.push(totalPages);
+        }
+        return pages;
+    };
+
     return (
         <div className={cn(
-            "flex items-center justify-between px-4 py-2 bg-muted/5",
-            position === 'bottom' ? "border-t border-primary/10" : "border-b border-primary/10"
+            "flex items-center justify-between px-4 py-2.5 bg-muted/5",
+            position === 'bottom' ? "border-t" : "border-b"
         )}>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                Page {currentPage} of {totalPages} <span className="ml-2 opacity-50">({totalItems} total)</span>
+            <div className="text-[10px] text-muted-foreground font-medium">
+                <span className="font-bold text-foreground">{totalItems.toLocaleString()}</span> results &middot; page <span className="font-bold text-foreground">{currentPage}</span> of <span className="font-bold text-foreground">{totalPages}</span>
             </div>
             <div className="flex items-center gap-1">
-                <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-7 w-7 border-primary/10 hover:border-primary/30" 
+                <button
+                    className={cn(
+                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border",
+                        currentPage === 1
+                            ? "opacity-30 cursor-not-allowed border-transparent"
+                            : "hover:bg-muted border-border hover:border-primary/30 cursor-pointer"
+                    )}
                     disabled={currentPage === 1}
                     onClick={() => onPageChange(currentPage - 1)}
+                    aria-label="Previous page"
                 >
-                    <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-7 w-7 border-primary/10 hover:border-primary/30" 
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+
+                {getPages().map((page, i) =>
+                    page === '...' ? (
+                        <span key={`ellipsis-${i}`} className="h-8 w-8 flex items-center justify-center text-xs text-muted-foreground">…</span>
+                    ) : (
+                        <button
+                            key={page}
+                            onClick={() => onPageChange(page)}
+                            className={cn(
+                                "h-8 w-8 rounded-md flex items-center justify-center text-xs font-medium transition-colors border",
+                                page === currentPage
+                                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                    : "hover:bg-muted border-border hover:border-primary/30 text-muted-foreground cursor-pointer"
+                            )}
+                            aria-current={page === currentPage ? 'page' : undefined}
+                        >
+                            {page}
+                        </button>
+                    )
+                )}
+
+                <button
+                    className={cn(
+                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border",
+                        currentPage === totalPages
+                            ? "opacity-30 cursor-not-allowed border-transparent"
+                            : "hover:bg-muted border-border hover:border-primary/30 cursor-pointer"
+                    )}
                     disabled={currentPage === totalPages}
                     onClick={() => onPageChange(currentPage + 1)}
+                    aria-label="Next page"
                 >
-                    <ChevronRight className="h-4 w-4" />
-                </Button>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                </button>
             </div>
         </div>
     );
@@ -481,20 +527,20 @@ function StatMetric({ label, value, icon, color, description }: any) {
   const colorMap: any = {
     primary: "text-primary border-primary/20 bg-primary/5",
     success: "text-emerald-400 border-emerald-500/20 bg-emerald-500/5",
-    danger: "text-red-400 border-red-500/20 bg-red-500/5",
+    danger: "text-destructive border-destructive/20 bg-destructive/5",
     info: "text-blue-400 border-blue-500/20 bg-blue-500/5",
-    muted: "text-slate-400 border-slate-500/20 bg-slate-500/5",
+    muted: "text-muted-foreground border-border bg-muted/20",
   };
 
   return (
-    <Card className="bg-slate-900 border-primary/5 shadow-lg group hover:border-primary/20 transition-all duration-300">
+    <Card className="bg-card border-primary/5 shadow-lg group hover:border-primary/20 transition-all duration-300">
       <CardContent className="p-5 flex items-start gap-4">
         <div className={cn("p-3 rounded-xl border shrink-0 group-hover:scale-110 transition-transform duration-300", colorMap[color])}>
            {icon}
         </div>
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">{label}</p>
-          <div className="text-3xl font-black text-white leading-none mb-1">
+          <div className="text-3xl font-black text-foreground leading-none mb-1">
              <motion.span
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -502,7 +548,7 @@ function StatMetric({ label, value, icon, color, description }: any) {
                 {value.toLocaleString()}
              </motion.span>
           </div>
-          <p className="text-[10px] font-medium text-slate-500 truncate">{description}</p>
+          <p className="text-[10px] font-medium text-muted-foreground truncate">{description}</p>
         </div>
       </CardContent>
     </Card>
@@ -511,11 +557,11 @@ function StatMetric({ label, value, icon, color, description }: any) {
 
 function TipCard({ icon, title, text }: any) {
    return (
-      <div className="bg-slate-900/50 border border-primary/5 p-5 rounded-2xl flex items-start gap-4 group hover:bg-slate-900 transition-colors">
+      <div className="bg-card/50 border border-primary/5 p-5 rounded-2xl flex items-start gap-4 group hover:bg-card transition-colors">
          <div className="mt-1 shrink-0 group-hover:rotate-12 transition-transform">{icon}</div>
          <div>
-            <h4 className="text-sm font-black uppercase tracking-tight text-slate-200 mb-1">{title}</h4>
-            <p className="text-xs leading-relaxed text-slate-400">{text}</p>
+            <h4 className="text-sm font-black uppercase tracking-tight text-foreground mb-1">{title}</h4>
+            <p className="text-xs leading-relaxed text-muted-foreground">{text}</p>
          </div>
       </div>
    );
@@ -524,8 +570,8 @@ function TipCard({ icon, title, text }: any) {
 function EmptyChartState({ icon, message }: any) {
    return (
       <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
-         <div className="p-4 bg-slate-800/50 rounded-full">{icon}</div>
-         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest italic">{message}</p>
+         <div className="p-4 bg-muted/50 rounded-full">{icon}</div>
+         <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest italic">{message}</p>
       </div>
    );
 }

@@ -405,7 +405,7 @@ export default function NewScanPage() {
 
                 <div className="relative group min-w-[220px]">
                     <select 
-                        className="w-full h-11 pl-4 pr-10 bg-[#1a1a1e]/90 backdrop-blur-xl border border-white/20 group-hover:border-emerald-500/50 rounded-xl appearance-none cursor-pointer focus:ring-2 ring-emerald-500/20 transition-all outline-none text-sm font-medium shadow-xl"
+                        className="w-full h-11 pl-4 pr-10 bg-input border border-border group-hover:border-primary/50 rounded-xl appearance-none cursor-pointer focus:ring-2 ring-primary/20 transition-all outline-none text-sm font-medium shadow-xl"
                         onChange={(e) => {
                             const template = templates.find(t => t.id === e.target.value);
                             if (template) loadTemplate(template);
@@ -446,7 +446,6 @@ export default function NewScanPage() {
                         </div>
                         <div className="flex gap-2">
                             <Button 
-                                variant="glow" 
                                 size="sm" 
                                 onClick={handleSaveTemplate}
                                 disabled={savingTemplate}
@@ -538,7 +537,7 @@ export default function NewScanPage() {
                                     {authValidation && (
                                         <div className={cn(
                                             'text-xs flex items-center gap-1.5',
-                                            authValidation.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+                                            authValidation.type === 'success' ? 'text-emerald-400' : 'text-destructive'
                                         )}>
                                             {authValidation.type === 'success' ? (
                                                 <CheckCircle2 className="h-3.5 w-3.5" />
@@ -590,7 +589,7 @@ export default function NewScanPage() {
                                 "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
                                 config.skipExternal 
                                     ? "bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.15)]" 
-                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                                    : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
                             )}
                             onClick={() => setConfig(prev => ({ ...prev, skipExternal: !prev.skipExternal }))}
                         >
@@ -618,7 +617,7 @@ export default function NewScanPage() {
                                 "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
                                 config.excludeSubdomains 
                                     ? "bg-orange-500/10 border-orange-500/50 shadow-[0_0_20px_rgba(249,115,22,0.15)]" 
-                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                                    : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
                             )}
                             onClick={() => setConfig(prev => ({ ...prev, excludeSubdomains: !prev.excludeSubdomains }))}
                         >
@@ -646,7 +645,7 @@ export default function NewScanPage() {
                                 "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
                                 config.doNotTraverseBackward 
                                     ? "bg-purple-500/10 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.2)]" 
-                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                                    : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
                             )}
                             onClick={() => setConfig(prev => ({ ...prev, doNotTraverseBackward: !prev.doNotTraverseBackward }))}
                         >
@@ -674,7 +673,7 @@ export default function NewScanPage() {
                                 "relative overflow-hidden group p-4 border rounded-xl cursor-pointer transition-all duration-300",
                                 config.saveSkippedLinks 
                                     ? "bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.2)]" 
-                                    : "bg-slate-900/40 border-white/20 hover:border-white/40 hover:bg-slate-900/60"
+                                    : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
                             )}
                             onClick={() => setConfig(prev => ({ ...prev, saveSkippedLinks: !prev.saveSkippedLinks }))}
                         >
@@ -855,7 +854,7 @@ https://mysite.com/assets/banner.png"
 
         {/* Right Column: JSON Engine and Actions */}
         <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-24">
-            <Card className="border-white/10 shadow-2xl bg-slate-950 overflow-hidden flex flex-col">
+            <Card className="border-border shadow-2xl bg-card overflow-hidden flex flex-col">
                 <CardHeader className="bg-white/5 pb-3 flex-row items-center justify-between border-b border-white/5 space-y-0">
                     <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-500">
@@ -886,7 +885,7 @@ https://mysite.com/assets/banner.png"
                     />
                     {jsonError && (
                         <div className="px-6 pb-4">
-                            <p className="text-[10px] text-red-400 font-medium bg-red-400/10 p-2 rounded border border-red-400/20 flex items-center gap-2">
+                            <p className="text-[10px] text-destructive font-medium bg-destructive/10 p-2 rounded border border-destructive/20 flex items-center gap-2">
                                 <span>⚠️</span> {jsonError}
                             </p>
                         </div>
@@ -903,8 +902,7 @@ https://mysite.com/assets/banner.png"
                 <Button 
                     onClick={handleStart} 
                     disabled={loading || !!jsonError || !config.startUrl} 
-                    variant="glow"
-                    className="w-full h-20 text-xl rounded-2xl font-black tracking-widest uppercase hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-primary/20"
+                    className="w-full h-20 text-xl rounded-lg font-black tracking-widest uppercase hover:scale-[1.02] active:scale-[0.98] shadow-hover"
                 >
                     {loading ? (
                         <span className="flex items-center gap-3">
@@ -921,7 +919,7 @@ https://mysite.com/assets/banner.png"
                     By clicking Ignite, you confirm that you have permission to crawl the target domain and will adhere to its robots.txt policies.
                 </p>
                                 {startError && (
-                                    <p className="text-xs text-red-400 mt-3 text-center">{startError}</p>
+                                    <p className="text-xs text-destructive mt-3 text-center">{startError}</p>
                                 )}
             </motion.div>
         </div>

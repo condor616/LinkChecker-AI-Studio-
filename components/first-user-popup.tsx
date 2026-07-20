@@ -44,14 +44,14 @@ export function FirstUserPopup() {
               </div>
               
               <div className="space-y-2">
-                <h2 className="text-2xl font-black tracking-tight text-white">System Uninitialized</h2>
+                <h2 className="text-2xl font-black tracking-tight text-foreground">System Uninitialized</h2>
                 <p className="text-muted-foreground text-sm">
                   Welcome to Lynx Scan! It looks like there are no users in the database yet. 
                   You must create an account to begin, and this first account will automatically be granted <span className="font-bold text-primary">Administrator</span> privileges.
                 </p>
               </div>
 
-              <Link href="/login?register=true" onClick={() => setIsOpen(false)} className="w-full relative group inline-flex h-12 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-r from-primary to-emerald-600 px-8 font-medium text-white shadow-[0_4px_14px_0_rgba(168,85,247,0.39)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.23)] hover:scale-[1.02] transition-all">
+              <Link href="/login?register=true" onClick={() => setIsOpen(false)} className="w-full relative group inline-flex h-12 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-r from-primary to-emerald-600 px-8 font-medium text-primary-foreground shadow-[0_4px_14px_0_rgba(168,85,247,0.39)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.23)] hover:scale-[1.02] transition-all">
                   <span className="mr-2">Register your first user</span>
                   <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Link>
