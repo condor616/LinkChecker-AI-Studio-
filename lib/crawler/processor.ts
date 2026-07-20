@@ -17,6 +17,35 @@ function isSameOrSubdomain(hostname: string, rootHostname: string): boolean {
     return hostname === rootHostname || hostname.endsWith(`.${rootHostname}`);
 }
 
+function looksLikeAuthPath(url: string): boolean {
+    const lower = url.toLowerCase();
+    return /(\/|^)(login|log-in|signin|sign-in|auth|oauth|sso)(\/|\?|#|$)/.test(lower);
+}
+
+function isAuthGatedResponse(response: Response, requestUrl: string, bodyPreview: string): boolean {
+    if (response.status !== 401 && response.status !== 403) {
+        return false;
+    }
+
+    const authHeader = (response.headers.get('www-authenticate') || '').toLowerCase();
+    if (authHeader) {
+        return true;
+    }
+
+    const location = (response.headers.get('location') || '').toLowerCase();
+    if (location && /(login|signin|sign-in|auth|oauth|sso)/.test(location)) {
+        return true;
+    }
+
+    const finalUrl = (response.url || requestUrl || '').toLowerCase();
+    if (finalUrl && looksLikeAuthPath(finalUrl)) {
+        return true;
+    }
+
+    const body = bodyPreview.toLowerCase();
+    return /(unauthorized|forbidden|access denied|authentication required|please log in|please login|log in to continue|sign in to continue|single sign-on|\bsso\b|invalid credentials|bad credentials)/.test(body);
+}
+
 async function fetchWithRedirects(
     inputUrl: string,
     headers: Record<string, string>,
@@ -253,16 +282,25 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     }
 
     let errorDetail = skipReason;
+    let errorBodyPreview = '';
     if (!response.ok) {
         try {
             if (contentType.includes('text') || contentType.includes('json') || contentType.includes('xml')) {
                 const text = await response.text();
+                errorBodyPreview = text.slice(0, 1000);
                 errorDetail = `[Response] ${text.slice(0, 500)}`;
             } else {
                 errorDetail = `[Status] ${response.statusText || 'Error'}`;
             }
         } catch (e) {
             errorDetail = `[Status] ${response.statusText || 'Error'}`;
+        }
+
+        if (isAuthGatedResponse(response, link.url, errorBodyPreview)) {
+            status = 'SKIPPED';
+            if (!skipReason) {
+                errorDetail = `Auth-gated resource (${response.status}) - not treated as broken`;
+            }
         }
     }
 

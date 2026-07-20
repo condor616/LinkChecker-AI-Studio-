@@ -38,7 +38,7 @@ describe('HTTP Basic Auth Integration (Phase 2+)', () => {
         return scanId;
     }
 
-    it('should fail (401) when accessing protected link without credentials', async () => {
+    it('should classify auth-gated 401 as SKIPPED when accessing protected link without credentials', async () => {
         const config = { startUrl: baseUrl }; // No auth config
         const scanId = await setupScan(config);
         
@@ -57,9 +57,10 @@ describe('HTTP Basic Auth Integration (Phase 2+)', () => {
             eq(links.url, protectedUrl)
         )).then(res => res[0]);
 
-        // Note: Hono returns 401. Crawler marks 401 as BROKEN.
-        expect(result.status).toBe('BROKEN');
+        // 401 on protected pages is auth-gated, not a broken destination.
+        expect(result.status).toBe('SKIPPED');
         expect(result.statusCode).toBe(401);
+        expect(result.error).toContain('Auth-gated resource');
     });
 
     it('should succeed (200) when accessing protected link with CORRECT credentials', async () => {
@@ -88,7 +89,7 @@ describe('HTTP Basic Auth Integration (Phase 2+)', () => {
         expect(result.statusCode).toBe(200);
     });
 
-    it('should fail (401) when using INCORRECT credentials', async () => {
+    it('should classify invalid-credential 401 as SKIPPED when using incorrect credentials', async () => {
         const config = { 
             startUrl: baseUrl,
             auth: { username: 'admin', password: 'wrong-password' }
@@ -110,11 +111,12 @@ describe('HTTP Basic Auth Integration (Phase 2+)', () => {
             eq(links.url, protectedUrl)
         )).then(res => res[0]);
 
-        expect(result.status).toBe('BROKEN');
+        expect(result.status).toBe('SKIPPED');
         // In some environments auth failures are surfaced without a concrete HTTP status.
         // The key contract is that invalid credentials never result in SUCCESS.
         if (result.statusCode !== null) {
             expect(result.statusCode).toBe(401);
         }
+        expect(result.error).toContain('Auth-gated resource');
     });
 });
