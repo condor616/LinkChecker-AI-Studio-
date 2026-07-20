@@ -92,28 +92,46 @@ export function generateHTML(scan: any, groupedLinks: any[]) {
     
     const rowsHtml = groupedLinks.map(group => {
         const isBroken = group.status === 'BROKEN';
-        const instancesHtml = group.instances.map((inst: any) => `
+        const instancesHtml = group.instances.map((inst: any) => {
+            const parentUrl = typeof inst.parentUrl === 'string' ? inst.parentUrl.trim() : '';
+            const safeParentText = parentUrl ? escapeHtml(parentUrl) : 'N/A';
+            const parentLinkHtml = isSafeHref(parentUrl)
+                ? `<a href="${escapeHtmlAttribute(parentUrl)}" target="_blank" rel="noopener noreferrer">${safeParentText}</a>`
+                : `<span>${safeParentText}</span>`;
+
+            return `
             <div class="instance">
-                <strong>Found on:</strong> <a href="${inst.parentUrl}" target="_blank">${inst.parentUrl}</a>
+                <strong>Found on:</strong> ${parentLinkHtml}
                 ${inst.snippet ? `<pre><code>${escapeHtml(inst.snippet)}</code></pre>` : ''}
             </div>
-        `).join('');
+        `;
+        }).join('');
+
+        const groupUrl = typeof group.url === 'string' ? group.url : '';
+        const safeGroupUrl = escapeHtml(groupUrl);
+        const groupLinkHtml = isSafeHref(groupUrl)
+            ? `<a href="${escapeHtmlAttribute(groupUrl)}" target="_blank" rel="noopener noreferrer">${safeGroupUrl}</a>`
+            : `<span>${safeGroupUrl}</span>`;
+        const safeDataUrl = escapeHtmlAttribute(groupUrl.toLowerCase());
+        const safeStatus = escapeHtml(String(group.status || '-'));
+        const safeStatusCode = escapeHtml(String(group.statusCode ?? '-'));
+        const safeError = group.error ? escapeHtml(String(group.error)) : '-';
 
         return `
-            <tr class="link-row ${isBroken ? 'broken' : 'success'}" data-status="${group.status}" data-url="${group.url.toLowerCase()}">
+            <tr class="link-row ${isBroken ? 'broken' : 'success'}" data-status="${safeStatus}" data-url="${safeDataUrl}">
                 <td>
                     <div class="url-group">
                         <button class="toggle-btn" onclick="toggleInstances(this)">▶</button>
-                        <a href="${group.url}" target="_blank">${group.url}</a>
+                        ${groupLinkHtml}
                         ${group.count > 1 ? `<span class="count">${group.count} occurrences</span>` : ''}
                     </div>
                     <div class="instances-container" style="display: none;">
                         ${instancesHtml}
                     </div>
                 </td>
-                <td style="width: 100px;"><span class="status-badge">${group.status}</span></td>
-                <td style="width: 80px;">${group.statusCode || '-'}</td>
-                <td class="error-cell">${group.error || '-'}</td>
+                <td style="width: 100px;"><span class="status-badge">${safeStatus}</span></td>
+                <td style="width: 80px;">${safeStatusCode}</td>
+                <td class="error-cell">${safeError}</td>
             </tr>
         `;
     }).join('');
@@ -147,19 +165,24 @@ export function generateHTML(scan: any, groupedLinks: any[]) {
         .filter-btn:hover { background: #f3f4f6; }
         .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 
-        table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--card-bg); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; background: var(--card-bg); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        th:nth-child(1), td:nth-child(1) { width: 48%; }
+        th:nth-child(2), td:nth-child(2) { width: 11%; }
+        th:nth-child(3), td:nth-child(3) { width: 8%; }
+        th:nth-child(4), td:nth-child(4) { width: 33%; }
         th { background: #f8fafc; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
         td { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
         tr.broken { background: #fffcfc; }
         tr:last-child td { border-bottom: none; }
         
-        .url-group { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-        .url-group a { color: var(--primary); text-decoration: none; font-weight: 600; word-break: break-all; }
+        .url-group { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; }
+        .url-group a { color: var(--primary); text-decoration: none; font-weight: 600; word-break: break-word; overflow-wrap: anywhere; min-width: 0; flex: 1 1 auto; }
+        .url-group span { min-width: 0; flex: 1 1 auto; word-break: break-word; overflow-wrap: anywhere; }
         .url-group a:hover { text-decoration: underline; }
-        .toggle-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 10px; padding: 4px; transition: transform 0.2s; }
+        .toggle-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 10px; padding: 4px; transition: transform 0.2s; flex: 0 0 auto; }
         .toggle-btn.open { transform: rotate(90deg); }
         
-        .count { font-size: 10px; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: var(--text-muted); font-weight: 700; }
+        .count { font-size: 10px; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: var(--text-muted); font-weight: 700; flex: 0 0 auto; }
         .status-badge { font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; color: white; }
         .broken .status-badge { background: var(--red); }
         .success .status-badge { background: var(--green); }
@@ -172,7 +195,7 @@ export function generateHTML(scan: any, groupedLinks: any[]) {
         .instance a:hover { text-decoration: underline; }
         
         pre { background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 6px; font-size: 11px; overflow-x: auto; margin: 8px 0; border: 1px solid #334155; }
-        .error-cell { color: var(--red); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+        .error-cell { color: var(--red); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
         
         .no-results { padding: 40px; text-align: center; color: var(--text-muted); }
     </style>
@@ -280,4 +303,13 @@ function escapeHtml(text: string) {
         "'": '&#039;'
     };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+function escapeHtmlAttribute(text: string) {
+    return escapeHtml(text);
+}
+
+function isSafeHref(url: string) {
+    if (!url) return false;
+    return /^(https?:|mailto:|tel:)/i.test(url);
 }

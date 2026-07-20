@@ -58,6 +58,37 @@ describe('Export Utils & Logic', () => {
         expect(html).toContain('onclick="setFilter(\'BROKEN\', this)"');
         expect(html).toContain('class="link-row broken"');
         expect(html).toContain('function filterTable()');
+        expect(html).toContain('table-layout: fixed;');
+        expect(html).toContain('overflow-wrap: anywhere;');
+    });
+
+    it('should escape injected html in error and render invalid parent safely', () => {
+        const scan = {
+            ...mockScan,
+            name: 'XSS Check'
+        };
+        const grouped = [
+            {
+                url: 'https://example.com/page',
+                status: 'BROKEN',
+                statusCode: 500,
+                error: '<script>alert("x")</script>boom',
+                count: 1,
+                instances: [
+                    {
+                        parentUrl: 'null',
+                        snippet: '<a href="/x">x</a>'
+                    }
+                ]
+            }
+        ];
+
+        const html = generateHTML(scan, grouped);
+
+        expect(html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;boom');
+        expect(html).not.toContain('<td class="error-cell"><script>alert("x")</script>boom</td>');
+        expect(html).toContain('<strong>Found on:</strong> <span>null</span>');
+        expect(html).not.toContain('href="null"');
     });
 
     it('should respect targeted mode in filtering', () => {
