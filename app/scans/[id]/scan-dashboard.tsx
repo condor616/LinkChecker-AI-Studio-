@@ -15,6 +15,7 @@ function getStatusBadgeClass(statusCode: string | number | undefined, isBroken: 
 }
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { isTargetUrlMatch } from '@/lib/utils/url';
 import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -196,6 +197,10 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
   const targetUrls = config.targetUrls || [];
 
+    const matchesTarget = (url: string) => {
+        return targetUrls.some((target: string) => isTargetUrlMatch(url, target));
+    };
+
   const isUrlInternal = (url: string) => {
     try {
       const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
@@ -253,11 +258,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     if (l.status === 'SKIPPED') {
       if (isTargeted) {
         // In targeted scans, show skipped links if their parent was targeted
-        return !l.parentUrl || targetUrls.some((t: string) => {
-          const cleanT = t.trim().replace(/\/$/, '');
-          const cleanP = l.parentUrl.replace(/\/$/, '');
-          return cleanP === cleanT || cleanP.includes(cleanT);
-        });
+                return !l.parentUrl || matchesTarget(l.parentUrl);
       }
       // In regular scans, show skipped links if their parent was internal
       const parent = l.parentUrl;
@@ -267,20 +268,12 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
 
     if (isTargeted) {
       // If the link itself is a target, show it
-      const isTarget = targetUrls.some((t: string) => {
-        const cleanT = t.trim().replace(/\/$/, '');
-        const cleanL = l.url.replace(/\/$/, '');
-        return cleanL === cleanT || cleanL.includes(cleanT);
-      });
+        const isTarget = matchesTarget(l.url);
       if (isTarget) return true;
 
       // If the link is BROKEN and found on a target page, show it (important for reporting broken external links)
       if (l.status === 'BROKEN' && l.parentUrl) {
-        return targetUrls.some((t: string) => {
-          const cleanT = t.trim().replace(/\/$/, '');
-          const cleanP = l.parentUrl.replace(/\/$/, '');
-          return cleanP === cleanT || cleanP.includes(cleanT);
-        });
+                return matchesTarget(l.parentUrl);
       }
 
       return false;
@@ -326,11 +319,11 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
 
   // Discovery Logic: Which targets are MISSING?
   const missingTargets = isTargeted ? targetUrls.filter((t: string) => {
-    const cleanT = t.trim().replace(/\/$/, '').toLowerCase();
-    return !uniqueFilteredLinks.some(l => l.url.replace(/\/$/, '').toLowerCase() === cleanT);
+    return !uniqueFilteredLinks.some(l => isTargetUrlMatch(l.url, t));
   }) : [];
 
   const foundTargetCount = targetUrls.length - missingTargets.length;
+    const foundMatchCount = successCount;
   const coveragePercent = targetUrls.length > 0 ? (foundTargetCount / targetUrls.length) * 100 : 0;
 
   // Stats specific to the crawl progress (unfiltered)
@@ -423,7 +416,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                         <CheckCircle2 className="h-5 w-5" />
                         Targeted Audit Active
                     </h3>
-                    <p className="text-sm text-muted-foreground">Isolating reporting to your specific assets. We've found <strong>{foundTargetCount}</strong> of <strong>{targetUrls.length}</strong> targets so far.</p>
+                    <p className="text-sm text-muted-foreground">Isolating reporting to your specific assets. We've found <strong>{foundMatchCount}</strong> matching URLs across <strong>{foundTargetCount}</strong> of <strong>{targetUrls.length}</strong> targets so far.</p>
                     
                     <div className="w-full max-w-md h-1.5 bg-primary/10 rounded-full overflow-hidden">
                         <motion.div 
@@ -436,8 +429,8 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
 
                 <div className="flex items-center gap-8 shrink-0">
                     <div className="text-center">
-                        <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">Found</div>
-                        <div className="text-3xl font-black text-green-500 leading-none">{foundTargetCount}</div>
+                        <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">URLs Found</div>
+                        <div className="text-3xl font-black text-green-500 leading-none">{foundMatchCount}</div>
                     </div>
                     {missingTargets.length > 0 && (
                         <div className="text-center">

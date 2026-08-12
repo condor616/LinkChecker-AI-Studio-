@@ -5,12 +5,23 @@ import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { canonicalizeScanUrl, isTargetUrlMatch, isWithinStartPathScope } from '../utils/url';
 
 const activeCrawls = new Map<string, Promise<void>>(); // Scan-scoped fetch cache
 const hostSafetyCache = new Map<string, boolean>();
 
 function normalizeHostname(hostname: string): string {
     return hostname.toLowerCase().replace(/^www\./, '');
+}
+
+function getUrlWithoutHash(rawUrl: string): string {
+    try {
+        const url = new URL(rawUrl);
+        url.hash = '';
+        return canonicalizeScanUrl(url.toString());
+    } catch {
+        return rawUrl;
+    }
 }
 
 function isSameOrSubdomain(hostname: string, rootHostname: string): boolean {
@@ -260,17 +271,8 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         } else if (isSubdomain && !isExactHost && config.excludeSubdomains) {
             skipReason = `Subdomain excluded (Verified)`;
         } else if (config.doNotTraverseBackward) {
-            const normalize = (u: string) => u.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
-            const normalizedStart = normalize(config.startUrl);
-            const normalizedCurrent = normalize(link.url);
-
-            if (!normalizedCurrent.startsWith(normalizedStart)) {
+            if (!isWithinStartPathScope(config.startUrl, link.url)) {
                 skipReason = `Stay in Subpath (Verified)`;
-            } else {
-                const remaining = normalizedCurrent.slice(normalizedStart.length);
-                if (remaining.length > 0 && !remaining.startsWith('/')) {
-                    skipReason = `Stay in Subpath (Verified)`;
-                }
             }
         }
     }
@@ -383,7 +385,14 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
           });
       }
 
-      const foundLinks = new Map<string, { snippet: string }>();
+            const foundLinks = new Map<string, { url: string; parentUrl: string; snippet: string }>();
+
+            const recordFoundLink = (url: string, parentUrl: string, snippet: string) => {
+                const key = `${parentUrl}\n${url}`;
+                if (!foundLinks.has(key)) {
+                    foundLinks.set(key, { url, parentUrl, snippet });
+                }
+            };
       
       $('a[href]').each((_, el) => {
         const href = $(el).attr('href');
@@ -392,30 +401,63 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         try {
           const urlObj = new URL(href, link.url);
           if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
-            urlObj.hash = '';
-            
             // Normalize out Drupal/PHP front controllers (index.php and index%2ephp) at the root of the path
             urlObj.pathname = urlObj.pathname
               .replace(/^\/index\.php\/?/i, '/')
               .replace(/^\/index%2[eE]php\/?/i, '/');
-            
-            const urlStr = urlObj.toString().replace(/\/$/, '');
+
+                        const urlStr = canonicalizeScanUrl(urlObj.toString());
             
             const snippet = $.html(el).slice(0, 500); 
 
-            if (!foundLinks.has(urlStr)) {
-                foundLinks.set(urlStr, { snippet });
-            }
+                        recordFoundLink(urlStr, link.url, snippet);
           }
                 } catch {}
       });
 
-      const allUrls = Array.from(foundLinks.keys());
+            const currentDocumentUrl = getUrlWithoutHash(link.url);
+            $('a[href^="#"]').each((_, el) => {
+                const href = $(el).attr('href');
+                if (!href || href === '#') return;
+
+                try {
+                    const fragmentUrl = canonicalizeScanUrl(new URL(href, link.url).toString());
+                    if (getUrlWithoutHash(fragmentUrl) !== currentDocumentUrl) return;
+
+                    const fragmentId = fragmentUrl.split('#')[1];
+                    if (!fragmentId) return;
+
+                    const escapedFragmentId = fragmentId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                    const container = $(`[id="${escapedFragmentId}"]`).first();
+                    if (container.length === 0) return;
+
+                    container.find('a[href]').each((_, nestedEl) => {
+                        const nestedHref = $(nestedEl).attr('href');
+                        if (!nestedHref) return;
+
+                        try {
+                            const nestedUrlObj = new URL(nestedHref, link.url);
+                            if (nestedUrlObj.protocol !== 'http:' && nestedUrlObj.protocol !== 'https:') return;
+
+                            nestedUrlObj.pathname = nestedUrlObj.pathname
+                                .replace(/^\/index\.php\/?/i, '/')
+                                .replace(/^\/index%2[eE]php\/?/i, '/');
+
+                            const nestedUrl = canonicalizeScanUrl(nestedUrlObj.toString());
+                            const nestedSnippet = $.html(nestedEl).slice(0, 500);
+                            recordFoundLink(nestedUrl, fragmentUrl, nestedSnippet);
+                        } catch {}
+                    });
+                } catch {}
+            });
+
+            const discoveredLinks = Array.from(foundLinks.values());
+            const allUrls = Array.from(new Set(discoveredLinks.map((entry) => entry.url)));
       if (allUrls.length === 0) return [];
 
 
       
-      const targetUrls = (config.targetUrls || []).map((t: string) => t.trim().replace(/\/$/, ''));
+            const targetUrls = (config.targetUrls || []).map((t: string) => canonicalizeScanUrl(t));
       const newLinksToAdd: any[] = [];
 
       await userDb.transaction(async (tx: any) => {
@@ -438,7 +480,8 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
             latestByUrl.get(l.url)!.push(l);
         });
 
-        for (const [urlStr, info] of foundLinks) {
+                for (const foundLink of discoveredLinks) {
+                    const { url: urlStr, parentUrl, snippet } = foundLink;
           const skipReason = getSkipReason(urlStr, config);
           if (skipReason) {
               if (config.saveSkippedLinks) {
@@ -447,10 +490,10 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
                       id: crypto.randomUUID(),
                       scanId: scan.id,
                       url: urlStr,
-                      parentUrl: link.url,
+                      parentUrl,
                       status: 'SKIPPED',
                       depth: depthToAdd,
-                      snippet: info.snippet,
+                      snippet,
                       checkedAt: new Date(),
                       statusCode: null,
                       error: skipReason,
@@ -461,7 +504,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
               continue; // Do not fetch/queue if skipped by rules
           }
 
-          const isTarget = isTargeted && targetUrls.includes(urlStr);
+          const isTarget = isTargeted && targetUrls.some((target: string) => isTargetUrlMatch(urlStr, target));
 
           if (isTargeted && !isTarget) {
               // In targeted mode, still traverse internal pages so we can find which page
@@ -482,7 +525,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
           if (isTarget) {
               // Target URL: record every unique parentUrl to build a full backlink map.
-              if (occurrences.some(o => o.parentUrl === link.url)) continue;
+              if (occurrences.some(o => o.parentUrl === parentUrl)) continue;
           } else if (isTargeted) {
               // Internal traversal page in targeted mode: visit only once (like normal mode).
               if (occurrences.some(o => o.status === 'SUCCESS' || o.status === 'PENDING' || o.status === 'PROCESSING')) continue;
@@ -496,10 +539,10 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
               id: crypto.randomUUID(),
               scanId: scan.id,
               url: urlStr,
-              parentUrl: link.url,
+              parentUrl,
               status: 'PENDING',
               depth: depthToAdd,
-              snippet: info.snippet,
+              snippet,
               checkedAt: null,
               statusCode: null,
               error: null,

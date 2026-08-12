@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { isTargetUrlMatch } from '@/lib/utils/url';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -69,6 +70,10 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
     const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
     const targetUrls = config.targetUrls || [];
 
+    const matchesTarget = (url: string) => {
+      return targetUrls.some((target: string) => isTargetUrlMatch(url, target));
+    };
+
     const isUrlInternal = (url: string) => {
         try {
             const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
@@ -86,11 +91,7 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       if (l.status === 'SKIPPED') {
         if (isTargeted) {
           // In targeted scans, show skipped links if their parent was targeted
-          return !l.parentUrl || targetUrls.some((t: string) => {
-            const cleanT = t.trim().replace(/\/$/, '');
-            const cleanP = l.parentUrl.replace(/\/$/, '');
-            return cleanP === cleanT || cleanP.includes(cleanT);
-          });
+          return !l.parentUrl || matchesTarget(l.parentUrl);
         }
         // In regular scans, show skipped links if their parent was internal
         const parent = l.parentUrl;
@@ -99,11 +100,7 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       }
 
       if (isTargeted) {
-        return targetUrls.some((t: string) => {
-          const cleanT = t.trim().replace(/\/$/, '');
-          const cleanL = l.url.replace(/\/$/, '');
-          return cleanL === cleanT || cleanL.includes(cleanT);
-        });
+        return matchesTarget(l.url);
       }
       
       // Regular scan: Only show if the link exists on an internal page (or is the entry point)

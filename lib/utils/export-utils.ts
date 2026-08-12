@@ -1,4 +1,5 @@
 import { scans, links } from '../db/schema';
+import { isTargetUrlMatch } from './url';
 
 export interface ExportData {
     scan: any;
@@ -23,11 +24,7 @@ export function filterAndGroupLinks(links: any[], scanConfig: any) {
     // Filter links
     const filteredLinks = links.filter((l: any) => {
         if (isTargeted) {
-            return targetUrls.some((t: string) => {
-                const cleanT = t.trim().replace(/\/$/, '');
-                const cleanL = l.url.replace(/\/$/, '');
-                return cleanL === cleanT || cleanL.includes(cleanT);
-            });
+            return targetUrls.some((target: string) => isTargetUrlMatch(l.url, target));
         }
         
         const parent = l.parentUrl;
