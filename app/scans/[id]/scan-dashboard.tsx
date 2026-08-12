@@ -73,6 +73,11 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     const runFetch = async () => {
       const searchToUse = debouncedSearch.length >= 3 ? debouncedSearch : '';
       setIsSearching(true);
+      // Reset all pagination when search changes
+      setBrokenPage(1);
+      setSuccessPage(1);
+      setSkippedPage(1);
+      setRecheckedPage(1);
       await fetchData(searchToUse);
       if (isMounted) setIsSearching(false);
     };
