@@ -40,9 +40,9 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
 
     return (
         <>
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
-          <div className="group relative">
-            <Link href={`/scans/${scan.id}`}>
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="h-full">
+          <div className="group relative h-full">
+            <Link href={`/scans/${scan.id}`} className="block h-full">
               <Card className="hover:bg-muted/50 transition-all duration-300 cursor-pointer border border-border hover:border-primary/30 group/card relative overflow-hidden h-full glass-vibrant hover:shadow-[0_0_20px_rgba(168,85,247,0.1)]">
                 <div className={cn(
                   "absolute left-0 top-0 bottom-0 w-1 transition-all duration-300 group-hover/card:w-1.5",
@@ -51,59 +51,57 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
                   scan.status === 'FAILED' ? "bg-destructive shadow-[0_0_10px_rgba(var(--destructive),0.5)]" :
                   "bg-slate-500"
                 )} />
-                <CardContent className="p-6 flex items-center justify-between">
-                  <div className="space-y-2 min-w-0 pr-8">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-bold text-lg truncate text-foreground group-hover/card:text-primary transition-colors">{scan.name}</h3>
-                      {scan.status === 'RUNNING' && (
-                         <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px] font-black uppercase tracking-widest animate-pulse">
-                           Processing
-                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-                      <Clock className="h-3 w-3" />
-                      <span>{new Date(scan.createdAt).toLocaleDateString()} at {new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      <span className="text-muted-foreground">•</span>
-                      <span className="truncate max-w-[200px] md:max-w-md">{startUrl}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                  <div className="text-right hidden md:block">
-                      <p className="text-[10px] text-muted-foreground uppercase font-black tracking-[0.2em] mb-1.5">Engine Status</p>
-                      <div className={cn(
-                          "flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold",
-                          scan.status === 'RUNNING' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                          scan.status === 'COMPLETED' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                          scan.status === 'FAILED' ? "bg-destructive/10 text-destructive border-destructive/20" :
-                          "bg-slate-500/10 text-slate-400 border-slate-500/20"
-                      )}>
-                          {scan.status === 'RUNNING' && <Activity className="h-3 w-3 animate-spin" />}
-                          {scan.status === 'COMPLETED' && <CheckCircle className="h-3 w-3" />}
-                          {scan.status === 'FAILED' && <AlertCircle className="h-3 w-3" />}
-                          {scan.status === 'IDLE' && <Clock className="h-3 w-3" />}
-                          <span className="tracking-wide uppercase text-[10px]">{scan.status}</span>
+                <CardContent className="p-5 pl-6 flex flex-col gap-4 h-full">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-lg leading-snug line-clamp-2 text-foreground group-hover/card:text-primary transition-colors">{scan.name}</h3>
+                        {scan.status === 'RUNNING' && (
+                           <span className="shrink-0 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                             Processing
+                           </span>
+                        )}
                       </div>
+                      <p className="text-xs text-muted-foreground font-medium break-all line-clamp-2">{startUrl}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {scan.status !== 'RUNNING' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="opacity-0 group-hover:opacity-100 transition-all hover:text-destructive hover:bg-destructive/10 h-9 w-9 rounded-full border border-transparent hover:border-destructive/20"
+                            onClick={handleDelete}
+                          >
+                            <Trash2 className="h-4 w-4 text-muted-foreground group-hover:text-destructive" />
+                          </Button>
+                      )}
+                      <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center group-hover/card:bg-primary/20 group-hover/card:text-primary transition-all">
+                        <ChevronRight className="h-4 w-4" />
+                      </div>
+                    </div>
                   </div>
-                  
-                  {scan.status !== 'RUNNING' && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="opacity-0 group-hover:opacity-100 transition-all hover:text-destructive hover:bg-destructive/10 h-10 w-10 rounded-full border border-transparent hover:border-destructive/20 shrink-0"
-                        onClick={handleDelete}
-                      >
-                        <Trash2 className="h-5 w-5 text-muted-foreground group-hover:text-destructive" />
-                      </Button>
-                  )}
-
-                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center group-hover/card:bg-primary/20 group-hover/card:text-primary transition-all shrink-0">
-                    <ChevronRight className="h-5 w-5" />
+                  <div className="mt-auto flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium min-w-0">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{new Date(scan.createdAt).toLocaleDateString()} at {new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-bold shrink-0",
+                        scan.status === 'RUNNING' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                        scan.status === 'COMPLETED' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                        scan.status === 'FAILED' ? "bg-destructive/10 text-destructive border-destructive/20" :
+                        "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                    )}>
+                        {scan.status === 'RUNNING' && <Activity className="h-3 w-3 animate-spin" />}
+                        {scan.status === 'COMPLETED' && <CheckCircle className="h-3 w-3" />}
+                        {scan.status === 'FAILED' && <AlertCircle className="h-3 w-3" />}
+                        {scan.status === 'IDLE' && <Clock className="h-3 w-3" />}
+                        <span className="tracking-wide uppercase text-[10px]">{scan.status}</span>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </motion.div>
 

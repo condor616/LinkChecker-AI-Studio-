@@ -6,19 +6,17 @@ import { eq } from 'drizzle-orm';
 import { provisionUserDb } from './db/provisioning';
 import { getJwtSecretKey } from './security/jwt';
 
-const SECRET_KEY = getJwtSecretKey();
-
 export async function createToken(payload: { id: string; role: string; email: string }) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('24h')
-    .sign(SECRET_KEY);
+    .sign(getJwtSecretKey());
 }
 
 export async function verifyToken(token: string) {
   try {
-    const { payload } = await jwtVerify(token, SECRET_KEY);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     return payload as { id: string; role: string; email: string };
   } catch {
     return null;

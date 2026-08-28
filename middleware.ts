@@ -3,8 +3,6 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { getJwtSecretKey } from '@/lib/security/jwt';
 
-const SECRET_KEY = getJwtSecretKey();
-
 export async function middleware(request: NextRequest) {
   const token = request.cookies.get('session')?.value;
   const { pathname } = request.nextUrl;
@@ -28,7 +26,7 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    const { payload } = await jwtVerify(token, SECRET_KEY);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userRole = payload.role as string;
 
     // Check for BLOCKED users

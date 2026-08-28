@@ -57,6 +57,9 @@ describe('BullMQ Integration', () => {
           startUrl: 'https://example.com',
           maxDepth: 2,
         }),
+      }),
+      expect.objectContaining({
+        jobId: expect.stringContaining('scan-link-'),
       })
     );
   });

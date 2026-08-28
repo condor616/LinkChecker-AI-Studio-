@@ -18,9 +18,6 @@ COPY . .
 # Uncomment the following line in case you want to disable telemetry during the build.
 # ENV NEXT_TELEMETRY_DISABLED 1
 
-# .env is dockerignored; Next 15.5 collects API page data at build and imports JWT helpers.
-ENV JWT_SECRET=next-docker-build-placeholder-secret-min-32-chars
-
 RUN npm run build
 
 # Stage 3: Run the app

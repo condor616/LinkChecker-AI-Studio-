@@ -130,6 +130,84 @@ describe('Scan completion', () => {
         expect(scan.status).toBe('RUNNING');
     });
 
+    it('does not complete while BullMQ active slots are missing or malformed', async () => {
+        const scanId = await setupScan('RUNNING');
+        await addLink(scanId, { url: 'https://example.com', status: 'SUCCESS', statusCode: 200, type: 'text/html' });
+
+        const completed = await maybeCompleteScan(db(), scanId, {
+            currentJobId: 'job-a',
+            queue: {
+                getBlockingJobs: async () => [undefined as any, { id: 'job-a' } as any],
+            },
+        });
+
+        expect(completed).toBe(false);
+        const scan = await db().select().from(scans).where(eq(scans.id, scanId)).then((rows) => rows[0]);
+        expect(scan.status).toBe('RUNNING');
+    });
+
+    it('requeues orphaned PENDING links when the queue is idle', async () => {
+        const scanId = await setupScan('RUNNING');
+        await addLink(scanId, { url: 'https://example.com/next', status: 'PENDING' });
+        const requeued: string[] = [];
+
+        const completed = await maybeCompleteScan(db(), scanId, {
+            requeueOrphans: true,
+            queue: {
+                getBlockingJobs: async () => [],
+                getWaitingCount: async () => 0,
+                requeuePendingLinks: async (pending) => {
+                    requeued.push(...pending.map((l) => l.url));
+                },
+            },
+        });
+
+        expect(completed).toBe(false);
+        expect(requeued).toEqual(['https://example.com/next']);
+        const scan = await db().select().from(scans).where(eq(scans.id, scanId)).then((rows) => rows[0]);
+        expect(scan.status).toBe('RUNNING');
+    });
+
+    it('does not requeue orphans while the global waiting list is still busy', async () => {
+        const scanId = await setupScan('RUNNING');
+        await addLink(scanId, { url: 'https://example.com/next', status: 'PENDING' });
+        const requeued: string[] = [];
+
+        await maybeCompleteScan(db(), scanId, {
+            requeueOrphans: true,
+            queue: {
+                getBlockingJobs: async () => [],
+                getWaitingCount: async () => 12,
+                requeuePendingLinks: async (pending) => {
+                    requeued.push(...pending.map((l) => l.url));
+                },
+            },
+        });
+
+        expect(requeued).toEqual([]);
+    });
+
+    it('requeues orphans during a sweep even if another scan still has waiting jobs', async () => {
+        const scanId = await setupScan('RUNNING');
+        await addLink(scanId, { url: 'https://example.com/next', status: 'PENDING' });
+        const requeued: string[] = [];
+
+        const completed = await maybeCompleteScan(db(), scanId, {
+            requeueOrphans: true,
+            forceRequeue: true,
+            queue: {
+                getBlockingJobs: async () => [],
+                getWaitingCount: async () => 12,
+                requeuePendingLinks: async (pending) => {
+                    requeued.push(...pending.map((l) => l.url));
+                },
+            },
+        });
+
+        expect(completed).toBe(false);
+        expect(requeued).toEqual(['https://example.com/next']);
+    });
+
     it('does not override PAUSED scans', async () => {
         const scanId = await setupScan('PAUSED');
         await addLink(scanId, { url: 'https://example.com', status: 'SUCCESS', statusCode: 200 });

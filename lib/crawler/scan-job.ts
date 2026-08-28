@@ -4,63 +4,25 @@ import { ScanJobData, scanQueue } from '../bullmq';
 import { processLink } from './processor';
 import { getDb } from '../db';
 import { scans, links } from '../db/schema';
-import { isTargetUrlMatch } from '../utils/url';
-import { maybeCompleteScan, type ScanCompletionQueue } from './scan-completion';
+import { maybeCompleteScan } from './scan-completion';
+import { createScanCompletionQueue, toBulkJobs } from './scan-queue';
 
-function parseScanConfig(config: unknown): any {
-  if (typeof config === 'string') {
-    try {
-      return JSON.parse(config);
-    } catch {
-      return {};
-    }
-  }
-  return config && typeof config === 'object' ? config : {};
-}
-
-function toBulkJobs(userId: string, scanId: string, config: any, newLinks: any[]) {
-  const targetUrls = config.targetUrls || [];
-  const isTargeted = !!config.isTargeted && targetUrls.length > 0;
-
-  return newLinks.map((l) => {
-    const isTarget = isTargeted && targetUrls.some((target: string) => isTargetUrlMatch(l.url, target));
-    return {
-      name: `scan-link-${l.id}`,
-      data: {
-        userId,
-        scanId,
-        url: l.url,
-        depth: l.depth,
-        config,
-        linkId: l.id,
-      },
-      opts: {
-        jobId: `scan-link-${l.id}`,
-        priority: isTarget ? 1 : 10,
-      },
-    };
-  });
-}
-
-export function createScanCompletionQueue(userId: string): ScanCompletionQueue {
-  return {
-    getBlockingJobs: () => scanQueue.getJobs(['active', 'delayed']),
-    getWaitingCount: async () => {
-      const counts = await scanQueue.getJobCounts('waiting');
-      return counts.waiting ?? 0;
-    },
-    requeuePendingLinks: async (pending, scan) => {
-      const scanConfig = parseScanConfig(scan.config);
-      await scanQueue.addBulk(toBulkJobs(userId, scan.id, scanConfig, pending));
-    },
-  };
-}
+export { createScanCompletionQueue, scanLinkJobId } from './scan-queue';
 
 export async function processScanJob(job: Job<ScanJobData>): Promise<void> {
+  if (!job?.data) {
+    console.warn(`Job ${job?.id} is missing payload data. Skipping.`);
+    return;
+  }
+
   const { userId, scanId, url, depth, config, linkId } = job.data;
   const userDb = getDb(userId);
   const queue = createScanCompletionQueue(userId);
-  const completionOpts = { currentJobId: job.id != null ? String(job.id) : undefined, queue };
+  const completionOpts = {
+    currentJobId: job.id != null ? String(job.id) : undefined,
+    queue,
+    requeueOrphans: true,
+  };
 
   try {
     console.log(`Processing Job ${job.id}: ${url} (Depth: ${depth})`);
@@ -105,10 +67,19 @@ export async function processScanJob(job: Job<ScanJobData>): Promise<void> {
     const newLinks = await processLink(userDb, { ...link, status: 'PROCESSING' }, scan, config);
 
     if (newLinks && newLinks.length > 0) {
+      const stillRunning = await userDb.select({ status: scans.status }).from(scans).where(eq(scans.id, scanId)).limit(1);
+      if (stillRunning[0]?.status !== 'RUNNING') {
+        console.log(`Scan ${scanId} is no longer running. Skipping enqueue of ${newLinks.length} links.`);
+        return;
+      }
       console.log(`Found ${newLinks.length} new links for scan ${scanId}. Enqueuing...`);
       await scanQueue.addBulk(toBulkJobs(userId, scanId, config, newLinks));
     }
   } finally {
-    await maybeCompleteScan(userDb, scanId, completionOpts);
+    try {
+      await maybeCompleteScan(userDb, scanId, completionOpts);
+    } catch (err: any) {
+      console.error(`Completion check failed for scan ${scanId}:`, err?.message || err);
+    }
   }
 }

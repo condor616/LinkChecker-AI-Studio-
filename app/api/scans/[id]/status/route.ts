@@ -3,8 +3,8 @@ import { requireApprovedUser } from '@/lib/auth';
 import { getDb, db as centralDb } from '@/lib/db';
 import { scans, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { scanQueue } from '@/lib/bullmq';
 import { links } from '@/lib/db/schema';
+import { createScanCompletionQueue } from '@/lib/crawler/scan-queue';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -32,12 +32,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       console.log(`Found ${pendingLinks.length} pending links to enqueue.`);
       
       if (pendingLinks.length > 0) {
-        const config = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
-        await scanQueue.addBulk(pendingLinks.map((l: any) => ({
-          name: `scan-link-${l.id}`,
-          data: { userId: session.id, scanId: id, url: l.url, depth: l.depth, config, linkId: l.id },
-          opts: { jobId: `scan-link-${l.id}` } // Use jobId to avoid duplicates in the queue
-        })));
+        await createScanCompletionQueue(session.id).requeuePendingLinks?.(pendingLinks, scan);
       }
     }
 

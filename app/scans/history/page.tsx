@@ -74,7 +74,7 @@ export default async function HistoryPage() {
             </div>
           </Card>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
             {userScans.map((scan, i) => (
                 <ScanCard key={scan.id} scan={scan} i={i} />
             ))}

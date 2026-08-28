@@ -3,6 +3,7 @@ import { requireApprovedUser } from '@/lib/auth';
 import { getDb, db as centralDb } from '@/lib/db';
 import { scans, links, users } from '@/lib/db/schema';
 import { scanQueue } from '@/lib/bullmq';
+import { scanLinkJobId } from '@/lib/crawler/scan-queue';
 import { eq } from 'drizzle-orm';
 import { ScanConfigSchema } from '@/lib/validation/schemas';
 
@@ -39,14 +40,14 @@ export async function POST(req: Request) {
       });
 
       // Enqueue the initial job
-      await scanQueue.add(`scan-link-${initialLinkId}`, {
+      await scanQueue.add(scanLinkJobId(initialLinkId), {
         userId: session.id,
         scanId: id,
         url: config.startUrl,
         depth: 0,
         config,
         linkId: initialLinkId
-      });
+      }, { jobId: scanLinkJobId(initialLinkId) });
     }
 
     return NextResponse.json({ id });

@@ -27,19 +27,29 @@ app.listen(boardPort, () => {
 });
 
 let idleSweepInFlight = false;
+let sweepAgain = false;
 
 async function sweepIdleRunningScans(reason: string) {
-  if (idleSweepInFlight) return;
+  if (idleSweepInFlight) {
+    sweepAgain = true;
+    return;
+  }
   idleSweepInFlight = true;
   try {
-    const completed = await finalizeIdleRunningScans(createScanCompletionQueue);
-    if (completed > 0) {
-      console.log(`Idle sweep (${reason}) marked ${completed} scan(s) COMPLETED.`);
-    }
+    do {
+      sweepAgain = false;
+      const completed = await finalizeIdleRunningScans(createScanCompletionQueue);
+      if (completed > 0) {
+        console.log(`Idle sweep (${reason}) marked ${completed} scan(s) COMPLETED.`);
+      }
+    } while (sweepAgain);
   } catch (err: any) {
     console.error(`Idle sweep (${reason}) failed:`, err?.message || err);
   } finally {
     idleSweepInFlight = false;
+    if (sweepAgain) {
+      void sweepIdleRunningScans(reason);
+    }
   }
 }
 
@@ -68,6 +78,13 @@ worker.on('drained', () => {
 });
 
 void sweepIdleRunningScans('startup');
+
+const idleSweepMs = parseInt(process.env.SCAN_IDLE_SWEEP_MS || '30000', 10);
+if (idleSweepMs > 0) {
+  setInterval(() => {
+    void sweepIdleRunningScans('interval');
+  }, idleSweepMs);
+}
 
 process.on('SIGTERM', async () => {
   console.log('Worker shutting down...');

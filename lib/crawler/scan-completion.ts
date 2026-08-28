@@ -17,8 +17,8 @@ export type ScanCompletionQueue = {
   ) => Promise<void>;
 };
 
-function isThisScanJob(job: ScanJobLike, scanId: string, currentJobId?: string): boolean {
-  if (job.data?.scanId !== scanId) return false;
+function isThisScanJob(job: ScanJobLike | null | undefined, scanId: string, currentJobId?: string): boolean {
+  if (!job?.data || job.data.scanId !== scanId) return false;
   if (currentJobId != null && String(job.id) === String(currentJobId)) return false;
   return true;
 }
@@ -32,7 +32,13 @@ function isThisScanJob(job: ScanJobLike, scanId: string, currentJobId?: string):
 export async function maybeCompleteScan(
   userDb: any,
   scanId: string,
-  opts?: { currentJobId?: string; queue?: ScanCompletionQueue; requeueOrphans?: boolean },
+  opts?: {
+    currentJobId?: string;
+    queue?: ScanCompletionQueue;
+    requeueOrphans?: boolean;
+    /** Sweep path: requeue missing PENDING jobs even if other scans still have waiting work. */
+    forceRequeue?: boolean;
+  },
 ): Promise<boolean> {
   const scan = await userDb.select().from(scans).where(eq(scans.id, scanId)).then((res: any[]) => res[0]);
   if (!scan || scan.status !== 'RUNNING') return false;
@@ -42,15 +48,17 @@ export async function maybeCompleteScan(
     .where(and(eq(links.scanId, scanId), eq(links.status, 'PENDING')))
     .limit(1);
 
-  const blockingJobs = opts?.queue
-    ? (await opts.queue.getBlockingJobs()).filter((job) => isThisScanJob(job, scanId, opts.currentJobId))
-    : [];
+  const rawJobs = opts?.queue ? await opts.queue.getBlockingJobs() : [];
+  // Sparse/malformed active slots must block completion (a crawl may still be in flight)
+  // but must not block orphan requeue — that is how PENDING rows get back on the queue.
+  const hasUnknownInFlight = rawJobs.some((job) => job == null || !job.data);
+  const blockingJobs = rawJobs.filter((job) => isThisScanJob(job, scanId, opts?.currentJobId));
   const hasInFlightWork = blockingJobs.length > 0;
 
   if (pendingExists.length > 0) {
     if (opts?.requeueOrphans && !hasInFlightWork && opts.queue?.requeuePendingLinks) {
       const waiting = await opts.queue.getWaitingCount?.() ?? 1;
-      if (waiting === 0) {
+      if (opts.forceRequeue || waiting === 0) {
         const pending = await userDb.select({ id: links.id, url: links.url, depth: links.depth })
           .from(links)
           .where(and(eq(links.scanId, scanId), eq(links.status, 'PENDING')));
@@ -61,7 +69,7 @@ export async function maybeCompleteScan(
     return false;
   }
 
-  if (hasInFlightWork) return false;
+  if (hasInFlightWork || hasUnknownInFlight) return false;
 
   const processingLeft = await userDb.select({ id: links.id })
     .from(links)
@@ -84,6 +92,21 @@ export async function maybeCompleteScan(
 
   console.log(`Scan ${scanId} completed (no PENDING links and no in-flight jobs).`);
   await userDb.update(scans).set({ status: 'COMPLETED', updatedAt: new Date() }).where(eq(scans.id, scanId));
+
+  try {
+    if (scan.userId) {
+      const otherRunning = await userDb.select({ id: scans.id })
+        .from(scans)
+        .where(eq(scans.status, 'RUNNING'))
+        .limit(1);
+      if (otherRunning.length === 0) {
+        await centralDb.update(users).set({ hasActiveScan: false }).where(eq(users.id, scan.userId));
+      }
+    }
+  } catch (err: any) {
+    console.error(`Failed to clear hasActiveScan after completing scan ${scanId}:`, err?.message || err);
+  }
+
   return true;
 }
 
@@ -99,7 +122,11 @@ export async function finalizeIdleRunningScans(
     const queue = createQueue?.(user.id);
     const runningScans = await userDb.select({ id: scans.id }).from(scans).where(eq(scans.status, 'RUNNING'));
     for (const scan of runningScans) {
-      const didComplete = await maybeCompleteScan(userDb, scan.id, { queue, requeueOrphans: true });
+      const didComplete = await maybeCompleteScan(userDb, scan.id, {
+        queue,
+        requeueOrphans: true,
+        forceRequeue: true,
+      });
       if (didComplete) completed += 1;
     }
   }
