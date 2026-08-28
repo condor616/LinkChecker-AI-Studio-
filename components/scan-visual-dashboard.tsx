@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { isTargetUrlMatch } from '@/lib/utils/url';
+import { isTargetUrlMatch, isTargetedScanConfig } from '@/lib/utils/url';
+import { useRouter } from 'next/navigation';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -32,10 +33,12 @@ interface ScanVisualDashboardProps {
 }
 
 export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboardProps) {
+  const router = useRouter();
   const [data, setData] = useState<any>(initialData);
   const [loading, setLoading] = useState(!initialData);
   const [priorityPage, setPriorityPage] = useState(1);
   const priorityPageSize = 5;
+  const isTargetedScan = isTargetedScanConfig(data?.scan?.config);
 
   const fetchData = async () => {
     const res = await fetch(`/api/scans/${scanId}`);
@@ -47,15 +50,22 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
   };
 
   useEffect(() => {
+    if (isTargetedScan) {
+      router.replace(`/scans/${scanId}`);
+    }
+  }, [isTargetedScan, scanId, router]);
+
+  useEffect(() => {
+    if (isTargetedScan) return;
     if (!initialData) {
       fetchData();
     }
     const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
-  }, [scanId, initialData]);
+  }, [scanId, initialData, isTargetedScan]);
 
   const stats = useMemo(() => {
-    if (!data) return null;
+    if (!data || isTargetedScan) return null;
     const { links, scan } = data;
 
     // 1. Parse config for filtering
@@ -173,7 +183,11 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       topPagesToFix,
       health: finalHealth
     };
-  }, [data]);
+  }, [data, isTargetedScan]);
+
+  if (isTargetedScan) {
+    return null;
+  }
 
   if (loading || !data || !stats) {
     return (

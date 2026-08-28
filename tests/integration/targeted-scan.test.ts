@@ -78,6 +78,42 @@ describe('Targeted Scan (Phase 2)', () => {
         expect(productsResult?.status).toBe('SUCCESS');
     });
 
+    it('marks COMPLETED when targeted work is done even if non-targets were skipped', async () => {
+        const { maybeCompleteScan } = await import('@/lib/crawler/scan-completion');
+        const target = `${baseUrl}/privacy`;
+        const config = {
+            startUrl: baseUrl,
+            isTargeted: true,
+            targetUrls: [target],
+            saveSkippedLinks: true,
+            regexRules: ['/it-it/'],
+            maxDepth: 1,
+        };
+        const scanId = await setupScan(config);
+
+        await testDb.insert(links).values({
+            id: crypto.randomUUID(),
+            scanId,
+            url: baseUrl,
+            status: 'PENDING',
+            depth: 0,
+        });
+
+        await processLink(testDb, { url: baseUrl, scanId, depth: 0 }, { id: scanId }, config);
+
+        await testDb.update(links)
+            .set({ status: 'SUCCESS', statusCode: 200, checkedAt: new Date() })
+            .where(and(eq(links.scanId, scanId), eq(links.status, 'PENDING')));
+
+        const completed = await maybeCompleteScan(testDb, scanId, {
+            queue: { getBlockingJobs: async () => [] },
+        });
+        expect(completed).toBe(true);
+
+        const scan = await testDb.select().from(scans).where(eq(scans.id, scanId)).then(res => res[0]);
+        expect(scan.status).toBe('COMPLETED');
+    });
+
     it('discovers a target from the start page without pre-inserting it', async () => {
         const target = `${baseUrl}/privacy`;
         const config = {

@@ -10,7 +10,7 @@
     "start": "node .next/standalone/server.js",
     "stop-docker": "npx tsx scripts/stop-docker.ts",
     "rebuild-worker": "docker compose -f docker-compose.yml build worker && docker compose -f docker-compose.yml up -d worker",
-    "rebuild-worker:dev": "docker compose -f docker/services/docker-compose.yml build worker && docker compose -f docker/services/docker-compose.yml up -d worker",
+    "rebuild-worker:dev": "docker compose --env-file .env -f docker/services/docker-compose.yml build worker && docker compose --env-file .env -f docker/services/docker-compose.yml up -d --no-deps worker",
     "lint": "eslint .",
     "clean": "next clean",
     "nuke": "npx tsx scripts/nuke.ts",

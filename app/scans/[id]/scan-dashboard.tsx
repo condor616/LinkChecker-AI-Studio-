@@ -16,13 +16,31 @@ function getStatusBadgeClass(statusCode: string | number | undefined, isBroken: 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { isTargetUrlMatch } from '@/lib/utils/url';
-import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle } from 'lucide-react';
+import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ExportButton } from './export-button';
 
-export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initialStatus: string }) {
+const headerOutlineChrome =
+  "cursor-pointer gap-2 border-primary/50 bg-background text-foreground hover:border-primary hover:bg-primary/10 dark:border-primary/25 dark:hover:border-primary/50 dark:hover:bg-primary/5 transition-all";
+
+const headerStopChrome =
+  "h-10 px-3 cursor-pointer text-destructive border-destructive/50 bg-background hover:border-destructive hover:bg-destructive/10 hover:text-destructive dark:border-destructive/25 dark:hover:border-destructive/50 dark:hover:bg-destructive/10 transition-all group";
+
+export function ScanDashboard({
+  scanId,
+  initialStatus,
+  scanName,
+  isTargetedScan,
+}: {
+  scanId: string;
+  initialStatus: string;
+  scanName: string;
+  isTargetedScan: boolean;
+}) {
   const searchParams = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [status, setStatus] = useState(initialStatus);
@@ -178,10 +196,127 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
     a.click();
   };
 
-  if (!data) return (
-    <div className="flex items-center justify-center p-20">
-      <RefreshCw className="h-10 w-10 animate-spin text-primary/50" />
+  const stickyHeader = (
+    <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-sm border-b border-border px-8 py-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground truncate">{scanName}</h1>
+          <span className={cn(
+             "shrink-0 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
+             status === 'RUNNING' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+             status === 'COMPLETED' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+             status === 'FAILED' ? "bg-destructive/10 text-destructive border-destructive/20" :
+             "bg-slate-500/10 text-slate-400 border-slate-500/20"
+          )}>
+            {status}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {!isTargetedScan && (
+            <ExportButton scanId={scanId} scanName={scanName} />
+          )}
+          {status !== 'COMPLETED' && (
+            <>
+              <Button
+                onClick={toggleStatus}
+                variant="outline"
+                className={cn("h-10 w-32", headerOutlineChrome)}
+              >
+                {status === 'RUNNING' ? (
+                  <><Pause className="h-4 w-4 text-primary" /> Pause</>
+                ) : (
+                  <><Play className="h-4 w-4 text-primary" /> Resume</>
+                )}
+              </Button>
+              <Button
+                onClick={() => setShowStopConfirm(true)}
+                variant="outline"
+                className={headerStopChrome}
+                title="Stop and Delete Scan"
+              >
+                <Square className="h-4 w-4 fill-destructive/20 group-hover:fill-destructive transition-all" />
+              </Button>
+            </>
+          )}
+          {!isTargetedScan && (
+            <Button asChild variant="outline" className={cn("h-10", headerOutlineChrome)}>
+              <Link href={`/scans/${scanId}/dashboard`}>
+                <LayoutDashboard className="h-4 w-4 text-primary" />
+                Visual Dashboard
+              </Link>
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
+  );
+
+  const stopConfirmDialog = (
+    <AnimatePresence>
+      {showStopConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="bg-card border border-white/10 rounded-2xl shadow-2xl max-w-md w-full p-8 space-y-6 relative overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500" />
+
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-2xl bg-destructive/10 flex items-center justify-center text-destructive shrink-0">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-foreground">Stop and Remove Scan?</h3>
+                <p className="text-sm text-muted-foreground mt-1 font-medium">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="bg-muted/30 rounded-xl p-4 border border-border">
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Stopping this scan will <span className="text-destructive font-bold underline decoration-destructive/30 underline-offset-4">immediately terminate</span> all active processing and <span className="text-foreground font-bold">permanently remove</span> all discovered links from the database.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => setShowStopConfirm(false)}
+                disabled={isStopping}
+                className="hover:bg-white/5 rounded-xl font-bold"
+              >
+                Keep Scanning
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleStop}
+                disabled={isStopping}
+                className="bg-destructive hover:bg-destructive/90 shadow-lg shadow-destructive/20 px-6 rounded-xl font-black uppercase tracking-widest text-xs h-11 text-white"
+              >
+                {isStopping ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Stopping...</>
+                ) : (
+                  'Stop and Delete'
+                )}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
+  if (!data) return (
+    <>
+      {stickyHeader}
+      <div className="px-8 pt-8 pb-10">
+        <div className="flex items-center justify-center p-20">
+          <RefreshCw className="h-10 w-10 animate-spin text-primary/50" />
+        </div>
+      </div>
+      {stopConfirmDialog}
+    </>
   );
 
   const { links, scan } = data;
@@ -320,7 +455,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   // Discovery: unique target URLs seen so far (any status). Orphans are only reported after the crawl finishes.
   const isScanComplete = status === 'COMPLETED';
   const targetHitGroups = uniqueFilteredLinks.filter(l => matchesTarget(l.url));
-  const foundMatchCount = targetHitGroups.length;
+  const foundMatchCount = targetHitGroups.reduce((sum, group) => sum + (group.count || 0), 0);
   const undiscoveredTargets = isTargeted ? targetUrls.filter((t: string) => {
     return !uniqueFilteredLinks.some(l => isTargetUrlMatch(l.url, t));
   }) : [];
@@ -333,41 +468,11 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const globalPending = links.filter((l: any) => l.status === 'PENDING').length;
 
   return (
+    <>
+    {stickyHeader}
+    <div className="px-8 pt-8 pb-10 space-y-8">
     <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Header with Controls and Progress */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div className="flex items-center gap-4">
-          {status !== 'COMPLETED' && (
-            <div className="flex items-center gap-2">
-              <Button 
-                onClick={toggleStatus} 
-                variant={status === 'RUNNING' ? 'secondary' : 'default'}
-                className="w-32 shadow-lg rounded-xl h-10 font-bold"
-              >
-                {status === 'RUNNING' ? (
-                  <><Pause className="mr-2 h-4 w-4" /> Pause</>
-                ) : (
-                  <><Play className="mr-2 h-4 w-4" /> Resume</>
-                )}
-              </Button>
-              <Button 
-                onClick={() => setShowStopConfirm(true)} 
-                variant="outline"
-                className="h-10 px-3 text-destructive border-destructive/20 hover:bg-destructive/10 hover:border-destructive/50 rounded-xl group transition-all"
-                title="Stop and Delete Scan"
-              >
-                <Square className="h-4 w-4 fill-red-500/20 group-hover:fill-red-500 transition-all" />
-              </Button>
-            </div>
-          )}
-          <div className="text-sm font-medium">
-            <span className={status === 'RUNNING' ? 'text-green-500 animate-pulse' : status === 'COMPLETED' ? 'text-green-500' : 'text-yellow-500'}>
-              ● {status.toUpperCase()}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex-1 max-w-md space-y-2">
+      <div className="space-y-2">
             <div className="flex justify-between text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 <span>{isTargeted ? 'Crawl Progress' : 'Overall Progress'}</span>
                 <span>{Math.round(progress)}%</span>
@@ -381,73 +486,67 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                 />
             </div>
         </div>
-      </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
-        {isTargeted ? (
-            <>
-                <StatCard title="Target Assets" value={targetUrls.length} icon={<Link2 className="h-4 w-4" />} color="text-primary" />
-                <StatCard title="Pages Crawled" value={pagesCrawled} icon={<Globe className="h-4 w-4" />} />
-                <StatCard title="Inst. Found" value={foundMatchCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
-                <StatCard title="Missing Targets" value={missingTargets.length} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" />
-                <StatCard title="Crawl Queue" value={globalPending} icon={<RefreshCw className={cn("h-4 w-4", status === 'RUNNING' && "animate-spin")} />} color="text-blue-500" />
-            </>
-        ) : (
-            <>
-                <StatCard title="Total Found" value={total} icon={<Link2 className="h-4 w-4" />} />
-                <StatCard 
-                    title="Checking" 
-                    value={pending} 
-                    icon={<RefreshCw className={cn("h-4 w-4", status === 'RUNNING' && "animate-spin")} />} 
-                    color="text-blue-500" 
+      {isTargeted ? (
+        <div className="flex flex-wrap items-stretch gap-4">
+          <div className="min-w-0 max-w-xl bg-primary/5 border border-primary/20 rounded-lg px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="space-y-1.5 min-w-0 max-w-sm">
+              <h3 className="text-sm font-semibold text-primary flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                Targeted Audit Active
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                <strong>{foundMatchCount}</strong> matching {foundMatchCount === 1 ? 'URL' : 'URLs'} across <strong>{foundTargetCount}</strong> of <strong>{targetUrls.length}</strong> targets
+              </p>
+              <div className="w-40 h-1 bg-primary/10 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-primary"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${coveragePercent}%` }}
                 />
-                <StatCard title="Healthy" value={successCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
-                <StatCard title="Broken" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" highlight={brokenCount > 0} />
-                <StatCard title="Skipped" value={skippedCount} icon={<Ghost className="h-4 w-4" />} color="text-slate-500" />
-            </>
-        )}
-      </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 shrink-0">
+              <div className="text-center">
+                <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">URLs Found</div>
+                <div className="text-xl font-black text-green-500 leading-none">{foundMatchCount}</div>
+              </div>
+              {missingTargets.length > 0 && (
+                <div className="text-center">
+                  <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">Missing</div>
+                  <div className="text-xl font-black text-destructive leading-none">{missingTargets.length}</div>
+                </div>
+              )}
+              <div className="h-8 w-px bg-border hidden sm:block" />
+              <Button size="sm" onClick={downloadBacklinkCSV} className="h-8 px-3">
+                <ExternalLink className="mr-2 h-3.5 w-3.5" /> Export Backlinks
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-[min(100%,18rem)] grid gap-4 grid-cols-2">
+            <StatCard title="Pages Crawled" value={pagesCrawled} icon={<Globe className="h-4 w-4" />} />
+            <StatCard title="Crawl Queue" value={globalPending} icon={<RefreshCw className={cn("h-4 w-4", status === 'RUNNING' && "animate-spin")} />} color="text-blue-500" />
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
+          <StatCard title="Total Found" value={total} icon={<Link2 className="h-4 w-4" />} />
+          <StatCard
+            title="Checking"
+            value={pending}
+            icon={<RefreshCw className={cn("h-4 w-4", status === 'RUNNING' && "animate-spin")} />}
+            color="text-blue-500"
+          />
+          <StatCard title="Healthy" value={successCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
+          <StatCard title="Broken" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" highlight={brokenCount > 0} />
+          <StatCard title="Skipped" value={skippedCount} icon={<Ghost className="h-4 w-4" />} color="text-slate-500" />
+        </div>
+      )}
 
       {/* Terminal and Triage */}
       <div className="flex flex-col gap-8 pb-20">
-        {isTargeted && (
-             <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex-1 space-y-2">
-                    <h3 className="text-lg font-bold text-primary flex items-center gap-2">
-                        <CheckCircle2 className="h-5 w-5" />
-                        Targeted Audit Active
-                    </h3>
-                    <p className="text-sm text-muted-foreground">Isolating reporting to your specific assets. We've found <strong>{foundMatchCount}</strong> matching URLs across <strong>{foundTargetCount}</strong> of <strong>{targetUrls.length}</strong> targets so far.</p>
-                    
-                    <div className="w-full max-w-md h-1.5 bg-primary/10 rounded-full overflow-hidden">
-                        <motion.div 
-                            className="h-full bg-primary" 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${coveragePercent}%` }}
-                        />
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-8 shrink-0">
-                    <div className="text-center">
-                        <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">URLs Found</div>
-                        <div className="text-3xl font-black text-green-500 leading-none">{foundMatchCount}</div>
-                    </div>
-                    {missingTargets.length > 0 && (
-                        <div className="text-center">
-                            <div className="text-[10px] font-black opacity-50 uppercase tracking-widest leading-none mb-1">Missing</div>
-                            <div className="text-3xl font-black text-destructive leading-none">{missingTargets.length}</div>
-                        </div>
-                    )}
-                    <div className="h-10 w-px bg-border hidden md:block" />
-                    <Button size="sm" onClick={downloadBacklinkCSV} className="h-10 px-4">
-                        <ExternalLink className="mr-2 h-4 w-4" /> Export Backlinks
-                    </Button>
-                </div>
-             </div>
-        )}
-
         {isTargeted && missingTargets.length > 0 && (
             <Card className="border-destructive/20 bg-destructive/5">
                 <CardHeader className="py-3">
@@ -511,12 +610,6 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                                         >
                                             By Page
                                         </Button>
-                                    </div>
-                                )}
-
-                                {isTargeted && (
-                                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted px-2 py-1 rounded">
-                                        LIVE AUDIT ACTIVE
                                     </div>
                                 )}
                             </div>
@@ -585,7 +678,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                             </>
                         )}
                     </CardHeader>
-                    <CardContent ref={triageContentRef} className="flex-1 overflow-auto p-0 flex flex-col">
+                    <CardContent ref={triageContentRef} className="flex-1 min-w-0 overflow-auto p-0 flex flex-col">
                         {isTargeted ? (
                             <div className="divide-y flex-1">
                                 {groupLinks(filteredLinks).map((group: any) => (
@@ -753,75 +846,11 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                 </Tabs>
             </Card>
         </div>
-
-        {/* Console info for targeted scans */}
-        {isTargeted && status === 'RUNNING' && (
-            <div className="p-4 bg-muted/50 rounded-lg border border-dashed border-primary/20 flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                <p className="text-[11px] text-muted-foreground italic">
-                    The engine is currently traversing the site to discover all incoming links for your targets. 
-                    Non-target links are being skipped in this view.
-                </p>
-            </div>
-        )}
-
-        {/* Stop Confirmation Modal */}
-        <AnimatePresence>
-          {showStopConfirm && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-card border border-white/10 rounded-2xl shadow-2xl max-w-md w-full p-8 space-y-6 relative overflow-hidden"
-              >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500" />
-                
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-destructive/10 flex items-center justify-center text-destructive shrink-0">
-                    <AlertTriangle className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-foreground">Stop and Remove Scan?</h3>
-                    <p className="text-sm text-muted-foreground mt-1 font-medium">This action cannot be undone.</p>
-                  </div>
-                </div>
-
-                <div className="bg-muted/30 rounded-xl p-4 border border-border">
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    Stopping this scan will <span className="text-destructive font-bold underline decoration-destructive/30 underline-offset-4">immediately terminate</span> all active processing and <span className="text-foreground font-bold">permanently remove</span> all discovered links from the database.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => setShowStopConfirm(false)} 
-                    disabled={isStopping}
-                    className="hover:bg-white/5 rounded-xl font-bold"
-                  >
-                    Keep Scanning
-                  </Button>
-                  <Button 
-                    variant="destructive" 
-                    onClick={handleStop} 
-                    disabled={isStopping}
-                    className="bg-destructive hover:bg-destructive/90 shadow-lg shadow-destructive/20 px-6 rounded-xl font-black uppercase tracking-widest text-xs h-11 text-white"
-                  >
-                    {isStopping ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Stopping...</>
-                    ) : (
-                      'Stop and Delete'
-                    )}
-                  </Button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
       </div>
     </div>
+    </div>
+    {stopConfirmDialog}
+    </>
   );
 }
 
@@ -912,7 +941,7 @@ function StatCard({ title, value, icon, color = "", highlight = false }: any) {
     const displayValue = typeof value === 'number' ? value.toLocaleString() : value;
     return (
         <Card className={cn(
-            "bg-card/50 backdrop-blur-sm shadow-md transition-colors",
+            "h-full bg-card/50 backdrop-blur-sm shadow-md transition-colors",
             highlight ? "border-destructive/30 bg-destructive/5" : "border-primary/10"
         )}>
             <CardHeader className="p-4 pb-0 flex flex-row items-center justify-between space-y-0 text-muted-foreground">
@@ -935,6 +964,144 @@ function EmptyState({ message }: { message: string }) {
     );
 }
 
+function isHtmlSnippet(snippet?: string | null) {
+    if (!snippet) return false;
+    return snippet.includes('<');
+}
+
+function getSnippetTag(snippet?: string | null) {
+    if (!snippet?.startsWith('[') || snippet.includes('<')) return null;
+    const end = snippet.indexOf(']');
+    return end >= 0 ? snippet.slice(0, end + 1) : snippet;
+}
+
+function FoundOnTable({
+    instances,
+    groupUrl,
+    groupCount,
+    showAll,
+    onShowAll,
+    groupError,
+}: {
+    instances: any[];
+    groupUrl: string;
+    groupCount: number;
+    showAll: boolean;
+    onShowAll: () => void;
+    groupError?: string | null;
+}) {
+    const [openSnippets, setOpenSnippets] = useState<Record<string, boolean>>({});
+    const visibleInstances = showAll ? instances : instances.slice(0, 10);
+    const anyHtml = visibleInstances.some((inst: any) => isHtmlSnippet(inst.snippet));
+
+    const toggleSnippet = (key: string) => {
+        setOpenSnippets((prev) => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    return (
+        <div className="min-w-0 max-w-full overflow-hidden">
+            {groupError && (
+                <div className="px-4 py-2 text-[11px] font-mono text-red-600/90 dark:text-red-400/80 border-b border-red-500/10 bg-red-500/5 break-all leading-relaxed">
+                    {groupError}
+                </div>
+            )}
+            <table className="w-full table-fixed text-left">
+                <thead>
+                    <tr className="border-b border-border/60">
+                        <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground min-w-0">
+                            Found on
+                        </th>
+                        {anyHtml && (
+                            <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-right w-[7.5rem]">
+                                HTML
+                            </th>
+                        )}
+                    </tr>
+                </thead>
+                <tbody>
+                    {visibleInstances.map((inst: any, i: number) => {
+                        const key = String(inst.id ?? `${inst.parentUrl}-${i}`);
+                        const hasHtml = isHtmlSnippet(inst.snippet);
+                        const tag = getSnippetTag(inst.snippet);
+                        const open = !!openSnippets[key];
+                        const rowError = inst.error && inst.error !== groupError ? inst.error : null;
+                        return (
+                            <tr key={key} className="border-b border-border/40 last:border-0 align-top">
+                                <td className="px-4 py-2.5 min-w-0">
+                                    <div className="flex items-start gap-1.5 min-w-0 max-w-full">
+                                        {inst.parentUrl ? (
+                                            <a
+                                                href={inst.parentUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="min-w-0 max-w-full text-sm font-medium text-foreground hover:text-primary hover:underline break-all leading-snug flex items-start gap-1.5"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <span className="min-w-0 break-all">{inst.parentUrl}</span>
+                                                <ExternalLink className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/40" />
+                                            </a>
+                                        ) : (
+                                            <span className="text-sm text-muted-foreground">Start</span>
+                                        )}
+                                    </div>
+                                    {inst.url !== groupUrl && (
+                                        <div className="mt-0.5 text-[10px] font-mono text-muted-foreground/70 break-all">
+                                            Specific URL: {inst.url}
+                                        </div>
+                                    )}
+                                    {rowError && (
+                                        <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-500/80 break-all">
+                                            {rowError}
+                                        </div>
+                                    )}
+                                    {tag && (
+                                        <div className="mt-0.5 text-[10px] font-mono italic text-primary/70">
+                                            {tag}
+                                        </div>
+                                    )}
+                                    {hasHtml && open && (
+                                        <div className="mt-2 min-w-0 max-w-full overflow-x-auto">
+                                            <pre className="text-[9px] font-mono bg-slate-900 text-slate-300 p-2 rounded-md border border-slate-800 max-h-40 max-w-full whitespace-pre-wrap break-all [overflow-wrap:anywhere]">
+                                                {inst.snippet}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </td>
+                                {anyHtml && (
+                                    <td className="px-3 py-2 text-right align-top">
+                                        {hasHtml && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 px-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleSnippet(key);
+                                                }}
+                                            >
+                                                {open ? 'Hide HTML' : 'Show HTML'}
+                                            </Button>
+                                        )}
+                                    </td>
+                                )}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+            {instances.length > 10 && !showAll && (
+                <Button
+                    variant="ghost"
+                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5 rounded-none border-t border-border/40"
+                    onClick={onShowAll}
+                >
+                    Show all {groupCount} occurrences
+                </Button>
+            )}
+        </div>
+    );
+}
+
 function TriageItemGeneral({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
     const [showAll, setShowAll] = useState(false);
@@ -942,8 +1109,6 @@ function TriageItemGeneral({ group, onRecheck }: any) {
     const isBroken = link.status === 'BROKEN';
     const isSuccess = link.status === 'SUCCESS';
     const isPending = link.status === 'PENDING' || link.status === 'PROCESSING';
-
-    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <motion.div 
@@ -959,7 +1124,10 @@ function TriageItemGeneral({ group, onRecheck }: any) {
             <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                      {group.count > 1 && (
-                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        <span
+                            className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                            title={`${group.count} occurrences`}
+                        >
                             {group.count}
                         </span>
                     )}
@@ -1001,55 +1169,14 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden bg-muted/20 border-t"
                     >
-                        <div className="p-4 space-y-4">
-                            {link.error && isBroken && (
-                                <div className="space-y-1.5">
-                                    <p className="text-[10px] font-black text-red-500/60 uppercase tracking-widest flex items-center gap-2">
-                                        <AlertTriangle className="h-3 w-3" />
-                                        Technical Details:
-                                    </p>
-                                    <div className="text-[11px] font-mono bg-red-500/5 p-3 rounded-lg border border-red-500/10 text-red-600 dark:text-red-400 whitespace-pre-wrap leading-relaxed">
-                                        {link.error}
-                                    </div>
-                                </div>
-                            )}
-                            {visibleInstances.map((inst: any, i: number) => (
-                                <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
-                                    <div className="flex flex-col gap-1">
-                                        {inst.url !== link.url && (
-                                            <div className="text-[10px] font-mono text-primary/80">
-                                                Specific URL: {inst.url}
-                                            </div>
-                                        )}
-                                        {inst.parentUrl && (
-                                            <p className="text-xs text-muted-foreground flex items-center gap-2">
-                                                <span className="font-bold shrink-0 opacity-50 uppercase tracking-tighter">Found on:</span>
-                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
-                                                    {inst.parentUrl}
-                                                </a>
-                                            </p>
-                                        )}
-                                    </div>
-                                    {inst.snippet && (
-                                        <div>
-                                            <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-tight">HTML Snippet:</p>
-                                            <pre className="text-[9px] font-mono bg-slate-900 text-slate-300 p-2 rounded-md overflow-x-auto border border-slate-800">
-                                                {inst.snippet}
-                                            </pre>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                            {group.instances.length > 10 && !showAll && (
-                                <Button 
-                                    variant="ghost" 
-                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
-                                    onClick={() => setShowAll(true)}
-                                >
-                                    Show all {group.count} occurrences
-                                </Button>
-                            )}
-                        </div>
+                        <FoundOnTable
+                            instances={group.instances}
+                            groupUrl={link.url}
+                            groupCount={group.count}
+                            showAll={showAll}
+                            onShowAll={() => setShowAll(true)}
+                            groupError={isBroken ? link.error : null}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -1061,8 +1188,6 @@ function TriageItem({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
     const [showAll, setShowAll] = useState(false);
     const link = group; // primary info
-
-    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <motion.div 
@@ -1117,55 +1242,14 @@ function TriageItem({ group, onRecheck }: any) {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden bg-muted/20 border-t"
                     >
-                        <div className="p-4 space-y-4">
-                            {link.error && (
-                                <div className="space-y-1.5">
-                                    <p className="text-[10px] font-black text-red-500/60 uppercase tracking-widest flex items-center gap-2">
-                                        <AlertTriangle className="h-3 w-3" />
-                                        Technical Details:
-                                    </p>
-                                    <div className="text-[11px] font-mono bg-red-500/5 p-3 rounded-lg border border-red-500/10 text-red-600 dark:text-red-400 whitespace-pre-wrap leading-relaxed">
-                                        {link.error}
-                                    </div>
-                                </div>
-                            )}
-                            {visibleInstances.map((inst: any, i: number) => (
-                                <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
-                                    <div className="flex flex-col gap-1">
-                                        {inst.url !== link.url && (
-                                            <div className="text-[10px] font-mono text-red-400/80">
-                                                Specific URL: {inst.url}
-                                            </div>
-                                        )}
-                                        {inst.parentUrl && (
-                                            <p className="text-xs text-muted-foreground flex items-center gap-2">
-                                                <span className="font-bold shrink-0 uppercase tracking-tighter">Found on:</span>
-                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
-                                                    {inst.parentUrl}
-                                                </a>
-                                            </p>
-                                        )}
-                                    </div>
-                                    {inst.snippet && (
-                                        <div>
-                                            <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-tight">HTML Snippet:</p>
-                                            <pre className="text-[9px] font-mono bg-slate-900 text-slate-300 p-2 rounded-md overflow-x-auto border border-slate-800">
-                                                {inst.snippet}
-                                            </pre>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                            {group.instances.length > 10 && !showAll && (
-                                <Button 
-                                    variant="ghost" 
-                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
-                                    onClick={() => setShowAll(true)}
-                                >
-                                    Show all {group.count} occurrences
-                                </Button>
-                            )}
-                        </div>
+                        <FoundOnTable
+                            instances={group.instances}
+                            groupUrl={link.url}
+                            groupCount={group.count}
+                            showAll={showAll}
+                            onShowAll={() => setShowAll(true)}
+                            groupError={link.error}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -1174,18 +1258,26 @@ function TriageItem({ group, onRecheck }: any) {
 }
 
 function TriageItemSuccess({ group }: any) {
+    const [expanded, setExpanded] = useState(false);
+    const [showAll, setShowAll] = useState(false);
     const link = group;
 
     return (
         <div className="border-l-4 border-l-green-500 hover:bg-green-500/5 transition-colors overflow-hidden">
-            <div className="h-12 px-4 flex items-center justify-between gap-4 select-none">
+            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {group.count > 1 && (
+                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                            {group.count}
+                        </span>
+                    )}
                     <span className="font-medium text-sm text-green-600 dark:text-green-400 break-words">{link.url}</span>
                     <a 
                         href={link.url} 
                         target="_blank" 
                         rel="noreferrer" 
                         className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
                         title="Open in new tab"
                     >
                         <ExternalLink className="h-3 w-3" />
@@ -1196,8 +1288,27 @@ function TriageItemSuccess({ group }: any) {
                         "text-[10px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-tighter",
                         getStatusBadgeClass(link.statusCode, false)
                     )}>{link.statusCode || 200} OK</span>
+                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                 </div>
             </div>
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-muted/20 border-t"
+                    >
+                        <FoundOnTable
+                            instances={group.instances}
+                            groupUrl={link.url}
+                            groupCount={group.count}
+                            showAll={showAll}
+                            onShowAll={() => setShowAll(true)}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -1206,8 +1317,6 @@ function TriageItemSkipped({ group }: any) {
     const [expanded, setExpanded] = useState(false);
     const [showAll, setShowAll] = useState(false);
     const link = group;
-
-    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <div className="hover:bg-muted/10 transition-colors border-l-4 border-l-transparent overflow-hidden">
@@ -1244,39 +1353,13 @@ function TriageItemSkipped({ group }: any) {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden bg-muted/20 border-t"
                     >
-                        <div className="p-3 space-y-2">
-                             {visibleInstances.map((inst: any, i: number) => (
-                                <div key={inst.id} className={cn("flex flex-col gap-1", i > 0 && "pt-2 border-t border-dashed")}>
-                                    <div className="flex flex-col gap-1">
-                                         {inst.snippet?.startsWith('[') && (
-                                            <span className="text-[10px] text-primary/80 font-mono italic">
-                                                {inst.snippet.split(']')[0] + ']'}
-                                            </span>
-                                        )}
-                                         {inst.error && (
-                                            <div className="text-[10px] font-bold text-amber-500/80 bg-amber-500/5 px-2 py-1 rounded border border-amber-500/10 mb-1">
-                                                Reason: {inst.error}
-                                            </div>
-                                        )}
-                                         {inst.url !== link.url && (
-                                            <div className="text-[10px] font-mono text-slate-500/80">
-                                                Specific URL: {inst.url}
-                                            </div>
-                                        )}
-                                        <span className="text-[10px] opacity-100 break-all text-muted-foreground/50">From: {inst.parentUrl || 'Start'}</span>
-                                    </div>
-                                </div>
-                            ))}
-                            {group.instances.length > 10 && !showAll && (
-                                <Button 
-                                    variant="ghost" 
-                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
-                                    onClick={() => setShowAll(true)}
-                                >
-                                    Show all {group.count} occurrences
-                                </Button>
-                            )}
-                        </div>
+                        <FoundOnTable
+                            instances={group.instances}
+                            groupUrl={link.url}
+                            groupCount={group.count}
+                            showAll={showAll}
+                            onShowAll={() => setShowAll(true)}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -1291,8 +1374,6 @@ function TriageItemRechecked({ group, onRecheck }: any) {
     const isBroken = link.status === 'BROKEN';
     const isSuccess = link.status === 'SUCCESS';
     const isPending = link.status === 'PENDING';
-
-    const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
     return (
         <motion.div 
@@ -1358,55 +1439,14 @@ function TriageItemRechecked({ group, onRecheck }: any) {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden bg-muted/20 border-t"
                     >
-                        <div className="p-4 space-y-4">
-                            {link.error && isBroken && (
-                                <div className="space-y-1.5">
-                                    <p className="text-[10px] font-black text-red-500/60 uppercase tracking-widest flex items-center gap-2">
-                                        <AlertTriangle className="h-3 w-3" />
-                                        Technical Details:
-                                    </p>
-                                    <div className="text-[11px] font-mono bg-red-500/5 p-3 rounded-lg border border-red-500/10 text-red-600 dark:text-red-400 whitespace-pre-wrap leading-relaxed">
-                                        {link.error}
-                                    </div>
-                                </div>
-                            )}
-                            {visibleInstances.map((inst: any, i: number) => (
-                                <div key={inst.id} className={cn("space-y-2", i > 0 && "pt-4 border-t border-dashed")}>
-                                    <div className="flex flex-col gap-1">
-                                        {inst.url !== link.url && (
-                                            <div className={cn("text-[10px] font-mono", isBroken ? "text-red-400/80" : "text-muted-foreground")}>
-                                                Specific URL: {inst.url}
-                                            </div>
-                                        )}
-                                        {inst.parentUrl && (
-                                            <p className="text-xs text-muted-foreground flex items-center gap-2">
-                                                <span className="font-bold shrink-0 uppercase tracking-tighter opacity-50">Found on:</span>
-                                                <a href={inst.parentUrl} target="_blank" rel="noreferrer" className="hover:underline break-all">
-                                                    {inst.parentUrl}
-                                                </a>
-                                            </p>
-                                        )}
-                                    </div>
-                                    {inst.snippet && (
-                                        <div>
-                                            <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-tight">HTML Snippet:</p>
-                                            <pre className="text-[9px] font-mono bg-slate-900 text-slate-300 p-2 rounded-md overflow-x-auto border border-slate-800">
-                                                {inst.snippet}
-                                            </pre>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                            {group.instances.length > 10 && !showAll && (
-                                <Button 
-                                    variant="ghost" 
-                                    className="w-full text-[10px] font-bold uppercase tracking-widest h-8 text-primary/60 hover:text-primary transition-colors hover:bg-primary/5"
-                                    onClick={() => setShowAll(true)}
-                                >
-                                    Show all {group.count} occurrences
-                                </Button>
-                            )}
-                        </div>
+                        <FoundOnTable
+                            instances={group.instances}
+                            groupUrl={link.url}
+                            groupCount={group.count}
+                            showAll={showAll}
+                            onShowAll={() => setShowAll(true)}
+                            groupError={isBroken ? link.error : null}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>

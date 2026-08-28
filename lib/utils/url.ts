@@ -1,6 +1,18 @@
+const TRACKING_QUERY_PARAM = /^(utm(_.+)?|fbclid|gclid|gclsrc|dclid|gbraid|wbraid|msclkid|twclid|yclid|igshid|mc_eid|mc_cid|_ga|_gl|_hsenc|_hsmi|mkt_tok|wickedid|ncid|ref_src)$/i;
+
+function stripTrackingQueryParams(url: URL): void {
+  for (const key of [...url.searchParams.keys()]) {
+    if (TRACKING_QUERY_PARAM.test(key)) {
+      url.searchParams.delete(key);
+    }
+  }
+  url.searchParams.sort();
+}
+
 export function canonicalizeScanUrl(rawUrl: string): string {
   try {
     const url = new URL(rawUrl.trim());
+    stripTrackingQueryParams(url);
 
     const protocol = url.protocol.toLowerCase();
     const hostname = url.hostname.toLowerCase();
@@ -72,6 +84,28 @@ export function isWithinStartPathScope(startUrl: string, currentUrl: string): bo
   } catch {
     return false;
   }
+}
+
+/** Parse scan.config JSON (string or object). Invalid JSON yields {}. */
+export function parseScanConfig(config: unknown): Record<string, any> {
+  if (typeof config === 'string') {
+    try {
+      const parsed = JSON.parse(config);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  if (config && typeof config === 'object') {
+    return config as Record<string, any>;
+  }
+  return {};
+}
+
+/** True when the scan is a targeted audit (`isTargeted` + at least one target URL). */
+export function isTargetedScanConfig(config: unknown): boolean {
+  const parsed = parseScanConfig(config);
+  return !!parsed.isTargeted && (parsed.targetUrls?.length > 0);
 }
 
 export function isTargetUrlMatch(candidateUrl: string, targetUrl: string): boolean {

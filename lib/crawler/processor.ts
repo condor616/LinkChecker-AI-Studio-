@@ -6,11 +6,9 @@ import crypto from 'crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { canonicalizeScanUrl, getFetchUrl, getUrlWithoutHash, isTargetUrlMatch, isWithinStartPathScope } from '../utils/url';
-import { collectSitemapUrls } from './sitemap';
 
 const activeCrawls = new Map<string, Promise<void>>(); // Scan-scoped fetch cache
 const hostSafetyCache = new Map<string, boolean>();
-const sitemapDiscoveryDone = new Set<string>();
 
 function normalizeHostname(hostname: string): string {
     return hostname.toLowerCase().replace(/^www\./, '');
@@ -52,6 +50,92 @@ function canonicalizeHref(href: string, baseUrl: string): string | null {
     } catch {
         return null;
     }
+}
+
+const MAX_FORM_FILTER_URLS = 100;
+
+function extractGetFormFilterUrls($: cheerio.CheerioAPI, baseUrl: string): string[] {
+    const urls: string[] = [];
+    const seen = new Set<string>();
+
+    $('form').each((_, formEl) => {
+        if (urls.length >= MAX_FORM_FILTER_URLS) return;
+        const $form = $(formEl);
+        const method = ($form.attr('method') || 'get').trim().toLowerCase();
+        if (method && method !== 'get') return;
+
+        const action = $form.attr('action') ?? '';
+        let actionUrl: URL;
+        try {
+            actionUrl = new URL(action || '.', baseUrl);
+        } catch {
+            return;
+        }
+        if (actionUrl.protocol !== 'http:' && actionUrl.protocol !== 'https:') return;
+
+        const defaults = new URLSearchParams();
+        $form.find('input[type="hidden"][name]').each((__, input) => {
+            const name = $(input).attr('name');
+            if (!name) return;
+            defaults.append(name, $(input).attr('value') ?? '');
+        });
+        $form.find('select[name]').each((__, select) => {
+            const name = $(select).attr('name');
+            if (!name) return;
+            const selected = $(select).find('option[selected]').first();
+            const fallback = $(select).find('option[value]').first();
+            const option = selected.length ? selected : fallback;
+            if (!option.length) return;
+            defaults.append(name, option.attr('value') ?? '');
+        });
+        $form.find('input[type="radio"][name][checked]').each((__, input) => {
+            const name = $(input).attr('name');
+            if (!name) return;
+            defaults.append(name, $(input).attr('value') ?? '');
+        });
+
+        const record = (params: URLSearchParams) => {
+            if (urls.length >= MAX_FORM_FILTER_URLS) return;
+            const candidate = new URL(actionUrl.toString());
+            candidate.search = '';
+            params.forEach((value, name) => {
+                if (value === '') return;
+                candidate.searchParams.append(name, value);
+            });
+            const canonical = canonicalizeScanUrl(candidate.toString());
+            if (!canonical || seen.has(canonical)) return;
+            seen.add(canonical);
+            urls.push(canonical);
+        };
+
+        record(new URLSearchParams(defaults));
+
+        $form.find('select[name]').each((__, select) => {
+            const name = $(select).attr('name');
+            if (!name) return;
+            $(select).find('option').each((___, option) => {
+                const value = $(option).attr('value');
+                if (value === undefined || value === '') return;
+                const params = new URLSearchParams(defaults);
+                params.delete(name);
+                params.append(name, value);
+                record(params);
+            });
+        });
+
+        $form.find('input[type="radio"][name]').each((__, input) => {
+            const name = $(input).attr('name');
+            if (!name) return;
+            const value = $(input).attr('value');
+            if (value === undefined || value === '') return;
+            const params = new URLSearchParams(defaults);
+            params.delete(name);
+            params.append(name, value);
+            record(params);
+        });
+    });
+
+    return urls;
 }
 
 function looksLikeAuthPath(url: string): boolean {
@@ -177,6 +261,24 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
   // NEW: Wait if this URL is already being fetched in this scan
   if (activeCrawls.has(crawlKey)) {
     await activeCrawls.get(crawlKey);
+    const sibling = await userDb.select().from(links).where(and(
+      eq(links.scanId, scan.id),
+      or(eq(links.url, link.url), eq(links.url, documentUrl)),
+      or(eq(links.status, 'SUCCESS'), eq(links.status, 'BROKEN'), eq(links.status, 'SKIPPED'))
+    )).then((rows: any[]) => rows[0]);
+    if (sibling) {
+      await userDb.update(links).set({
+        status: sibling.status,
+        statusCode: sibling.statusCode,
+        type: sibling.type,
+        error: sibling.error,
+        checkedAt: new Date(),
+      }).where(and(
+        eq(links.scanId, scan.id),
+        eq(links.url, link.url),
+        or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+      ));
+    }
     return;
   }
 
@@ -429,19 +531,33 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
                 }
             };
       
-      $('a[href]').each((_, el) => {
+      $('a[href], area[href]').each((_, el) => {
         const href = $(el).attr('href');
-        if (!href) return;
-        
+        if (!href || href.trim() === '' || href.trim() === '#') return;
+
         try {
           const urlStr = canonicalizeHref(href, link.url);
           if (!urlStr) return;
 
-            const snippet = $.html(el).slice(0, 500); 
+            const snippet = $.html(el).slice(0, 500);
 
                         recordFoundLink(urlStr, link.url, snippet);
                 } catch {}
       });
+
+            $('link[href]').each((_, el) => {
+                const rel = ($(el).attr('rel') || '').toLowerCase().split(/\s+/);
+                if (!rel.includes('next') && !rel.includes('prev')) return;
+                const href = $(el).attr('href');
+                if (!href || href.trim() === '' || href.trim() === '#') return;
+                const urlStr = canonicalizeHref(href, link.url);
+                if (!urlStr) return;
+                recordFoundLink(urlStr, link.url, $.html(el).slice(0, 500));
+            });
+
+            extractGetFormFilterUrls($, link.url).forEach((formUrl) => {
+                recordFoundLink(formUrl, link.url, '[GET form filter]');
+            });
 
             const currentDocumentUrl = getUrlWithoutHash(link.url);
             const targetUrlsCanonical = ((config.targetUrls || []) as string[]).map((t: string) => canonicalizeScanUrl(t));
@@ -480,36 +596,6 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
                     const nestedSnippet = $.html(nestedEl).slice(0, 500);
                     recordFoundLink(nestedUrl, fragmentUrl, nestedSnippet);
                 });
-            }
-
-            const isStartDocument = documentUrl === getUrlWithoutHash(config.startUrl);
-            if (isStartDocument && currentDepth === 0 && response.ok && !sitemapDiscoveryDone.has(scan.id)) {
-                sitemapDiscoveryDone.add(scan.id);
-                try {
-                    const origin = new URL(config.startUrl).origin;
-                    const sitemapParent = canonicalizeScanUrl(`${origin}/sitemap.xml`);
-                    const sitemapUrls = await collectSitemapUrls({
-                        startUrl: config.startUrl,
-                        fetchText: async (url) => {
-                            try {
-                                const sitemapResponse = await fetchWithRedirects(url, headers, controller.signal);
-                                if (!sitemapResponse.ok) return null;
-                                return await sitemapResponse.text();
-                            } catch {
-                                return null;
-                            }
-                        },
-                    });
-                    for (const loc of sitemapUrls) {
-                        if (getUrlWithoutHash(loc) === documentUrl) continue;
-                        // Seed sitemap URLs at depth 0 so they are crawled/extracted like start-page children
-                        // even when maxDepth is 1. Sitemap discovery itself runs only once per scan.
-                        recordFoundLink(loc, sitemapParent, '[Discovered via sitemap]', 0);
-                    }
-                } catch (error) {
-                    console.error('[Sitemap] Discovery failed:', error);
-                    sitemapDiscoveryDone.delete(scan.id);
-                }
             }
 
             const discoveredLinks = Array.from(foundLinks.values());

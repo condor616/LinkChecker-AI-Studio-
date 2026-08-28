@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* App theme is `data-theme="dark"` on <html>, not the default `.dark` class. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
