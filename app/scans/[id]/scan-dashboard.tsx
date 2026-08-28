@@ -49,7 +49,7 @@ export function ScanDashboard({
   const [successPage, setSuccessPage] = useState(1);
   const [skippedPage, setSkippedPage] = useState(1);
   const [recheckedPage, setRecheckedPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'broken' | 'rechecked' | 'success' | 'skipped' | null>('broken');
+  const [activeTab, setActiveTab] = useState<'broken' | 'rechecked' | 'success' | 'skipped'>('broken');
   
   const initialSearch = searchParams.get('search') || '';
   const [searchQuery, setSearchQuery] = useState(initialSearch);
@@ -572,7 +572,15 @@ export function ScanDashboard({
         {/* Triage Section (Now at the top) */}
         <div className="w-full order-1">
             <Card className="min-h-[500px] flex flex-col shadow-xl border-primary/5">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+                <Tabs
+                    value={activeTab}
+                    onValueChange={(value) => {
+                        if (value === 'broken' || value === 'rechecked' || value === 'success' || value === 'skipped') {
+                            setActiveTab(value);
+                        }
+                    }}
+                    className="flex flex-col h-full"
+                >
                     <CardHeader className="py-3 px-4 border-b sticky top-0 bg-background/80 backdrop-blur-md z-10 space-y-0">
                         {/* Row 1: Title + Search + View Toggle */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3">
