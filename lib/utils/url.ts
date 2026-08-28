@@ -19,6 +19,31 @@ export function canonicalizeScanUrl(rawUrl: string): string {
   }
 }
 
+export function getUrlWithoutHash(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl.trim());
+    url.hash = '';
+    return canonicalizeScanUrl(url.toString());
+  } catch {
+    return rawUrl.trim();
+  }
+}
+
+/** Strip the fragment for HTTP fetch, keeping path/query/trailing slash intact. */
+export function getFetchUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl.trim());
+    url.hash = '';
+    return url.href;
+  } catch {
+    return rawUrl.trim();
+  }
+}
+
+function stripWwwHost(canonicalUrl: string): string {
+  return canonicalUrl.replace(/^(https?:\/\/)www\./i, '$1');
+}
+
 export function isWithinStartPathScope(startUrl: string, currentUrl: string): boolean {
   try {
     const start = new URL(startUrl);
@@ -50,8 +75,8 @@ export function isWithinStartPathScope(startUrl: string, currentUrl: string): bo
 }
 
 export function isTargetUrlMatch(candidateUrl: string, targetUrl: string): boolean {
-  const canonicalCandidate = canonicalizeScanUrl(candidateUrl);
-  const canonicalTarget = canonicalizeScanUrl(targetUrl);
+  const canonicalCandidate = stripWwwHost(canonicalizeScanUrl(candidateUrl));
+  const canonicalTarget = stripWwwHost(canonicalizeScanUrl(targetUrl));
 
   if (canonicalCandidate === canonicalTarget) {
     return true;

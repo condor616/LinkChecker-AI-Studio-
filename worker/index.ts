@@ -3,7 +3,7 @@ import { connection, QUEUE_NAME, ScanJobData, scanQueue } from '../lib/bullmq';
 import { processLink } from '../lib/crawler/processor';
 import { getDb, db as centralDb } from '../lib/db';
 import { scans, links } from '../lib/db/schema';
-import { eq, and, or } from 'drizzle-orm';
+import { isTargetUrlMatch } from '../lib/utils/url';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
@@ -68,18 +68,26 @@ const worker = new Worker<ScanJobData>(
 
     if (newLinks && newLinks.length > 0) {
       console.log(`Found ${newLinks.length} new links for scan ${scanId}. Enqueuing...`);
+      const targetUrls = config.targetUrls || [];
+      const isTargeted = !!config.isTargeted && targetUrls.length > 0;
       
-      const jobs = newLinks.map(l => ({
-        name: `scan-link-${l.id}`,
-        data: {
-          userId,
-          scanId,
-          url: l.url,
-          depth: l.depth,
-          config,
-          linkId: l.id
-        }
-      }));
+      const jobs = newLinks.map(l => {
+        const isTarget = isTargeted && targetUrls.some((target: string) => isTargetUrlMatch(l.url, target));
+        return {
+          name: `scan-link-${l.id}`,
+          data: {
+            userId,
+            scanId,
+            url: l.url,
+            depth: l.depth,
+            config,
+            linkId: l.id
+          },
+          opts: {
+            priority: isTarget ? 1 : 10
+          }
+        };
+      });
 
       await scanQueue.addBulk(jobs);
     }
@@ -109,11 +117,16 @@ const worker = new Worker<ScanJobData>(
         if (orphans.length > 0) {
           console.log(`Scan ${scanId} has ${orphans.length} orphaned PENDING links. Re-enqueuing...`);
           const scanConfig = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
-          const jobs = orphans.map(l => ({
-            name: `scan-link-${l.id}`,
-            data: { userId, scanId, url: l.url, depth: l.depth, config: scanConfig, linkId: l.id },
-            opts: { jobId: `scan-link-${l.id}` }
-          }));
+          const orphanTargets = scanConfig.targetUrls || [];
+          const orphanTargeted = !!scanConfig.isTargeted && orphanTargets.length > 0;
+          const jobs = orphans.map(l => {
+            const isTarget = orphanTargeted && orphanTargets.some((target: string) => isTargetUrlMatch(l.url, target));
+            return {
+              name: `scan-link-${l.id}`,
+              data: { userId, scanId, url: l.url, depth: l.depth, config: scanConfig, linkId: l.id },
+              opts: { jobId: `scan-link-${l.id}`, priority: isTarget ? 1 : 10 }
+            };
+          });
           await scanQueue.addBulk(jobs);
         } else {
           console.log(`Scan ${scanId} has stuck PROCESSING links but queue is empty. Marking as COMPLETED.`);

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeEach, afterAll, beforeAll, vi } from 'vitest';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
@@ -27,6 +28,25 @@ describe('Crawler Link Processing', () => {
         </body>
       </html>
     `));
+    app.get('/quarterly', (c) => c.html(`
+      <html>
+        <body>
+          <ul>
+            <li><a href="#tabq3-2025-17051">Q3 2025</a></li>
+            <li><a href="/quarterly#tabannual-results">Annual</a></li>
+          </ul>
+          <div id="tabq3-2025-17051">
+            <a href="/files/q3-report.pdf">Q3 Report</a>
+          </div>
+          <div id="tabannual-results">
+            <a href="/files/annual-report.pdf">Annual Report</a>
+          </div>
+        </body>
+      </html>
+    `));
+    app.get('/home', (c) => c.html('<html><body><a href="/quarterly">Quarterly results</a></body></html>'));
+    app.get('/files/q3-report.pdf', () => new Response('pdf', { status: 200, headers: { 'Content-Type': 'application/pdf' } }));
+    app.get('/files/annual-report.pdf', () => new Response('pdf', { status: 200, headers: { 'Content-Type': 'application/pdf' } }));
 
     // Use port 0 for dynamic port assignment
     server = serve({ fetch: app.fetch, port: 0 });
@@ -169,5 +189,110 @@ describe('Crawler Link Processing', () => {
     expect(urls).not.toContain(`${baseUrl}/index%2ephp/about`);
     expect(urls).not.toContain(`${baseUrl}/index.php/contact`);
     expect(urls).not.toContain(`${baseUrl}/index%2Ephp/careers`);
+  });
+
+  it('attributes in-tab PDFs to the fragment parent and does not enqueue hash URLs', async () => {
+    const quarterlyUrl = `${baseUrl}/quarterly`;
+    const q3Fragment = `${quarterlyUrl}#tabq3-2025-17051`;
+    const q3Pdf = `${baseUrl}/files/q3-report.pdf`;
+    const annualPdf = `${baseUrl}/files/annual-report.pdf`;
+
+    const link = {
+        id: crypto.randomUUID(),
+        scanId: TEST_SCAN_ID,
+        url: quarterlyUrl,
+        status: 'PENDING',
+        depth: 0,
+    };
+    await db.insert(links).values(link);
+
+    const scan = await db.select().from(scans).where(eq(scans.id, TEST_SCAN_ID)).then(res => res[0]);
+    const config = JSON.parse(scan?.config as string);
+
+    const newLinks = await processLink(db, link, scan, config) as any[] | undefined;
+
+    const allLinks = await db.select().from(links).where(eq(links.scanId, TEST_SCAN_ID));
+    const q3Hits = allLinks.filter(l => l.url === q3Pdf);
+    expect(q3Hits.some(l => l.parentUrl === q3Fragment)).toBe(true);
+
+    const annualHits = allLinks.filter(l => l.url === annualPdf);
+    expect(annualHits.some(l => l.parentUrl === `${quarterlyUrl}#tabannual-results`)).toBe(true);
+
+    const queuedUrls = (newLinks || []).map(l => l.url);
+    expect(queuedUrls.some((url: string) => url.includes('#'))).toBe(false);
+  });
+
+  it('discovers a targeted PDF inside a tab from the start page', async () => {
+    const homeUrl = `${baseUrl}/home`;
+    const q3Pdf = `${baseUrl}/files/q3-report.pdf`;
+    const q3Fragment = `${baseUrl}/quarterly#tabq3-2025-17051`;
+    const config = {
+        startUrl: homeUrl,
+        isTargeted: true,
+        targetUrls: [q3Pdf],
+        maxDepth: 0,
+    };
+
+    await db.update(scans).set({ config: JSON.stringify(config) }).where(eq(scans.id, TEST_SCAN_ID));
+
+    const homeLink = {
+        id: crypto.randomUUID(),
+        scanId: TEST_SCAN_ID,
+        url: homeUrl,
+        status: 'PENDING',
+        depth: 0,
+    };
+    await db.insert(links).values(homeLink);
+
+    const scan = await db.select().from(scans).where(eq(scans.id, TEST_SCAN_ID)).then(res => res[0]);
+    const fromHome = await processLink(db, homeLink, scan, config) as any[] | undefined;
+    const quarterlyJob = (fromHome || []).find((l: any) => l.url === `${baseUrl}/quarterly`);
+    expect(quarterlyJob).toBeDefined();
+
+    const fromQuarterly = await processLink(db, quarterlyJob, scan, config) as any[] | undefined;
+
+    const allLinks = await db.select().from(links).where(eq(links.scanId, TEST_SCAN_ID));
+    const pdfHits = allLinks.filter(l => l.url === q3Pdf);
+    expect(pdfHits.length).toBeGreaterThan(0);
+    expect(pdfHits.some(l => l.parentUrl === q3Fragment)).toBe(true);
+
+    const queuedUrls = (fromQuarterly || []).map((l: any) => l.url);
+    expect(queuedUrls).toContain(q3Pdf);
+    expect(queuedUrls.some((url: string) => url.includes('#'))).toBe(false);
+  });
+
+  it('records a fragment target when the tab id exists on the page', async () => {
+    const quarterlyUrl = `${baseUrl}/quarterly`;
+    const fragmentTarget = `${quarterlyUrl}#tabq3-2025-17051`;
+    const config = {
+        startUrl: quarterlyUrl,
+        isTargeted: true,
+        targetUrls: [fragmentTarget],
+        maxDepth: 0,
+    };
+
+    await db.update(scans).set({ config: JSON.stringify(config) }).where(eq(scans.id, TEST_SCAN_ID));
+
+    const link = {
+        id: crypto.randomUUID(),
+        scanId: TEST_SCAN_ID,
+        url: quarterlyUrl,
+        status: 'PENDING',
+        depth: 0,
+    };
+    await db.insert(links).values(link);
+
+    const scan = await db.select().from(scans).where(eq(scans.id, TEST_SCAN_ID)).then(res => res[0]);
+    const newLinks = await processLink(db, link, scan, config) as any[] | undefined;
+
+    const fragmentRow = await db.select().from(links).where(and(
+        eq(links.scanId, TEST_SCAN_ID),
+        eq(links.url, fragmentTarget)
+    )).then(res => res[0]);
+
+    expect(fragmentRow).toBeDefined();
+    expect(fragmentRow.status).toBe('SUCCESS');
+    expect(fragmentRow.statusCode).toBe(200);
+    expect((newLinks || []).some((l: any) => l.url.includes('#'))).toBe(false);
   });
 });

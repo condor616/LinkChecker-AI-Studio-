@@ -317,13 +317,15 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
   const paginatedSkipped = currentSkippedGroups.slice((skippedPage - 1) * pageSize, skippedPage * pageSize);
   const paginatedRechecked = currentRecheckedGroups.slice((recheckedPage - 1) * pageSize, recheckedPage * pageSize);
 
-  // Discovery Logic: Which targets are MISSING?
-  const missingTargets = isTargeted ? targetUrls.filter((t: string) => {
+  // Discovery: unique target URLs seen so far (any status). Orphans are only reported after the crawl finishes.
+  const isScanComplete = status === 'COMPLETED';
+  const targetHitGroups = uniqueFilteredLinks.filter(l => matchesTarget(l.url));
+  const foundMatchCount = targetHitGroups.length;
+  const undiscoveredTargets = isTargeted ? targetUrls.filter((t: string) => {
     return !uniqueFilteredLinks.some(l => isTargetUrlMatch(l.url, t));
   }) : [];
-
-  const foundTargetCount = targetUrls.length - missingTargets.length;
-    const foundMatchCount = successCount;
+  const missingTargets = isScanComplete ? undiscoveredTargets : [];
+  const foundTargetCount = targetUrls.length - undiscoveredTargets.length;
   const coveragePercent = targetUrls.length > 0 ? (foundTargetCount / targetUrls.length) * 100 : 0;
 
   // Stats specific to the crawl progress (unfiltered)
@@ -387,8 +389,8 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
             <>
                 <StatCard title="Target Assets" value={targetUrls.length} icon={<Link2 className="h-4 w-4" />} color="text-primary" />
                 <StatCard title="Pages Crawled" value={pagesCrawled} icon={<Globe className="h-4 w-4" />} />
-                <StatCard title="Inst. Found" value={successCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
-                <StatCard title="Missing Targets" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" />
+                <StatCard title="Inst. Found" value={foundMatchCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
+                <StatCard title="Missing Targets" value={missingTargets.length} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" />
                 <StatCard title="Crawl Queue" value={globalPending} icon={<RefreshCw className={cn("h-4 w-4", status === 'RUNNING' && "animate-spin")} />} color="text-blue-500" />
             </>
         ) : (
@@ -455,7 +457,7 @@ export function ScanDashboard({ scanId, initialStatus }: { scanId: string, initi
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="pb-4 pt-0">
-                    <p className="text-[11px] text-muted-foreground mb-3">The following requested URLs were not found after crawling the site. These assets are either unlinked or the crawler could not discover a path to them.</p>
+                    <p className="text-[11px] text-muted-foreground mb-3">The following requested URLs were not found after the crawl finished. These assets are either unlinked or the crawler could not discover a path to them.</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {missingTargets.map((t: string) => (
                             <div key={t} className="px-3 py-1.5 rounded bg-black/20 border border-white/5 text-[10px] font-mono text-destructive/80 break-all flex items-center justify-between group">
@@ -938,6 +940,8 @@ function TriageItemGeneral({ group, onRecheck }: any) {
     const [showAll, setShowAll] = useState(false);
     const link = group;
     const isBroken = link.status === 'BROKEN';
+    const isSuccess = link.status === 'SUCCESS';
+    const isPending = link.status === 'PENDING' || link.status === 'PROCESSING';
 
     const visibleInstances = showAll ? group.instances : group.instances.slice(0, 10);
 
@@ -947,7 +951,9 @@ function TriageItemGeneral({ group, onRecheck }: any) {
             animate={{ opacity: 1 }}
             className={cn(
                 "border-l-4 transition-colors overflow-hidden",
-                isBroken ? "border-l-destructive hover:bg-destructive/5" : "border-l-green-500 hover:bg-green-500/5"
+                isBroken ? "border-l-destructive hover:bg-destructive/5" :
+                isSuccess ? "border-l-green-500 hover:bg-green-500/5" :
+                "border-l-blue-500 hover:bg-blue-500/5"
             )}
         >
             <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
@@ -959,7 +965,7 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                     )}
                     <span className={cn(
                         "font-medium text-sm break-words",
-                        isBroken ? "text-destructive" : "text-green-600 dark:text-green-400"
+                        isBroken ? "text-destructive" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
                     )}>
                         {link.url}
                     </span>
@@ -977,9 +983,11 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                 <div className="flex items-center gap-3 shrink-0">
                      <span className={cn(
                         "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
-                        getStatusBadgeClass(link.statusCode, isBroken)
+                        isPending ? "bg-blue-500 text-white flex items-center gap-1" :
+                        getStatusBadgeClass(link.statusCode, isBroken, isPending)
                     )}>
-                        {link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
+                        {isPending && <RefreshCw className="h-3 w-3 animate-spin" />}
+                        {isPending ? 'CHECKING' : link.statusCode ? `${link.statusCode}${isSuccess ? ' OK' : ''}` : (isBroken ? 'FAIL' : '—')}
                     </span>
                     {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                 </div>

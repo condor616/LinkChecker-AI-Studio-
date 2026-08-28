@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { port, startMockServer } from '../../scripts/serve-mock-site';
 import { processLink } from '@/lib/crawler/processor';

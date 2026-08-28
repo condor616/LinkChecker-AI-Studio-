@@ -5,27 +5,53 @@ import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { canonicalizeScanUrl, isTargetUrlMatch, isWithinStartPathScope } from '../utils/url';
+import { canonicalizeScanUrl, getFetchUrl, getUrlWithoutHash, isTargetUrlMatch, isWithinStartPathScope } from '../utils/url';
+import { collectSitemapUrls } from './sitemap';
 
 const activeCrawls = new Map<string, Promise<void>>(); // Scan-scoped fetch cache
 const hostSafetyCache = new Map<string, boolean>();
+const sitemapDiscoveryDone = new Set<string>();
 
 function normalizeHostname(hostname: string): string {
     return hostname.toLowerCase().replace(/^www\./, '');
 }
 
-function getUrlWithoutHash(rawUrl: string): string {
+function isSameOrSubdomain(hostname: string, rootHostname: string): boolean {
+    return hostname === rootHostname || hostname.endsWith(`.${rootHostname}`);
+}
+
+function extractFragmentId(urlStr: string): string | null {
     try {
-        const url = new URL(rawUrl);
-        url.hash = '';
-        return canonicalizeScanUrl(url.toString());
+        const hash = new URL(urlStr).hash;
+        if (!hash || hash === '#') return null;
+        return decodeURIComponent(hash.slice(1));
     } catch {
-        return rawUrl;
+        const idx = urlStr.indexOf('#');
+        if (idx <= 0) return null;
+        const id = urlStr.slice(idx + 1);
+        return id || null;
     }
 }
 
-function isSameOrSubdomain(hostname: string, rootHostname: string): boolean {
-    return hostname === rootHostname || hostname.endsWith(`.${rootHostname}`);
+function findFragmentContainer($: cheerio.CheerioAPI, fragmentId: string) {
+    const escaped = fragmentId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const byId = $(`[id="${escaped}"]`).first();
+    if (byId.length) return byId;
+    const byName = $(`[name="${escaped}"]`).first();
+    return byName.length ? byName : null;
+}
+
+function canonicalizeHref(href: string, baseUrl: string): string | null {
+    try {
+        const urlObj = new URL(href, baseUrl);
+        if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return null;
+        urlObj.pathname = urlObj.pathname
+            .replace(/^\/index\.php\/?/i, '/')
+            .replace(/^\/index%2[eE]php\/?/i, '/');
+        return canonicalizeScanUrl(urlObj.toString());
+    } catch {
+        return null;
+    }
 }
 
 function looksLikeAuthPath(url: string): boolean {
@@ -144,7 +170,9 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
   if (!currentScan || currentScan.status !== 'RUNNING') return;
 
   const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
-  const crawlKey = `${scan.id}:${link.url}`;
+  const documentUrl = getUrlWithoutHash(link.url);
+  const fetchUrl = getFetchUrl(link.url);
+  const crawlKey = `${scan.id}:${documentUrl}`;
 
   // NEW: Wait if this URL is already being fetched in this scan
   if (activeCrawls.has(crawlKey)) {
@@ -208,7 +236,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     const existingRaw = await userDb.select().from(links)
       .where(and(
         eq(links.scanId, scan.id),
-        eq(links.url, link.url)
+        or(eq(links.url, link.url), eq(links.url, documentUrl))
       ));
 
     const checkComplete = existingRaw.find((l: any) => l.status === 'SUCCESS' || l.status === 'BROKEN' || l.status === 'SKIPPED');
@@ -228,7 +256,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       return; 
     }
 
-        let response = await fetchWithRedirects(link.url, headers, controller.signal);
+        let response = await fetchWithRedirects(fetchUrl, headers, controller.signal);
 
     // Smart Retry: If blocked (403/400/429), try with Minimalist headers
     if (!response.ok && (response.status === 403 || response.status === 400 || response.status === 429)) {
@@ -241,7 +269,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         // Preserve auth if present
         if (headers['Authorization']) fallbackHeaders['Authorization'] = headers['Authorization'];
         
-        const retryResponse = await fetchWithRedirects(link.url, fallbackHeaders, controller.signal);
+        const retryResponse = await fetchWithRedirects(fetchUrl, fallbackHeaders, controller.signal);
         if (retryResponse.ok || (retryResponse.status !== 403 && retryResponse.status !== 400)) {
             response = retryResponse;
         }
@@ -319,10 +347,17 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         updateData.parentUrl = null; // Performance optimization for successful links
     }
 
+    const urlsToUpdate = new Set<string>([link.url, documentUrl]);
+    for (const target of (config.targetUrls || [])) {
+        if (getUrlWithoutHash(target) === documentUrl) {
+            urlsToUpdate.add(canonicalizeScanUrl(target));
+        }
+    }
+
     await userDb.update(links).set(updateData)
       .where(and(
         eq(links.scanId, scan.id),
-        eq(links.url, link.url),
+        inArray(links.url, Array.from(urlsToUpdate)),
         or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
       ));
 
@@ -385,12 +420,12 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
           });
       }
 
-            const foundLinks = new Map<string, { url: string; parentUrl: string; snippet: string }>();
+            const foundLinks = new Map<string, { url: string; parentUrl: string; snippet: string; depth: number }>();
 
-            const recordFoundLink = (url: string, parentUrl: string, snippet: string) => {
+            const recordFoundLink = (url: string, parentUrl: string, snippet: string, depth = currentDepth + 1) => {
                 const key = `${parentUrl}\n${url}`;
                 if (!foundLinks.has(key)) {
-                    foundLinks.set(key, { url, parentUrl, snippet });
+                    foundLinks.set(key, { url, parentUrl, snippet, depth });
                 }
             };
       
@@ -399,60 +434,93 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         if (!href) return;
         
         try {
-          const urlObj = new URL(href, link.url);
-          if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
-            // Normalize out Drupal/PHP front controllers (index.php and index%2ephp) at the root of the path
-            urlObj.pathname = urlObj.pathname
-              .replace(/^\/index\.php\/?/i, '/')
-              .replace(/^\/index%2[eE]php\/?/i, '/');
+          const urlStr = canonicalizeHref(href, link.url);
+          if (!urlStr) return;
 
-                        const urlStr = canonicalizeScanUrl(urlObj.toString());
-            
             const snippet = $.html(el).slice(0, 500); 
 
                         recordFoundLink(urlStr, link.url, snippet);
-          }
                 } catch {}
       });
 
             const currentDocumentUrl = getUrlWithoutHash(link.url);
-            $('a[href^="#"]').each((_, el) => {
-                const href = $(el).attr('href');
-                if (!href || href === '#') return;
+            const targetUrlsCanonical = ((config.targetUrls || []) as string[]).map((t: string) => canonicalizeScanUrl(t));
+            const fragmentUrlsToScan = new Set<string>();
 
+            for (const found of foundLinks.values()) {
+                if (getUrlWithoutHash(found.url) === currentDocumentUrl && extractFragmentId(found.url)) {
+                    fragmentUrlsToScan.add(found.url);
+                }
+            }
+            for (const target of targetUrlsCanonical) {
+                if (getUrlWithoutHash(target) === currentDocumentUrl && extractFragmentId(target)) {
+                    fragmentUrlsToScan.add(target);
+                }
+            }
+
+            for (const fragmentUrl of fragmentUrlsToScan) {
+                const fragmentId = extractFragmentId(fragmentUrl);
+                if (!fragmentId) continue;
+
+                const container = findFragmentContainer($, fragmentId);
+                if (!container) continue;
+
+                const isFragmentTarget = isTargeted && targetUrlsCanonical.some((target: string) => isTargetUrlMatch(fragmentUrl, target));
+                if (isFragmentTarget) {
+                    recordFoundLink(fragmentUrl, link.url, container.html()?.slice(0, 500) || '');
+                }
+
+                container.find('a[href]').each((_, nestedEl) => {
+                    const nestedHref = $(nestedEl).attr('href');
+                    if (!nestedHref) return;
+
+                    const nestedUrl = canonicalizeHref(nestedHref, link.url);
+                    if (!nestedUrl) return;
+
+                    const nestedSnippet = $.html(nestedEl).slice(0, 500);
+                    recordFoundLink(nestedUrl, fragmentUrl, nestedSnippet);
+                });
+            }
+
+            const isStartDocument = documentUrl === getUrlWithoutHash(config.startUrl);
+            if (isStartDocument && currentDepth === 0 && response.ok && !sitemapDiscoveryDone.has(scan.id)) {
+                sitemapDiscoveryDone.add(scan.id);
                 try {
-                    const fragmentUrl = canonicalizeScanUrl(new URL(href, link.url).toString());
-                    if (getUrlWithoutHash(fragmentUrl) !== currentDocumentUrl) return;
-
-                    const fragmentId = fragmentUrl.split('#')[1];
-                    if (!fragmentId) return;
-
-                    const escapedFragmentId = fragmentId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-                    const container = $(`[id="${escapedFragmentId}"]`).first();
-                    if (container.length === 0) return;
-
-                    container.find('a[href]').each((_, nestedEl) => {
-                        const nestedHref = $(nestedEl).attr('href');
-                        if (!nestedHref) return;
-
-                        try {
-                            const nestedUrlObj = new URL(nestedHref, link.url);
-                            if (nestedUrlObj.protocol !== 'http:' && nestedUrlObj.protocol !== 'https:') return;
-
-                            nestedUrlObj.pathname = nestedUrlObj.pathname
-                                .replace(/^\/index\.php\/?/i, '/')
-                                .replace(/^\/index%2[eE]php\/?/i, '/');
-
-                            const nestedUrl = canonicalizeScanUrl(nestedUrlObj.toString());
-                            const nestedSnippet = $.html(nestedEl).slice(0, 500);
-                            recordFoundLink(nestedUrl, fragmentUrl, nestedSnippet);
-                        } catch {}
+                    const origin = new URL(config.startUrl).origin;
+                    const sitemapParent = canonicalizeScanUrl(`${origin}/sitemap.xml`);
+                    const sitemapUrls = await collectSitemapUrls({
+                        startUrl: config.startUrl,
+                        fetchText: async (url) => {
+                            try {
+                                const sitemapResponse = await fetchWithRedirects(url, headers, controller.signal);
+                                if (!sitemapResponse.ok) return null;
+                                return await sitemapResponse.text();
+                            } catch {
+                                return null;
+                            }
+                        },
                     });
-                } catch {}
-            });
+                    for (const loc of sitemapUrls) {
+                        if (getUrlWithoutHash(loc) === documentUrl) continue;
+                        // Seed sitemap URLs at depth 0 so they are crawled/extracted like start-page children
+                        // even when maxDepth is 1. Sitemap discovery itself runs only once per scan.
+                        recordFoundLink(loc, sitemapParent, '[Discovered via sitemap]', 0);
+                    }
+                } catch (error) {
+                    console.error('[Sitemap] Discovery failed:', error);
+                    sitemapDiscoveryDone.delete(scan.id);
+                }
+            }
 
             const discoveredLinks = Array.from(foundLinks.values());
-            const allUrls = Array.from(new Set(discoveredLinks.map((entry) => entry.url)));
+            const allUrls = Array.from(new Set(discoveredLinks.flatMap((entry) => {
+                const canonical = canonicalizeScanUrl(entry.url);
+                const doc = getUrlWithoutHash(canonical);
+                return canonical !== doc ? [canonical, doc] : [canonical];
+            })));
+            if (documentUrl && !allUrls.includes(documentUrl)) {
+                allUrls.push(documentUrl);
+            }
       if (allUrls.length === 0) return [];
 
 
@@ -480,12 +548,16 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
             latestByUrl.get(l.url)!.push(l);
         });
 
+                const rememberOccurrence = (row: any) => {
+                    if (!latestByUrl.has(row.url)) latestByUrl.set(row.url, []);
+                    latestByUrl.get(row.url)!.push(row);
+                };
+
                 for (const foundLink of discoveredLinks) {
-                    const { url: urlStr, parentUrl, snippet } = foundLink;
+                    let { url: urlStr, parentUrl, snippet, depth: depthToAdd } = foundLink;
           const skipReason = getSkipReason(urlStr, config);
           if (skipReason) {
               if (config.saveSkippedLinks) {
-                  const depthToAdd = currentDepth + 1;
                   const finalLink: any = {
                       id: crypto.randomUUID(),
                       scanId: scan.id,
@@ -500,11 +572,20 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
                       type: null
                   };
                   await tx.insert(links).values(finalLink);
+                  rememberOccurrence(finalLink);
               }
               continue; // Do not fetch/queue if skipped by rules
           }
 
           const isTarget = isTargeted && targetUrls.some((target: string) => isTargetUrlMatch(urlStr, target));
+          const foundDocumentUrl = getUrlWithoutHash(urlStr);
+          const originalIsFragment = canonicalizeScanUrl(urlStr) !== foundDocumentUrl;
+
+          if (originalIsFragment && !isTarget) {
+              urlStr = foundDocumentUrl;
+          }
+
+          const storedIsFragment = canonicalizeScanUrl(urlStr) !== getUrlWithoutHash(urlStr);
 
           if (isTargeted && !isTarget) {
               // In targeted mode, still traverse internal pages so we can find which page
@@ -534,7 +615,6 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
               if (occurrences.some(o => o.status === 'SUCCESS')) continue;
           }
 
-          const depthToAdd = currentDepth + 1;
           const finalLink: any = {
               id: crypto.randomUUID(),
               scanId: scan.id,
@@ -549,8 +629,17 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
               type: null
           };
 
-          const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN' || o.status === 'SKIPPED');
-          if (definitive) {
+          const documentOccurrences = latestByUrl.get(foundDocumentUrl) || [];
+          const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN' || o.status === 'SKIPPED')
+              || (storedIsFragment ? documentOccurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN' || o.status === 'SKIPPED') : undefined);
+
+          if (storedIsFragment && isTarget && foundDocumentUrl === documentUrl) {
+              finalLink.status = status;
+              finalLink.statusCode = statusCode;
+              finalLink.error = errorDetail;
+              finalLink.type = contentType;
+              finalLink.checkedAt = new Date();
+          } else if (definitive) {
               if (definitive.status === 'SUCCESS' && !isTargeted) {
                   continue; 
               }
@@ -562,6 +651,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
           }
 
           await tx.insert(links).values(finalLink);
+          rememberOccurrence(finalLink);
           
           // NEW: Immediate Status Inheritance
           // If another task already finished this URL during this transaction's window, pull its status now.
@@ -591,11 +681,35 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
           if (updatedLink) finalLink.status = updatedLink.status;
           
-          // Only enqueue if this is the very first time we've seen this URL in a PENDING state for this scan
-          if (finalLink.status === 'PENDING') {
+          // Never fetch hash-only variants; crawl the document URL instead.
+          const shouldEnqueue = finalLink.status === 'PENDING' && !storedIsFragment;
+          if (shouldEnqueue) {
               const isAlreadyQueued = occurrences.some(o => o.status === 'PENDING' || o.status === 'PROCESSING');
               if (!isAlreadyQueued) {
                   newLinksToAdd.push(finalLink);
+              }
+          }
+
+          if (storedIsFragment && isTarget && foundDocumentUrl !== documentUrl) {
+              const docOcc = latestByUrl.get(foundDocumentUrl) || [];
+              const docAlreadyKnown = docOcc.some(o => o.status === 'SUCCESS' || o.status === 'PENDING' || o.status === 'PROCESSING' || o.status === 'BROKEN' || o.status === 'SKIPPED');
+              if (!docAlreadyKnown) {
+                  const docLink: any = {
+                      id: crypto.randomUUID(),
+                      scanId: scan.id,
+                      url: foundDocumentUrl,
+                      parentUrl,
+                      status: 'PENDING',
+                      depth: depthToAdd,
+                      snippet: null,
+                      checkedAt: null,
+                      statusCode: null,
+                      error: null,
+                      type: null
+                  };
+                  await tx.insert(links).values(docLink);
+                  rememberOccurrence(docLink);
+                  newLinksToAdd.push(docLink);
               }
           }
         }
