@@ -1,0 +1,17 @@
+{
+  "name": "Lynx Scan",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "app",
+      "command": "npx next dev"
+    },
+    {
+      "name": "worker",
+      "command": "npm run worker"
+    }
+  ],
+  "ports": [3000, 3001]
+}
