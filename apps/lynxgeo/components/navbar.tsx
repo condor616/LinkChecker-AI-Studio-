@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, History, PlusCircle, Users, LogOut, Moon, Sun, LayoutTemplate, BookOpen } from 'lucide-react';
+import { LayoutDashboard, History, PlusCircle, Users, LogOut, LogIn, Moon, Sun, LayoutTemplate, BookOpen } from 'lucide-react';
 
 export function Navbar({
   user,
@@ -78,11 +78,18 @@ export function Navbar({
               </Button>
             </Link>
           )}
-          {user && (
+          {user ? (
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />
               {user.email}
             </Button>
+          ) : (
+            <Link href="/login">
+              <Button variant="outline" size="sm">
+                <LogIn className="h-4 w-4 mr-2" />
+                Sign in
+              </Button>
+            </Link>
           )}
         </div>
       </div>

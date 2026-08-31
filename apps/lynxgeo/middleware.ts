@@ -3,6 +3,18 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { getJwtSecretKey } from '@lynx/auth';
 
+function loginRedirect(request: NextRequest, extra?: Record<string, string>) {
+  const loginUrl = new URL('/login', request.url);
+  const { pathname, search } = request.nextUrl;
+  loginUrl.searchParams.set('callbackUrl', `${pathname}${search}`);
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      loginUrl.searchParams.set(key, value);
+    }
+  }
+  return NextResponse.redirect(loginUrl);
+}
+
 export async function middleware(request: NextRequest) {
   const token = request.cookies.get('session')?.value;
   const { pathname } = request.nextUrl;
@@ -16,7 +28,7 @@ export async function middleware(request: NextRequest) {
   if (isPublic) return NextResponse.next();
   if (!token) {
     if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    return NextResponse.redirect(new URL('/login', request.url));
+    return loginRedirect(request);
   }
   try {
     const { payload } = await jwtVerify(token, getJwtSecretKey());
@@ -24,7 +36,7 @@ export async function middleware(request: NextRequest) {
     if (userRole === 'BLOCKED' && !pathname.startsWith('/api/auth/logout')) {
       return pathname.startsWith('/api/')
         ? NextResponse.json({ error: 'Account blocked' }, { status: 403 })
-        : NextResponse.redirect(new URL('/login?error=account_blocked', request.url));
+        : loginRedirect(request, { error: 'account_blocked' });
     }
     if (userRole === 'PENDING' && !pathname.startsWith('/auth/pending') && !pathname.startsWith('/api/auth/logout')) {
       return pathname.startsWith('/api/')
@@ -39,7 +51,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   } catch {
     if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    return NextResponse.redirect(new URL('/login', request.url));
+    return loginRedirect(request);
   }
 }
 

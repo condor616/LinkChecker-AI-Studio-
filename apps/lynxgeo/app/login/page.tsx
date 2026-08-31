@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { hasProductAccess } from '@lynx/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { safeCallbackUrl } from '@/lib/auth-redirect';
+
+const lynxscanRegisterUrl = `${(process.env.NEXT_PUBLIC_LYNXSCAN_URL || 'http://localhost:3000').replace(/\/$/, '')}/login?register=true`;
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -13,6 +17,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('error') === 'account_blocked') {
+      setError('This account has been blocked. Contact an administrator.');
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +37,10 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
-      router.push('/');
+      const params = new URLSearchParams(window.location.search);
+      const callback = safeCallbackUrl(params.get('callbackUrl'));
+      const canUseGeo = hasProductAccess(data.user?.productAccess, 'lynxgeo');
+      router.push(callback || (canUseGeo ? '/audits/new' : '/'));
       router.refresh();
     } catch (err: any) {
       setError(err.message);
@@ -40,7 +54,9 @@ export default function LoginPage() {
       <Card className="w-[400px]">
         <CardHeader>
           <CardTitle>Lynx GEO</CardTitle>
-          <CardDescription>Sign in with the same account used for LynxScan. Access is granted per product.</CardDescription>
+          <CardDescription>
+            Sign in with the same account used for LynxScan. Access is granted per product.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -56,6 +72,12 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
+            <p className="text-sm text-muted-foreground text-center">
+              Don&apos;t have an account?{' '}
+              <a href={lynxscanRegisterUrl} className="text-primary underline-offset-4 hover:underline">
+                Create one in LynxScan
+              </a>
+            </p>
           </form>
         </CardContent>
       </Card>
