@@ -25,7 +25,13 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
         body: JSON.stringify(updates),
       });
       if (res.ok) {
-        setUsers(users.map(u => u.id === id ? { ...u, ...updates } : u));
+        setUsers(users.map((u) => {
+          if (u.id !== id) return u;
+          if (updates.productAccess) {
+            return { ...u, productAccess: { ...u.productAccess, ...updates.productAccess } };
+          }
+          return { ...u, ...updates };
+        }));
       } else {
         const data = await res.json();
         const errorMsg = data.error || 'Failed to update user';
@@ -81,6 +87,7 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
           <tr>
             <th className="h-12 px-6 text-left align-middle font-medium text-muted-foreground">User</th>
             <th className="h-12 px-6 text-left align-middle font-medium text-muted-foreground">Permissions</th>
+            <th className="h-12 px-6 text-left align-middle font-medium text-muted-foreground">Products</th>
             <th className="h-12 px-6 text-center align-middle font-medium text-muted-foreground">Max Jobs</th>
             <th className="h-12 px-6 text-right align-middle font-medium text-muted-foreground">Control</th>
           </tr>
@@ -111,6 +118,28 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                   <option value="PENDING">PENDING</option>
                   <option value="BLOCKED">BLOCKED</option>
                 </select>
+              </td>
+              <td className="p-6 align-middle">
+                <div className="flex flex-col gap-2 text-xs font-medium">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={user.productAccess?.lynxscan !== false}
+                      disabled={updatingUserId === user.id}
+                      onChange={(e) => updateUser(user.id, { productAccess: { lynxscan: e.target.checked } })}
+                    />
+                    LynxScan
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!user.productAccess?.lynxgeo}
+                      disabled={updatingUserId === user.id}
+                      onChange={(e) => updateUser(user.id, { productAccess: { lynxgeo: e.target.checked } })}
+                    />
+                    Lynx GEO
+                  </label>
+                </div>
               </td>
               <td className="p-6 align-middle text-center">
                 <div className="flex justify-center">

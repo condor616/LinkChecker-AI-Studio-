@@ -6,8 +6,9 @@ import { createToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { verifyPassword } from '@/lib/security/password';
 import { enforceRateLimit, getClientIp } from '@/lib/security/rate-limit';
-import { LoginRequestSchema } from '@/lib/validation/schemas';
+import { sessionCookieOptions } from '@lynx/auth';
 import { hashPassword } from '@/lib/security/password';
+import { LoginRequestSchema } from '@/lib/validation/schemas';
 
 export async function POST(req: Request) {
   try {
@@ -56,12 +57,7 @@ export async function POST(req: Request) {
 
     const token = await createToken({ id: user.id, role: user.role, email: user.email });
     const cookieStore = await cookies();
-    cookieStore.set('session', token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      path: '/',
-    });
+    cookieStore.set('session', token, sessionCookieOptions());
 
     return NextResponse.json({ user: { id: user.id, email: user.email, role: user.role } });
   } catch (error: any) {

@@ -1,3 +1,4 @@
+import { getLynxScanDbName, getLynxGeoDbName } from '@lynx/db';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
@@ -34,8 +35,25 @@ function getConnectionString(dbName: string) {
  * including the test suffix if in test mode.
  */
 export function getUserDbName(userId: string) {
-  const suffix = (process.env.NODE_ENV === 'test' || process.env.IS_TESTING === 'true') ? '_test' : '';
-  return `lynx_scan_${userId.toLowerCase().replace(/[^a-z0-9]/g, '_')}${suffix}`;
+  return getLynxScanDbName(userId);
+}
+
+export function getGeoUserDbName(userId: string) {
+  return getLynxGeoDbName(userId);
+}
+
+function getOrCreateDb(dbName: string) {
+  if (!pools.has(dbName)) {
+    console.log(`Creating new connection pool for database: ${dbName}`);
+    const pool = new Pool({
+      connectionString: getConnectionString(dbName),
+    });
+    pool.on('error', (err) => {
+      console.error(`Unexpected error on idle client for ${dbName}:`, err);
+    });
+    pools.set(dbName, pool);
+  }
+  return drizzle(pools.get(dbName)!, { schema });
 }
 
 /**
@@ -44,21 +62,11 @@ export function getUserDbName(userId: string) {
  */
 export function getDb(userId?: string) {
   const dbName = userId ? getUserDbName(userId) : info.db;
+  return getOrCreateDb(dbName);
+}
 
-  if (!pools.has(dbName)) {
-    console.log(`Creating new connection pool for database: ${dbName}`);
-    const pool = new Pool({
-      connectionString: getConnectionString(dbName),
-    });
-
-    pool.on('error', (err) => {
-      console.error(`Unexpected error on idle client for ${dbName}:`, err);
-    });
-
-    pools.set(dbName, pool);
-  }
-
-  return drizzle(pools.get(dbName)!, { schema });
+export function getGeoDb(userId: string) {
+  return getOrCreateDb(getGeoUserDbName(userId));
 }
 
 // Backward compatibility for existing code that uses 'db'
@@ -73,6 +81,16 @@ export async function closePool(userId: string) {
   const pool = pools.get(dbName);
   if (pool) {
     console.log(`Closing pool for user ${userId} (${dbName})`);
+    await pool.end();
+    pools.delete(dbName);
+  }
+}
+
+export async function closeGeoPool(userId: string) {
+  const dbName = getGeoUserDbName(userId);
+  const pool = pools.get(dbName);
+  if (pool) {
+    console.log(`Closing GEO pool for user ${userId} (${dbName})`);
     await pool.end();
     pools.delete(dbName);
   }

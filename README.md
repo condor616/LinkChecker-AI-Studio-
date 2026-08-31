@@ -101,9 +101,14 @@ To browse all user databases, use **pgAdmin 4**, included in the stack:
 - **Default Credentials**: `admin@lynxscan.com` / `admin`
 
 ### Distributed Background Processing (BullMQ)
-The application uses **BullMQ** with **Redis** to handle background link scanning.
+The application uses **BullMQ** with **Redis** to handle background jobs. LynxScan and Lynx GEO share the same Redis container but keep **separate queues**:
 
-- **Monitoring UI**: Visit `http://localhost:3001/admin/queues` to monitor job progress.
+- `scan-jobs` — LynxScan link crawls
+- `lynxgeo-jobs` — Lynx GEO (AI Audit) audits
+
+`npm run dev:lynxgeo` starts Docker `lynxgeo-worker` (same pattern as LynxScan). Cleanup on launch stops leftover host `npm run worker:lynxgeo` processes. Use that script only without Docker (`npm run stop-docker:lynxgeo`). Waiting = 0 and Active = 1 means a worker is processing.
+
+- **Monitoring UI**: Bull Board lists both queues. Local worker: `http://localhost:3001/admin/queues`. Docker `lynxscan-dev` (`docker/services`): `http://localhost:3002/admin/queues`.
 - **Scaling Workers**: If you have a large number of links, scale the worker service:
   ```bash
   docker-compose up -d --scale worker=4

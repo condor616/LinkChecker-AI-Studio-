@@ -20,9 +20,13 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@lynx/crawler-core": ["./packages/crawler-core/src/index.ts"],
+      "@lynx/crawler-core/url": ["./packages/crawler-core/src/url.ts"],
+      "@lynx/auth": ["./packages/auth/src/index.ts"],
+      "@lynx/db": ["./packages/db/src/index.ts"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "scripts", "worker", "scratch", "tests"]
+  "exclude": ["node_modules", "scripts", "worker", "scratch", "tests", "apps", "packages"]
 }

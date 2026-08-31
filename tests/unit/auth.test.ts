@@ -14,7 +14,16 @@ vi.mock('next/headers', () => ({
 // Mock provisionUserDb
 vi.mock('@/lib/db/provisioning', () => ({
   provisionUserDb: vi.fn().mockResolvedValue(undefined),
+  provisionGeoDb: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock('@lynx/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lynx/auth')>();
+  return {
+    ...actual,
+    createToken: vi.fn().mockResolvedValue('mocked-token'),
+  };
+});
 
 // Mock createToken
 vi.mock('@/lib/auth', () => ({

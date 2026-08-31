@@ -1,0 +1,54 @@
+name: lynxgeo
+
+# Independent GEO stack. Postgres is LynxScan's compose `db` on lynxscan-dev_default.
+# Redis stays on LynxScan's instance (host.docker.internal) — do not add a second Redis.
+services:
+  lynxgeo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      additional_contexts:
+        packages: ../../packages
+    ports:
+      - "3010:3010"
+    env_file:
+      - ../../.env
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+      # Next runs in Docker; .env REDIS_URL=localhost would miss LynxScan Redis.
+      - REDIS_URL=redis://host.docker.internal:6379
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - POSTGRES_HOST=db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - lynxscan-dev
+    restart: unless-stopped
+
+  lynxgeo-worker:
+    build:
+      context: ../..
+      dockerfile: apps/lynxgeo/docker/services/worker.Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      - NODE_ENV=production
+      # Worker must hit the same Redis the Next app uses (LynxScan stack on host ports).
+      - REDIS_URL=redis://host.docker.internal:6379
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - POSTGRES_HOST=db
+      - BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY:-2}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - lynxscan-dev
+    tty: true
+    restart: unless-stopped
+
+networks:
+  lynxscan-dev:
+    external: true
+    name: lynxscan-dev_default

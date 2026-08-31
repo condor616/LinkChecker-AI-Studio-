@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import { connection, QUEUE_NAME, ScanJobData, scanQueue } from '../lib/bullmq';
+import { Worker, Job, Queue } from 'bullmq';
+import { connection, QUEUE_NAME, GEO_QUEUE_NAME, ScanJobData, scanQueue } from '../lib/bullmq';
 import { processScanJob, createScanCompletionQueue } from '../lib/crawler/scan-job';
 import { finalizeIdleRunningScans } from '../lib/crawler/scan-completion';
 import { createBullBoard } from '@bull-board/api';
@@ -13,8 +13,11 @@ console.log('Starting BullMQ Worker...');
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath('/admin/queues');
 
+// Observe GEO's queue by name on the shared Redis — do not import GEO internals.
+const geoQueueForBoard = new Queue(GEO_QUEUE_NAME, { connection });
+
 createBullBoard({
-  queues: [new BullMQAdapter(scanQueue)],
+  queues: [new BullMQAdapter(scanQueue), new BullMQAdapter(geoQueueForBoard)],
   serverAdapter,
 });
 
@@ -23,7 +26,9 @@ app.use('/admin/queues', serverAdapter.getRouter());
 
 const boardPort = 3001;
 app.listen(boardPort, () => {
-  console.log(`BullBoard UI running at http://localhost:${boardPort}/admin/queues`);
+  console.log(
+    `BullBoard UI running at http://localhost:${boardPort}/admin/queues (queues: ${QUEUE_NAME}, ${GEO_QUEUE_NAME})`,
+  );
 });
 
 let idleSweepInFlight = false;

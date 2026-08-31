@@ -10,6 +10,11 @@ try {
 } catch (e) {
   console.log('Note: Failed to execute docker compose down (maybe it is already down or not found). Continuing...');
 }
+try {
+  execSync('docker compose -f apps/lynxgeo/docker/services/docker-compose.yml down -v', { stdio: 'inherit' });
+} catch (e) {
+  console.log('Note: Failed to tear down Lynx GEO docker stack. Continuing...');
+}
 
 console.log('2. Deleting .env file...');
 const envPath = path.join(process.cwd(), '.env');

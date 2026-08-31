@@ -5,7 +5,7 @@ const serverPath = path.join(process.cwd(), '.next', 'standalone', 'server.js');
 
 if (!fs.existsSync(serverPath)) {
   console.error('Missing production build artifact: .next/standalone/server.js');
-  console.error('Run `npm run build` before `npm run start`.');
+  console.error('Run `npm run build` (or `npm run build:all`) before `npm run start` / `npm run start:all`.');
   process.exit(1);
 }
 

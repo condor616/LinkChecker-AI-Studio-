@@ -6,10 +6,11 @@ import { eq, count } from 'drizzle-orm';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Activity, PlusCircle, History, LayoutTemplate, Users, Shield, Zap, BarChart3, Globe, Target, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, History, LayoutTemplate, Users, Zap, Globe, Target, ArrowRight } from 'lucide-react';
 import * as motion from 'motion/react-client';
 import { cn } from '@/lib/utils';
 import { StartScanButton } from '@/components/scans/start-scan-button';
+import { getGeoAppUrl } from '@/lib/geo-app-url';
 
 export default async function Dashboard() {
   const session = await getSession();
@@ -41,6 +42,7 @@ export default async function Dashboard() {
 
   const startScanHref = session ? "/scans/new" : "/login";
   const targetedScanHref = session ? "/scans/new?target=true" : "/login";
+  const geoAppUrl = getGeoAppUrl();
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
@@ -86,6 +88,42 @@ export default async function Dashboard() {
         </div>
       </section>
 
+      <section className="px-8 pb-16 md:pb-24">
+        <div className="max-w-[1600px] mx-auto">
+          <div
+            className="relative overflow-hidden rounded-2xl border px-8 py-12 md:px-14 md:py-16"
+            style={{
+              background: 'hsl(172 30% 10%)',
+              borderColor: 'hsl(172 40% 24%)',
+            }}
+          >
+            <div
+              className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full blur-3xl"
+              style={{ background: 'hsl(172 55% 28% / 0.35)' }}
+            />
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-8">
+              <div className="max-w-2xl space-y-4">
+                <h2 className="text-3xl md:text-5xl font-black tracking-tight">
+                  Lynx <span className="italic" style={{ color: 'hsl(172 45% 52%)' }}>GEO</span>
+                </h2>
+                <p className="text-base md:text-lg leading-relaxed" style={{ color: 'hsl(172 12% 78%)' }}>
+                  Technical AI-discoverability and agent-readiness audits — crawl access, extractability,
+                  and agent conventions. Not a Google-ranking promise.
+                </p>
+              </div>
+              <Button
+                size="lg"
+                asChild
+                className="shrink-0 px-10 h-14 text-lg font-bold rounded-lg text-white hover:opacity-90"
+                style={{ background: 'hsl(172 55% 28%)' }}
+              >
+                <a href={geoAppUrl} target="_blank" rel="noopener noreferrer">Open Lynx GEO</a>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div className="max-w-[1600px] mx-auto px-8 py-12 space-y-32">
         {/* Features Section */}
         <div className="relative py-24 overflow-hidden rounded-2xl bg-muted/30">
@@ -95,7 +133,7 @@ export default async function Dashboard() {
               <div className="h-1.5 w-24 bg-accent mx-auto rounded-full" />
             </div>
 
-            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 auto-rows-fr">
                 <FeatureCard 
                     href="/scans/new"
                     icon={<PlusCircle className="h-6 w-6" />}
@@ -127,27 +165,6 @@ export default async function Dashboard() {
                     description="Manage permissions and roles."
                     delay={0.4}
                     color="secondary"
-                />
-            </div>
-
-            <div className="grid gap-8 md:grid-cols-3 pt-24">
-                <BenefitItem 
-                    icon={<Zap className="h-6 w-6" />}
-                    title="Lightning Fast"
-                    desc="Optimized concurrency engine crawls thousands of links in seconds."
-                    color="text-primary"
-                />
-                <BenefitItem 
-                    icon={<BarChart3 className="h-6 w-6" />}
-                    title="Deep Analytics"
-                    desc="Granular status codes, redirect chains, and anchor verification."
-                    color="text-accent"
-                />
-                <BenefitItem 
-                    icon={<Shield className="h-6 w-6" />}
-                    title="Enterprise Ready"
-                    desc="Intelligent retry logic and customizable user agents for accuracy."
-                    color="text-secondary"
                 />
             </div>
           </div>
@@ -294,67 +311,45 @@ function FeatureCard({ href, icon, title, description, delay, color }: { href: s
         secondary: "text-secondary",
     };
 
+    const card = (
+        <Card className={cn("h-full w-full flex flex-col transition-all duration-300 border-border bg-muted/30 overflow-hidden relative hover:shadow-hover", colorMap[color])}>
+            <div className={cn("absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity",
+                color === 'primary' ? "from-primary to-primary/50" :
+                color === 'accent' ? "from-accent to-accent/50" :
+                "from-secondary to-secondary/50"
+            )} />
+            <CardHeader className="p-6 flex-1">
+                <div className={cn("mb-4 h-12 w-12 rounded-lg bg-muted flex items-center justify-center group-hover:scale-110 group-hover:bg-muted/80 transition-all", iconColorMap[color])}>
+                    {icon}
+                </div>
+                <CardTitle className="text-xl font-bold text-foreground group-hover:text-foreground transition-colors">{title}</CardTitle>
+                <CardDescription className="text-muted-foreground mt-2 leading-relaxed">{description}</CardDescription>
+            </CardHeader>
+        </Card>
+    );
+
     return (
-        <motion.div 
-            initial={{ opacity: 0, y: 20 }} 
-            whileInView={{ opacity: 1, y: 0 }} 
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay }}
+            className="h-full w-full min-h-0 min-w-0"
         >
             {title === 'New Scan' ? (
-                <StartScanButton className="group p-0 h-auto w-full bg-transparent border-none hover:bg-transparent block text-left shadow-none">
-                    <Card className={cn("transition-all duration-300 h-full border-border bg-muted/30 overflow-hidden relative hover:shadow-hover", colorMap[color])}>
-                        <div className={cn("absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity", 
-                            color === 'primary' ? "from-primary to-primary/50" :
-                            color === 'accent' ? "from-accent to-accent/50" :
-                            "from-secondary to-secondary/50"
-                        )} />
-                        <CardHeader className="p-6">
-                            <div className={cn("mb-4 h-12 w-12 rounded-lg bg-muted flex items-center justify-center group-hover:scale-110 group-hover:bg-muted/80 transition-all", iconColorMap[color])}>
-                                {icon}
-                            </div>
-                            <CardTitle className="text-xl font-bold text-foreground group-hover:text-foreground transition-colors">{title}</CardTitle>
-                            <CardDescription className="text-muted-foreground mt-2 leading-relaxed">{description}</CardDescription>
-                        </CardHeader>
-                    </Card>
+                <StartScanButton asChild>
+                    <div
+                        role="button"
+                        className="group block h-full w-full min-h-0 min-w-0 cursor-pointer text-left"
+                    >
+                        {card}
+                    </div>
                 </StartScanButton>
             ) : (
-                <Link href={href} className="group">
-                    <Card className={cn("transition-all duration-300 h-full border-border bg-muted/30 overflow-hidden relative hover:shadow-hover", colorMap[color])}>
-                        <div className={cn("absolute top-0 left-0 w-full h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity", 
-                            color === 'primary' ? "from-primary to-primary/50" :
-                            color === 'accent' ? "from-accent to-accent/50" :
-                            "from-secondary to-secondary/50"
-                        )} />
-                        <CardHeader className="p-6">
-                            <div className={cn("mb-4 h-12 w-12 rounded-lg bg-muted flex items-center justify-center group-hover:scale-110 group-hover:bg-muted/80 transition-all", iconColorMap[color])}>
-                                {icon}
-                            </div>
-                            <CardTitle className="text-xl font-bold text-foreground group-hover:text-foreground transition-colors">{title}</CardTitle>
-                            <CardDescription className="text-muted-foreground mt-2 leading-relaxed">{description}</CardDescription>
-                        </CardHeader>
-                    </Card>
+                <Link href={href} className="group block h-full w-full min-h-0 min-w-0">
+                    {card}
                 </Link>
             )}
-        </motion.div>
-    );
-}
-
-function BenefitItem({ icon, title, desc, color }: { icon: React.ReactNode, title: string, desc: string, color: string }) {
-    return (
-        <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }} 
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            className="p-8 rounded-lg border border-border bg-muted/30 space-y-4 hover:shadow-hover transition-all"
-        >
-            <div className={cn("h-12 w-12 rounded-lg bg-muted flex items-center justify-center", color)}>
-                {icon}
-            </div>
-            <h3 className="text-xl font-bold text-foreground">{title}</h3>
-            <p className="text-muted-foreground leading-relaxed font-light">
-                {desc}
-            </p>
         </motion.div>
     );
 }

@@ -1,6 +1,11 @@
 node_modules
 .next
 .git
+apps/**
+!apps/lynxgeo/
+!apps/lynxgeo/**
+apps/lynxgeo/node_modules
+apps/lynxgeo/.next
 .env
 .env.local
 .env.test

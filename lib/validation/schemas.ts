@@ -63,6 +63,12 @@ export const AdminUserUpdateSchema = z
     maxJobs: z.number().int().min(1).max(100).optional(),
     preferences: z.string().max(20000).optional(),
     hasActiveScan: z.boolean().optional(),
+    productAccess: z
+      .object({
+        lynxscan: z.boolean().optional(),
+        lynxgeo: z.boolean().optional(),
+      })
+      .optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'At least one valid field must be provided',

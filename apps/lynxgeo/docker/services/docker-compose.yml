@@ -1,0 +1,36 @@
+name: lynxgeo-dev
+
+# Dev worker only. Postgres/Redis come from LynxScan's docker/services stack.
+# Join lynxscan-dev_default so DATABASE_URL can use the `db` hostname (same as
+# the LynxScan worker). Do not add a second Redis — REDIS_URL still points at
+# LynxScan Redis via host.docker.internal.
+#
+# `npm run dev:lynxgeo` starts this worker. Cleanup kills leftover host
+# `npm run worker:lynxgeo` processes; this container listens immediately.
+services:
+  lynxgeo-worker:
+    build:
+      context: ../../../..
+      dockerfile: apps/lynxgeo/docker/services/worker.Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    tty: true
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - POSTGRES_HOST=db
+      - REDIS_URL=redis://host.docker.internal:6379
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-at-least-32-chars-long}
+      - NODE_ENV=production
+      - BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY:-2}
+      - POSTGRES_USER=${POSTGRES_USER:-lynx_scan}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-localpass}
+      - POSTGRES_DB=${POSTGRES_DB:-lynx_scan}
+    networks:
+      - default
+      - lynxscan-dev
+    restart: always
+
+networks:
+  lynxscan-dev:
+    external: true
+    name: lynxscan-dev_default

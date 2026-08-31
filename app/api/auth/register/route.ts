@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { createToken } from '@/lib/auth';
+import { createToken, sessionCookieOptions } from '@lynx/auth';
 import { cookies } from 'next/headers';
-import { provisionUserDb } from '@/lib/db/provisioning';
+import { provisionUserDb, provisionGeoDb } from '@/lib/db/provisioning';
 import { hashPassword } from '@/lib/security/password';
 import { enforceRateLimit, getClientIp } from '@/lib/security/rate-limit';
+import { stringifyProductAccess, ADMIN_PRODUCT_ACCESS, DEFAULT_PRODUCT_ACCESS } from '@lynx/auth';
 import { RegisterRequestSchema } from '@/lib/validation/schemas';
 
 export async function POST(req: Request) {
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
       passwordHash,
       role,
       maxJobs: 1,
+      productAccess: stringifyProductAccess(isFirstUser ? ADMIN_PRODUCT_ACCESS : DEFAULT_PRODUCT_ACCESS),
       createdAt: new Date(),
     });
 
@@ -72,16 +74,14 @@ export async function POST(req: Request) {
         await provisionUserDb(id).catch(err => {
             console.error(`Failed to provision DB for ${id}:`, err);
         });
+        await provisionGeoDb(id).catch(err => {
+            console.error(`Failed to provision GEO DB for ${id}:`, err);
+        });
     }
 
     const token = await createToken({ id, role, email });
     const cookieStore = await cookies();
-    cookieStore.set('session', token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      path: '/',
-    });
+    cookieStore.set('session', token, sessionCookieOptions());
 
     return NextResponse.json({ user: { id, email, role } });
   } catch (error: any) {

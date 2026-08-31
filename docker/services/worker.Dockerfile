@@ -2,6 +2,7 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
+COPY packages ./packages
 RUN npm ci
 COPY . .
 RUN npm run build:worker
@@ -15,6 +16,7 @@ ENV NODE_ENV=production
 RUN apk add --no-cache curl
 
 COPY package*.json ./
+COPY packages ./packages
 # Install only production dependencies
 RUN npm ci --omit=dev
 
