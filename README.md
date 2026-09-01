@@ -1,184 +1,234 @@
-# 🔗 Lynx Scan
+# Lynx Scan & Lynx GEO
 
-![Lynx Scan Preview](public/preview.png)
+**Lynx Scan** is a high-performance link monitoring platform with deep recursive crawling, real-time progress, and report triage.
 
-**Lynx Scan** is a high-performance, professional-grade digital integrity and link monitoring platform built for reliability and speed. Designed with a premium, multi-accented dark aesthetic, it provides deep recursive crawling, real-time progress monitoring, and advanced report triage.
+**Lynx GEO** (AI Audit) is a sibling app in this repo that scores sites for AI discoverability. Both apps share PostgreSQL and Redis but use separate BullMQ queues.
 
-## 🚀 Key Features
-
-- **Blazing Fast Crawling**: Parallelized scanning engine designed for large-scale websites.
-- **Deep Recursive Audits**: Analyzes every corner of your domain to find broken links, protocol errors, and redirect loops.
-- **Targeted Monitoring**: Isolate specific assets (PDFs, landing pages, images) for high-precision audits without the noise of a full site crawl.
-- **Multi-Accent Design System**: Modern, vibrant UI using Purple, Cyan, and Emerald for clear visual hierarchy and component differentiation.
-- **Enterprise-Ready**: Support for custom user agents, advanced exclusion logic (regex), and subpath restriction.
-- **Docker-Ready**: Optimized multi-stage builds for both the Next.js application and the background worker.
-
-## 🛠 Tech Stack
-
-- **Framework**: Next.js 15 (App Router)
-- **Styling**: Tailwind CSS v4
-- **Database**: PostgreSQL / Drizzle ORM
-- **Queue System**: BullMQ / Redis
-- **Icons**: Lucide React
-- **Animations**: Framer Motion / Motion (client-side)
+| App | Purpose | Default URL (local dev) |
+| --- | --- | --- |
+| Lynx Scan | Broken-link and crawl audits | http://localhost:3000 |
+| Lynx GEO | AI discoverability audits | http://localhost:3010 |
 
 ---
 
-## 📦 Getting Started
+## Prerequisites
 
-You can run Lynx Scan in two ways:
-- **Local Development**: Runs the App and Worker via `npm`, while keeping the Database and Redis in lightweight Docker containers.
-- **Full Docker Stack**: Runs everything (App, Worker, DB, Redis, pgAdmin) inside Docker.
-
-> [!IMPORTANT]
-> **Port Conflict Warning**: You cannot run both modes at the same time. They share the same ports (3000, 5432, 6379). Always run `docker-compose down` before switching from the Full Stack to Local Development.
-
-### Option 1: Full Docker Stack (Recommended for Deployment)
-Run the entire application, worker, and database using a single command.
-
-1. **Clone & Enter**:
-   ```bash
-   git clone https://github.com/your-username/lynx-scan.git
-   cd lynx-scan
-   ```
-
-2. **Configure**:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Launch**:
-   ```bash
-   docker-compose up -d
-   ```
-   *The app will be available at [http://localhost:3000](http://localhost:3000)*.
+- **Node.js 20+** and **npm**
+- **Docker Desktop** (or Docker Engine + Compose) for PostgreSQL, Redis, and background workers
+- **Git**
 
 ---
 
-### Option 2: Local Development
-Run the Next.js app locally while Docker handles the backend dependencies (DB, Redis).
+## Install from scratch
 
-1. **Install dependencies**:
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/condor616/LinkChecker-AI-Studio-.git
+   cd LinkChecker-AI-Studio-
+   ```
+
+2. **Install dependencies** (root workspace + Lynx GEO app)
    ```bash
    npm install
+   npm install --prefix apps/lynxgeo
    ```
 
-2. **Configure**:
+3. **Configure environment**
    ```bash
    cp .env.example .env
    ```
 
-3. **Launch**:
-   ```bash
-   npm run dev
-   ```
-   *(Note: This automatically starts the required DB and Redis containers via `docker/services/docker-compose.yml`.)*
+   Edit `.env` and set at minimum:
+   - `JWT_SECRET` — at least 32 characters (`openssl rand -hex 32`)
+   - `POSTGRES_PASSWORD` — a secure database password
+
+   Optional:
+   - `NEXT_PUBLIC_GEO_URL` — link from Lynx Scan home to Lynx GEO (default `http://localhost:3010`)
+   - `AUTH_COOKIE_DOMAIN` — share sessions across hostnames (e.g. `.example.com`)
+
+4. **Start Docker Desktop**, then launch the apps (see [Running the apps](#running-the-apps) below).
+
+On first start, `predev` / `prestart` scripts automatically bring up Docker services and run `drizzle-kit push` to create the database schema.
 
 ---
 
-## 🛠️ Management & Maintenance
+## Running the apps
 
-### Administrative Setup
-The **first user** to register on a new installation is automatically granted the **ADMIN** role. Subsequent users are marked as **PENDING** and must be approved by an administrator via the **Users** management dashboard.
+### Local development (recommended)
 
-### Resetting the System
+These modes run Next.js on your host. Docker provides **PostgreSQL**, **Redis**, and the **workers**.
 
-**Soft Reset (Keep config, wipe data)**
-To wipe all data (scans, users, templates, and backups) but leave your `.env` and Docker container settings intact:
+| Command | What starts |
+| --- | --- |
+| `npm run dev` | Lynx Scan only (:3000) + LynxScan worker |
+| `npm run dev:lynxgeo` | Lynx GEO only (:3010) + GEO worker |
+| `npm run dev:all` | **Both apps** + both workers |
+
+Each `dev*` command cleans up stale processes, starts the shared `db`/`redis` stack (`docker/services/docker-compose.yml`), starts the relevant worker(s), and launches Next.js.
+
+### Local production
+
+Build before starting. Production mode uses the Lynx Scan standalone server and `next start` for GEO.
+
+| Command | What starts |
+| --- | --- |
+| `npm run build && npm run start` | Lynx Scan only |
+| `npm run build:lynxgeo && npm run start:lynxgeo` | Lynx GEO only |
+| `npm run build:all && npm run start:all` | **Both apps** + both workers |
+
+### Full Docker stack (deployment)
+
+Runs the Lynx Scan **app**, **worker**, **PostgreSQL**, **Redis**, and **pgAdmin** entirely in containers via the root `docker-compose.yml`.
+
+```bash
+cp .env.example .env   # if you have not already
+docker compose up -d
+```
+
+- **Lynx Scan UI**: http://localhost:3001
+- **pgAdmin**: http://localhost:5051 (`admin@lynxscan.com` / `admin` by default)
+
+> Do not run the full Docker stack and local `npm run dev` at the same time — they compete for host ports. Stop one before starting the other (`docker compose down` or `npm run stop-docker`).
+
+Lynx GEO is not included in the root production compose file. Run it locally with `npm run dev:lynxgeo` or `npm run start:lynxgeo`, or use `apps/lynxgeo/docker-compose.yml` for a containerized GEO stack.
+
+---
+
+## Managing the apps
+
+### Start / stop (quick reference)
+
+| Action | Lynx Scan | Lynx GEO | Both |
+| --- | --- | --- | --- |
+| **Dev start** | `npm run dev` | `npm run dev:lynxgeo` | `npm run dev:all` |
+| **Prod start** | `npm run build && npm run start` | `npm run build:lynxgeo && npm run start:lynxgeo` | `npm run build:all && npm run start:all` |
+| **Stop app processes + Docker** | `npm run stop-docker` | `npm run stop-docker:lynxgeo` | `npm run stop:all` |
+| **Stop Docker only (keep volumes)** | `npm run stop-docker` | `npm run stop-docker:lynxgeo` | `npm run docker-clean:all` |
+
+`npm run stop:all` stops both Next.js apps **and** tears down both Docker stacks (LynxScan + GEO workers, db, redis).
+
+To stop only the Node processes while leaving Docker running, press **Ctrl+C** in the terminal where `dev:all` / `start:all` is running.
+
+### Rebuild workers
+
+Use this after changing worker code or Dockerfiles.
+
+| Stack | Lynx Scan worker | Lynx GEO worker |
+| --- | --- | --- |
+| **Local dev** (`docker/services/…`) | `npm run rebuild-worker:dev` | `npm run rebuild-worker:lynxgeo:dev` |
+| **Root production compose** | `npm run rebuild-worker` | — |
+
+### Port reference
+
+| Service | Local dev (`docker/services`) | Root prod (`docker-compose.yml`) |
+| --- | --- | --- |
+| Lynx Scan (Next.js) | 3000 (host) | 3001 |
+| Lynx GEO (Next.js) | 3010 (host) | — |
+| PostgreSQL | 5432 | 5433 |
+| Redis | 6379 | 6380 |
+| Bull Board (worker UI) | 3002 | — |
+| pgAdmin | 5050 | 5051 |
+
+---
+
+## Administrative setup
+
+The **first registered user** is automatically granted **ADMIN**. Later users are **PENDING** until approved in the **Users** admin dashboard.
+
+Admins can grant per-product access (Lynx Scan and Lynx GEO) from the same user management UI.
+
+---
+
+## Background jobs (BullMQ)
+
+Lynx Scan and Lynx GEO share one Redis instance but use **separate queues**:
+
+| Queue | App | Purpose |
+| --- | --- | --- |
+| `scan-jobs` | Lynx Scan | Link crawls |
+| `lynxgeo-jobs` | Lynx GEO | GEO audits |
+
+- **Bull Board**: http://localhost:3002/admin/queues (when the dev Docker worker is running)
+- **Scale Lynx Scan workers** (root compose): `docker compose up -d --scale worker=4`
+
+`npm run dev:lynxgeo` starts the GEO worker in Docker by default. To run a host worker instead, stop the GEO Docker stack first (`npm run stop-docker:lynxgeo`), then run `npm run worker:lynxgeo`.
+
+---
+
+## Resetting data
+
+**Soft reset** — wipe scans, users, templates, and backups; keep `.env` and Docker volumes:
 ```bash
 npm run reset-all
 ```
 
-**Hard Reset (Nuke Everything)**
-To restart completely from zero (destroys `.env`, drops all databases, destroys all Docker volumes and caches):
+**Hard reset** — destroy `.env`, all databases, Docker volumes, and local caches:
 ```bash
 npm run nuke
 ```
-
-### Database Management
-To browse all user databases, use **pgAdmin 4**, included in the stack:
-- **URL**: `http://localhost:5050`
-- **Default Credentials**: `admin@lynxscan.com` / `admin`
-
-### Distributed Background Processing (BullMQ)
-The application uses **BullMQ** with **Redis** to handle background jobs. LynxScan and Lynx GEO share the same Redis container but keep **separate queues**:
-
-- `scan-jobs` — LynxScan link crawls
-- `lynxgeo-jobs` — Lynx GEO (AI Audit) audits
-
-`npm run dev:lynxgeo` starts Docker `lynxgeo-worker` (same pattern as LynxScan). Cleanup on launch stops leftover host `npm run worker:lynxgeo` processes. Use that script only without Docker (`npm run stop-docker:lynxgeo`). Waiting = 0 and Active = 1 means a worker is processing.
-
-- **Monitoring UI**: Bull Board lists both queues. Local worker: `http://localhost:3001/admin/queues`. Docker `lynxscan-dev` (`docker/services`): `http://localhost:3002/admin/queues`.
-- **Scaling Workers**: If you have a large number of links, scale the worker service:
-  ```bash
-  docker-compose up -d --scale worker=4
-  ```
+Then repeat the [install from scratch](#install-from-scratch) steps.
 
 ---
 
-## 🐳 Docker Image Management
+## Database management
 
-To deploy Lynx Scan to a remote machine (like Proxmox or a VPS), you need to build the images, tag them with your Docker Hub username, and push them.
+**pgAdmin** is included in the Docker stacks:
 
-### 1. Build and Tag the Images
-You can build and tag both images at once using Docker Compose. Replace `angilma1` with your actual Docker Hub username if it changes.
+| Stack | URL | Default login |
+| --- | --- | --- |
+| Local dev | http://localhost:5050 | `admin@lynxscan.com` / `admin` |
+| Root prod compose | http://localhost:5051 | `admin@lynxscan.com` / `admin` |
+
+---
+
+## Tech stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Styling**: Tailwind CSS v4
+- **Database**: PostgreSQL / Drizzle ORM
+- **Queue**: BullMQ / Redis
+- **Shared packages**: `@lynx/auth`, `@lynx/crawler-core`, `@lynx/db` under `packages/`
+
+---
+
+## Docker image publishing
+
+To build and push Lynx Scan images for remote deployment:
 
 ```bash
-# Build and tag automatically using the names defined in docker-compose.yml
-DOCKER_IMAGE_APP=angilma1/lynxscan DOCKER_IMAGE_WORKER=angilma1/lynxscan-worker docker-compose build
+# Build and tag (replace angilma1 with your Docker Hub username)
+DOCKER_IMAGE_APP=angilma1/lynxscan DOCKER_IMAGE_WORKER=angilma1/lynxscan-worker docker compose build
+
+docker login
+docker push angilma1/lynxscan
+docker push angilma1/lynxscan-worker
 ```
 
-Alternatively, you can build and tag them manually:
+On the remote host, copy `docker-compose.yml` and `.env`, set `DOCKER_IMAGE_APP` / `DOCKER_IMAGE_WORKER`, then:
+
 ```bash
-# Build the main application
-docker build -t angilma1/lynxscan .
-
-# Build the background worker
-docker build -t angilma1/lynxscan-worker -f docker/services/worker.Dockerfile .
+docker compose pull
+docker compose up -d
 ```
 
-### 2. Push to Docker Hub
-1. **Login**:
-   ```bash
-   docker login
-   ```
-2. **Push**:
-   ```bash
-   docker push angilma1/lynxscan
-   docker push angilma1/lynxscan-worker
-   ```
+The app will be available at **http://localhost:3001** (root compose maps host port 3001 → container 3000).
 
-### 3. Deploy on a Remote Machine
-1. **Transfer** the `docker-compose.yml` and your `.env` file to the remote machine.
-2. **Configure** the remote `docker-compose.yml` to use your images. You can do this by setting environment variables or editing the file:
-   ```bash
-   # On the remote machine
-   export DOCKER_IMAGE_APP=angilma1/lynxscan
-   export DOCKER_IMAGE_WORKER=angilma1/lynxscan-worker
-   docker-compose pull
-   docker-compose up -d
-   ```
-   *Note: If you don't want to use environment variables, simply comment out the `build:` sections in `docker-compose.yml` and set the `image:` fields directly to `angilma1/lynxscan`.*
+### Deployment notes
+
+- The production `app` container does not auto-push schema changes. After schema updates, run `npx drizzle-kit push` locally or against the deployment database.
+- UI controls that start/stop Docker will not work when the app itself runs inside a container.
+- Inside Docker Compose, `DATABASE_URL` and `REDIS_URL` use service hostnames (`db`, `redis`), not `localhost`.
 
 ---
 
-## ⚠️ Docker Deployment Notes
+## Testing
 
-When running the **Full Docker Stack** (`docker-compose.yml` in the root), please keep the following in mind:
-
-- **Database Migrations**: The `app` container in the full stack is optimized for production and does not automatically push schema changes. If you modify the database schema, you may need to run `npm run dev` locally once to push the schema or use `drizzle-kit` manually.
-- **Process Management**: Features that attempt to start or stop the Docker stack from within the UI (Admin settings) will not work when the app itself is running inside a container.
-- **Environment Variables**: Ensure your `.env` file is properly configured before running `docker-compose up`. The `DATABASE_URL` and `REDIS_URL` in the compose file use internal service names (`db` and `redis`).
-
----
-
-## 🧪 Testing
-
-Lynx Scan uses **Vitest** for unit tests and **Playwright** for E2E tests.
-
-- `npm run test`: Run unit and integration tests.
-- `npm run test:e2e`: Run end-to-end tests with Playwright.
+```bash
+npm run test          # Lynx Scan unit/integration (Vitest)
+npm run test:lynxgeo  # Lynx GEO unit tests
+npm run test:e2e      # Playwright E2E (Lynx Scan)
+```
 
 ---
 
-Developed with ❤️ for the world to use.
+Developed with care for reliable link and AI-discoverability auditing.
