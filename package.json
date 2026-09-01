@@ -46,7 +46,8 @@
     "build:lynxgeo": "npm --prefix apps/lynxgeo run build",
     "start:lynxgeo": "npm --prefix apps/lynxgeo run start",
     "worker:lynxgeo": "npm --prefix apps/lynxgeo run worker",
-    "test:lynxgeo": "npm --prefix apps/lynxgeo run test"
+    "test:lynxgeo": "npm --prefix apps/lynxgeo run test",
+    "postinstall": "npm install --prefix apps/lynxgeo --no-fund --no-audit"
   },
   "dependencies": {
     "@bull-board/api": "^6.20.6",
