@@ -6,6 +6,8 @@ import {
   forceGeoSkipExternal,
   geoPageUrlKey,
   geoStartPathPrefix,
+  isGeoDocumentContentType,
+  isGeoDocumentUrl,
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
 } from '../lib/geo/origin-scope';
@@ -134,4 +136,42 @@ test('hash and trailing-slash variants collapse to one GEO page key', () => {
     true,
     `queued URLs must be hashless: ${urls.join(', ')}`,
   );
+});
+
+test('document URLs are not queued from HTML links', () => {
+  const html = `
+    <html><body>
+      <a href="/about">About</a>
+      <a href="/files/report.pdf">Report</a>
+      <a href="/deck.pptx">Deck</a>
+      <a href="/data/sheet.xlsx">Sheet</a>
+    </body></html>
+  `;
+  const config = forceGeoSkipExternal({ startUrl });
+  const discovered = discoverLinks(html, startUrl, config, 0);
+  const queued = filterGeoEnqueueableLinks(discovered, config, new Set());
+  const urls = queued.map((link) => link.url);
+
+  assert.ok(urls.some((url) => url.includes('/about')));
+  assert.equal(
+    urls.some((url) => /\.(pdf|pptx|xlsx)(\?|$)/i.test(url)),
+    false,
+    `document URLs must not be queued: ${urls.join(', ')}`,
+  );
+});
+
+test('isGeoDocumentUrl matches extensions case-insensitively and ignores query', () => {
+  assert.equal(isGeoDocumentUrl('https://www.novartis.com/files/report.pdf'), true);
+  assert.equal(isGeoDocumentUrl('https://www.novartis.com/files/REPORT.PDF'), true);
+  assert.equal(isGeoDocumentUrl('https://www.novartis.com/files/report.pdf?dl=1'), true);
+  assert.equal(isGeoDocumentUrl('https://www.novartis.com/files/report.pdf#section'), true);
+  assert.equal(isGeoDocumentUrl('https://www.novartis.com/about'), false);
+  assert.equal(isGeoDocumentUrl('https://www.novartis.com/files/report.pdf.html'), false);
+});
+
+test('isGeoDocumentContentType detects document MIME types but not HTML', () => {
+  assert.equal(isGeoDocumentContentType('application/pdf'), true);
+  assert.equal(isGeoDocumentContentType('application/vnd.openxmlformats-officedocument.wordprocessingml.document'), true);
+  assert.equal(isGeoDocumentContentType('text/html; charset=utf-8'), false);
+  assert.equal(isGeoDocumentContentType('application/xhtml+xml'), false);
 });

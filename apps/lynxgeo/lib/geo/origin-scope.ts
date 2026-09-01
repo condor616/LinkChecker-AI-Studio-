@@ -8,6 +8,53 @@ import {
 
 export type GeoScopedConfig = { skipExternal: true; doNotTraverseBackward: true };
 
+/** Path extensions GEO must not crawl or score as HTML pages. */
+const GEO_DOCUMENT_EXTENSIONS = new Set([
+  'pdf',
+  'doc',
+  'docx',
+  'docm',
+  'xls',
+  'xlsx',
+  'xlsm',
+  'ppt',
+  'pptx',
+  'pptm',
+  'odt',
+  'ods',
+  'odp',
+  'rtf',
+]);
+
+/** True when the URL pathname ends with a document extension (case-insensitive). */
+export function isGeoDocumentUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.replace(/\/+$/, '');
+    const dot = pathname.lastIndexOf('.');
+    if (dot < 0) return false;
+    return GEO_DOCUMENT_EXTENSIONS.has(pathname.slice(dot + 1).toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** True when Content-Type indicates a document rather than HTML. */
+export function isGeoDocumentContentType(contentType: string | null | undefined): boolean {
+  const type = (contentType || '').toLowerCase();
+  if (!type) return false;
+  if (type.includes('html')) return false;
+  return (
+    type.includes('application/pdf') ||
+    type.includes('application/msword') ||
+    type.includes('application/vnd.ms-excel') ||
+    type.includes('application/vnd.ms-powerpoint') ||
+    type.includes('application/vnd.openxmlformats-officedocument') ||
+    type.includes('application/vnd.oasis.opendocument') ||
+    type.includes('application/rtf') ||
+    type.includes('text/rtf')
+  );
+}
+
 /**
  * GEO always stays on-origin and under the start URL path, even if a form/JSON/template
  * set skipExternal or doNotTraverseBackward false. LynxScan still treats those flags as optional.
@@ -70,6 +117,7 @@ export function filterGeoEnqueueableLinks(
     const url = geoPageUrlKey(link.url);
     if (seen.has(url) || added.has(url)) continue;
     if (isGeoOutOfScopeUrl(url, config)) continue;
+    if (isGeoDocumentUrl(url)) continue;
     added.add(url);
     queued.push({ ...link, url });
   }

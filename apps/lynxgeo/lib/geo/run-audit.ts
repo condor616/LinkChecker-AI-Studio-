@@ -20,6 +20,8 @@ import {
   forceGeoSkipExternal,
   geoPageUrlKey,
   geoStartPathPrefix,
+  isGeoDocumentContentType,
+  isGeoDocumentUrl,
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
 } from './origin-scope';
@@ -227,6 +229,10 @@ export async function runAudit(
         log(isGeoExternalUrl(pageUrl, config) ? `ignored off-origin ${pageUrl}` : `ignored off-path ${pageUrl}`);
         continue;
       }
+      if (isGeoDocumentUrl(pageUrl)) {
+        log(`ignored document ${pageUrl}`);
+        continue;
+      }
       item.url = pageUrl;
       seen.add(pageUrl);
       pagesFetched = seen.size;
@@ -281,6 +287,14 @@ export async function runAudit(
       }
       const resource = await fetchResource(item.url, config);
       const html = resource.bodyText && (resource.contentType || '').includes('html') ? resource.bodyText : null;
+      const isDocument =
+        !html && (isGeoDocumentUrl(item.url) || isGeoDocumentContentType(resource.contentType));
+      if (isDocument) {
+        log(`page ${pageLogLabel(seen.size, pageCap)} SKIPPED document ${item.url}`);
+        pageRows.push({ url: item.url, status: 'SKIPPED', statusCode: resource.statusCode });
+        await persistFrontier('crawl');
+        continue;
+      }
       const pageFindings = analyzePage(resource, html);
       findings.push(...pageFindings);
       const status = resource.blockedBySsrf ? 'SKIPPED' : resource.ok ? 'SUCCESS' : 'BROKEN';

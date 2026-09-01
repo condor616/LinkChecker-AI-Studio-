@@ -20,12 +20,10 @@ export const AuditStartSchema = z
     saveSkippedLinks: z.boolean().optional(),
     userAgent: z.string().max(512).optional(),
     customUserAgent: z.string().max(512).optional(),
-    targetUrls: z.array(z.string().url()).max(10000).optional(),
     skipSelectors: z.array(z.string().max(300)).max(200).optional(),
     regexRules: z.array(z.string().max(4000)).max(200).optional(),
     wildcardExclusions: z.array(z.string().max(500)).max(200).optional(),
     excludeRegex: z.string().max(4000).optional(),
-    isTargeted: z.boolean().optional(),
     auth: z
       .object({
         username: z.string().max(256),
@@ -34,12 +32,18 @@ export const AuditStartSchema = z
       .optional(),
   })
   .passthrough()
-  .transform((data) => ({
-    ...data,
-    skipExternal: true as const,
-    doNotTraverseBackward: true as const,
-    maxPages: data.maxPages && data.maxPages > 0 ? data.maxPages : 0,
-  }));
+  .transform((data) => {
+    const { isTargeted: _isTargeted, targetUrls: _targetUrls, ...rest } = data as typeof data & {
+      isTargeted?: boolean;
+      targetUrls?: string[];
+    };
+    return {
+      ...rest,
+      skipExternal: true as const,
+      doNotTraverseBackward: true as const,
+      maxPages: rest.maxPages && rest.maxPages > 0 ? rest.maxPages : 0,
+    };
+  });
 
 export const AuditTemplateSaveSchema = z.object({
   name: z.string().min(1).max(120),

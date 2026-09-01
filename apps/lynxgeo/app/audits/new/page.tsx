@@ -33,8 +33,6 @@ type AuditConfig = {
   regexRules: string[];
   skipSelectors: string[];
   wildcardExclusions: string[];
-  isTargeted: boolean;
-  targetUrls: string[];
   skipExternal: boolean;
   excludeSubdomains: boolean;
   doNotTraverseBackward: boolean;
@@ -56,8 +54,6 @@ const DEFAULT_CONFIG: AuditConfig = {
   regexRules: [],
   skipSelectors: [],
   wildcardExclusions: [],
-  isTargeted: false,
-  targetUrls: [],
   skipExternal: true,
   excludeSubdomains: true,
   doNotTraverseBackward: true,
@@ -84,9 +80,12 @@ function startPathLabel(startUrl: string): string {
 }
 
 function payloadFromConfig(config: AuditConfig) {
+  const { isTargeted: _isTargeted, targetUrls: _targetUrls, ...rest } = config as AuditConfig & {
+    isTargeted?: boolean;
+    targetUrls?: string[];
+  };
   const payload: Record<string, unknown> = {
-    ...config,
-    isTargeted: !!config.isTargeted,
+    ...rest,
     skipExternal: true,
     doNotTraverseBackward: true,
   };
@@ -105,7 +104,6 @@ export default function NewAuditPage() {
   const [config, setConfig] = useState<AuditConfig>(DEFAULT_CONFIG);
   const [jsonText, setJsonText] = useState(() => JSON.stringify(DEFAULT_CONFIG, null, 2));
   const [jsonError, setJsonError] = useState('');
-  const [targetUrlsRaw, setTargetUrlsRaw] = useState('');
   const [showAuth, setShowAuth] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
@@ -119,18 +117,18 @@ export default function NewAuditPage() {
   const isUpdatingFromJson = useRef(false);
 
   const applyParsedConfig = (parsed: Record<string, unknown>) => {
+    const { isTargeted: _isTargeted, targetUrls: _targetUrls, ...rest } = parsed;
     const merged = {
       ...DEFAULT_CONFIG,
-      ...parsed,
+      ...rest,
       skipExternal: true,
       doNotTraverseBackward: true,
-      maxPages: Number(parsed.maxPages) > 0 ? Number(parsed.maxPages) : 0,
+      maxPages: Number(rest.maxPages) > 0 ? Number(rest.maxPages) : 0,
     } as AuditConfig;
     if (!merged.auth) merged.auth = { username: '', password: '' };
     isUpdatingFromJson.current = true;
     setConfig(merged);
     setJsonText(JSON.stringify(merged, null, 2));
-    setTargetUrlsRaw(Array.isArray(merged.targetUrls) ? merged.targetUrls.join('\n') : '');
     setShowAuth(!!(merged.auth?.username || merged.auth?.password));
     setJsonError('');
   };
@@ -190,14 +188,10 @@ export default function NewAuditPage() {
     setJsonText(value);
     isUpdatingFromJson.current = true;
     try {
-      const parsed = JSON.parse(value);
-      const next = { ...DEFAULT_CONFIG, ...parsed, skipExternal: true, doNotTraverseBackward: true } as AuditConfig;
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      const { isTargeted: _isTargeted, targetUrls: _targetUrls, ...rest } = parsed;
+      const next = { ...DEFAULT_CONFIG, ...rest, skipExternal: true, doNotTraverseBackward: true } as AuditConfig;
       setConfig(next);
-      if (Array.isArray(parsed.targetUrls)) {
-        setTargetUrlsRaw(parsed.targetUrls.join('\n'));
-      } else if (parsed.targetUrls === undefined) {
-        setTargetUrlsRaw('');
-      }
       setJsonError('');
     } catch {
       setJsonError('Invalid JSON format');
@@ -208,10 +202,6 @@ export default function NewAuditPage() {
     e.preventDefault();
     setError('');
     if (jsonError) return;
-    if (config.isTargeted && (!config.targetUrls || config.targetUrls.length === 0)) {
-      setError('Add at least one target URL, or turn off targeted crawl.');
-      return;
-    }
     setLoading(true);
     try {
       const res = await fetch('/api/audits', {
@@ -534,54 +524,6 @@ export default function NewAuditPage() {
                   onClick={() => setConfig((prev) => ({ ...prev, saveSkippedLinks: !prev.saveSkippedLinks }))}
                 />
               </div>
-
-              <div
-                className={cn(
-                  'flex items-center justify-between p-4 rounded-xl border cursor-pointer',
-                  config.isTargeted ? 'border-primary/50 bg-primary/10' : 'border-border bg-muted/30',
-                )}
-                onClick={() => setConfig((prev) => ({ ...prev, isTargeted: !prev.isTargeted }))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setConfig((prev) => ({ ...prev, isTargeted: !prev.isTargeted }));
-                  }
-                }}
-                role="switch"
-                aria-checked={config.isTargeted}
-                tabIndex={0}
-              >
-                <div>
-                  <p className="text-sm font-semibold">Targeted crawl</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Only follow and check the URL list below (plus the start URL).
-                  </p>
-                </div>
-                <div className={cn('w-3 h-3 rounded-full', config.isTargeted ? 'bg-primary' : 'bg-muted-foreground/30')} />
-              </div>
-
-              {config.isTargeted && (
-                <div className="space-y-2">
-                  <Label htmlFor="targets">Target URLs (one per line)</Label>
-                  <Textarea
-                    id="targets"
-                    className="min-h-[100px] font-mono text-xs"
-                    placeholder="https://www.novartis.com/news&#10;https://www.novartis.com/sitemap.xml"
-                    value={targetUrlsRaw}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setTargetUrlsRaw(raw);
-                      setConfig({
-                        ...config,
-                        targetUrls: raw
-                          .split('\n')
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      });
-                    }}
-                  />
-                </div>
-              )}
             </CardContent>
           </Card>
 
