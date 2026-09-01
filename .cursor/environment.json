@@ -1,0 +1,25 @@
+{
+  "name": "Lynx (LynxScan + Lynx GEO)",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "lynxscan-app",
+      "command": "npx next dev"
+    },
+    {
+      "name": "lynxscan-worker",
+      "command": "npm run worker"
+    },
+    {
+      "name": "lynxgeo-app",
+      "command": "npm --prefix apps/lynxgeo run dev:app"
+    },
+    {
+      "name": "lynxgeo-worker",
+      "command": "npm run worker:lynxgeo"
+    }
+  ],
+  "ports": [3000, 3001, 3010]
+}
