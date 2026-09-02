@@ -46,30 +46,45 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
     
     if (contentType.includes('multipart/form-data')) {
-      const formData = await request.formData();
-      const file = formData.get('file') as File;
-      const action = formData.get('action') as string;
-      const targetUserId = (formData.get('userId') as string) || session.id;
+      try {
+        const formData = await request.formData();
+        const file = formData.get('file') as File;
+        const action = formData.get('action') as string;
+        const targetUserId = (formData.get('userId') as string) || session.id;
 
-      // Security: Only admins can restore to other users
-      if (targetUserId !== session.id && session.role !== 'ADMIN') {
+        // Security: Only admins can restore to other users
+        if (targetUserId !== session.id && session.role !== 'ADMIN') {
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
-
-      if (action === 'upload-restore' && file) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const tempPath = path.join(getBackupDir(), `upload-${Date.now()}.zip`);
-        await fs.writeFile(tempPath, buffer);
-        
-        try {
-          await restoreBackup(targetUserId, tempPath);
-          return NextResponse.json({ message: 'Backup uploaded and restored successfully' });
-        } catch (e: any) {
-          console.error('Upload-restore failed:', e);
-          return NextResponse.json({ error: e.message || 'Restore failed' }, { status: 500 });
-        } finally {
-          await fs.unlink(tempPath).catch(() => {});
         }
+
+        if (action === 'upload-restore' && file) {
+          const buffer = Buffer.from(await file.arrayBuffer());
+          const tempPath = path.join(getBackupDir(), `upload-${Date.now()}.zip`);
+          await fs.writeFile(tempPath, buffer);
+
+          try {
+            await restoreBackup(targetUserId, tempPath);
+            return NextResponse.json({ message: 'Backup uploaded and restored successfully' });
+          } catch (e: any) {
+            console.error('Upload-restore failed:', e);
+            return NextResponse.json({ error: e.message || 'Restore failed' }, { status: 500 });
+          } finally {
+            await fs.unlink(tempPath).catch(() => {});
+          }
+        }
+
+        return NextResponse.json({ error: 'A backup .zip file is required for upload-restore' }, { status: 400 });
+      } catch (e: any) {
+        console.error('Failed to parse multipart upload:', e);
+        return NextResponse.json(
+          {
+            error:
+              e?.message?.includes('FormData') || e?.message?.includes('boundary')
+                ? 'Upload failed. The backup file may be too large — try restarting the dev server after updating, or place the .zip in data/backups/ and use Restore from the list.'
+                : e?.message || 'Failed to parse upload',
+          },
+          { status: 400 },
+        );
       }
     }
 

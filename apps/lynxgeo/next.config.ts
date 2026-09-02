@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ['bullmq', 'ioredis', 'archiver', 'yauzl', 'pg'],
   transpilePackages: ['@lynx/crawler-core', '@lynx/auth', '@lynx/db', '@lynx/backup', 'motion'],
+  experimental: {
+    middlewareClientMaxBodySize: '500mb',
+  },
 };
 
 export default nextConfig;
