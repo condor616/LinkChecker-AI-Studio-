@@ -11,6 +11,10 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 export const metadata: Metadata = {
   title: 'Lynx GEO',
   description: 'AI discoverability and agent-readiness audits',
+  icons: {
+    icon: [{ url: '/logo.png', type: 'image/png' }],
+    apple: '/logo.png',
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

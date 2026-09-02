@@ -48,10 +48,15 @@ export function Navbar({
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-card">
-      <div className="max-w-[1600px] mx-auto flex h-16 items-center justify-between px-6">
+      <div className="w-full max-w-[1600px] mx-auto flex h-16 items-center justify-between px-6">
         <div className="flex items-center gap-8">
-          <Link href="/" className="font-black tracking-tight text-lg">
-            Lynx <span className="text-primary italic">GEO</span>
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="relative overflow-hidden rounded-lg border border-border transition-all duration-300 group-hover:border-primary/40">
+              <img src="/logo.png" alt="Lynx GEO" className="h-10 w-10 object-cover" />
+            </div>
+            <span className="text-lg font-bold tracking-tight text-foreground">
+              Lynx <span className="text-primary font-black italic">GEO</span>
+            </span>
           </Link>
           <nav className="hidden md:flex gap-4">
             {links.map((l) => (
