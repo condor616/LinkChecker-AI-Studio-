@@ -20,7 +20,8 @@ const nextConfig: NextConfig = {
     ],
   },
   output: 'standalone',
-  transpilePackages: ['motion', '@lynx/crawler-core', '@lynx/auth', '@lynx/db'],
+  serverExternalPackages: ['archiver', 'yauzl', 'pg'],
+  transpilePackages: ['motion', '@lynx/crawler-core', '@lynx/auth', '@lynx/db', '@lynx/backup'],
   webpack: (config, {dev}) => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.
     // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@lynx/auth": "file:../../packages/auth",
+    "@lynx/backup": "file:../../packages/backup",
     "@lynx/crawler-core": "file:../../packages/crawler-core",
     "@lynx/db": "file:../../packages/db",
     "@radix-ui/react-accordion": "^1.2.20",

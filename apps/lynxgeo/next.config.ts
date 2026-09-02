@@ -12,8 +12,8 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: repoRoot,
   eslint: { ignoreDuringBuilds: true },
-  serverExternalPackages: ['bullmq', 'ioredis'],
-  transpilePackages: ['@lynx/crawler-core', '@lynx/auth', '@lynx/db', 'motion'],
+  serverExternalPackages: ['bullmq', 'ioredis', 'archiver', 'yauzl', 'pg'],
+  transpilePackages: ['@lynx/crawler-core', '@lynx/auth', '@lynx/db', '@lynx/backup', 'motion'],
 };
 
 export default nextConfig;

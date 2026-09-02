@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { parseDatabaseUrl } from '../lib/utils/db-command';
+import { parseDatabaseUrl } from '@lynx/backup/db-command';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -20,9 +20,10 @@ async function resetAll() {
   try {
     console.log('--- Database Reset Starting ---');
 
-    // 1. Identify all lynx_scan_* databases
-    const res = await adminPool.query("SELECT datname FROM pg_database WHERE datname LIKE 'lynx_scan_%'");
-    const dbsToDrop = res.rows.map(row => row.datname);
+    // 1. Identify all lynx_scan_* and lynx_geo_* databases
+    const scanRes = await adminPool.query("SELECT datname FROM pg_database WHERE datname LIKE 'lynx_scan_%'");
+    const geoRes = await adminPool.query("SELECT datname FROM pg_database WHERE datname LIKE 'lynx_geo_%'");
+    const dbsToDrop = [...scanRes.rows.map((row) => row.datname), ...geoRes.rows.map((row) => row.datname)];
 
     console.log(`Found ${dbsToDrop.length} user databases to drop.`);
 

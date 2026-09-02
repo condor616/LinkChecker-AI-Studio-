@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import { isBackupOwnedByUser, getBackupDir } from '@lynx/backup/paths';
 import { requireApprovedUser } from '@/lib/auth';
 import { db as centralDb } from '@/lib/db';
 import { users } from '@/lib/db/schema';
@@ -157,14 +158,14 @@ export async function GET(
     const targetUsername = targetUser.email.split('@')[0];
 
     // Security check: Ownership (Obfuscated 404 with HTML Page)
-    if (!filename.startsWith(`${targetUsername}-`)) {
+    if (!isBackupOwnedByUser(filename, targetUsername)) {
       return new NextResponse(getFunny404Html(), {
         status: 404,
         headers: { 'Content-Type': 'text/html' },
       });
     }
 
-    const backupDir = path.join(process.cwd(), 'data/backups');
+    const backupDir = getBackupDir();
     const filePath = path.join(backupDir, filename);
 
     // Security: Ensure it's inside data/backups and is a .zip

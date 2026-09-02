@@ -20,6 +20,11 @@
       "@lynx/crawler-core": ["../../packages/crawler-core/src/index.ts"],
       "@lynx/crawler-core/url": ["../../packages/crawler-core/src/url.ts"],
       "@lynx/auth": ["../../packages/auth/src/index.ts"],
+      "@lynx/backup": ["../../packages/backup/src/index.ts"],
+      "@lynx/backup/backup": ["../../packages/backup/src/backup.ts"],
+      "@lynx/backup/db-command": ["../../packages/backup/src/db-command.ts"],
+      "@lynx/backup/manifest": ["../../packages/backup/src/manifest.ts"],
+      "@lynx/backup/paths": ["../../packages/backup/src/paths.ts"],
       "@lynx/db": ["../../packages/db/src/index.ts"]
     }
   },

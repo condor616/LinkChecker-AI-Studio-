@@ -1,57 +1,63 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
 
-// Mock child_process properly
-vi.mock('child_process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('child_process')>();
-  
-  const mockedExec = vi.fn((cmd, options, callback) => {
-    if (typeof options === 'function') {
-      callback = options;
+vi.mock('pg', () => {
+  const mockQuery = vi.fn(async (sql: string) => {
+    if (sql.includes('pg_database')) {
+      return { rowCount: 0, rows: [] };
     }
-    console.log('MOCK EXEC CALLED:', cmd);
-    
-    if (cmd.includes('>')) {
-      const filePath = cmd.match(/> "([^"]+)"/)?.[1] || cmd.match(/> ([^ ]+)/)?.[1];
-      if (filePath) {
-        const cleanPath = filePath.replace(/"/g, '');
-        const rfs = require('fs');
-        rfs.writeFileSync(cleanPath, '-- Fake SQL Dump');
-      }
-    }
-
-    if (callback) callback(null, { stdout: 'success', stderr: '' });
-    // Need to return an object that can be "promisified"
-    return {
-       on: vi.fn(),
-       stdout: { on: vi.fn() },
-       stderr: { on: vi.fn() },
-    };
+    return { rowCount: 1, rows: [] };
   });
 
   return {
-    ...actual,
-    exec: mockedExec,
-    default: {
-        ...actual.default,
-        exec: mockedExec
-    }
+    Pool: vi.fn(() => ({
+      query: mockQuery,
+      end: vi.fn(async () => {}),
+    })),
   };
 });
 
-// Import the real db-actions after the mock is set
-import { createBackup, restoreBackup } from '@/lib/actions/db-actions';
-import { exec } from 'child_process';
+import yauzl from 'yauzl';
+
+function readZipEntryNames(zipPath: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+      if (err || !zipfile) return reject(err ?? new Error('Failed to open zip'));
+      const names: string[] = [];
+      zipfile.on('entry', (entry) => {
+        names.push(entry.fileName);
+        zipfile.readEntry();
+      });
+      zipfile.on('end', () => resolve(names));
+      zipfile.on('error', reject);
+      zipfile.readEntry();
+    });
+  });
+}
 
 describe('Database Backup and Restore', () => {
   const userId = 'test_user';
   const username = 'testuser';
   const backupDir = path.join(process.cwd(), 'data/backups');
+  let createBackup: typeof import('@lynx/backup/backup').createBackup;
+  let restoreBackup: typeof import('@lynx/backup/backup').restoreBackup;
+  const runCommand = vi.fn(async (command: string) => {
+    if (command.includes('>')) {
+      const filePath = command.match(/> "([^"]+)"/)?.[1];
+      if (filePath) {
+        await fs.writeFile(filePath, '-- Fake SQL Dump');
+      }
+    }
+  });
+
+  beforeAll(async () => {
+    ({ createBackup, restoreBackup } = await import('@lynx/backup/backup'));
+  });
 
   beforeEach(async () => {
     await fs.mkdir(backupDir, { recursive: true });
-    vi.clearAllMocks();
+    runCommand.mockClear();
   });
 
   afterEach(async () => {
@@ -61,25 +67,55 @@ describe('Database Backup and Restore', () => {
         await fs.unlink(path.join(backupDir, file)).catch(() => {});
       }
     }
+    await fs.rm(path.join(backupDir, 'tmp-restore'), { recursive: true, force: true }).catch(() => {});
   });
 
-  it('creates a zip backup containing a database.sql file', async () => {
-    const result = await createBackup(userId, username, 'test-snapshot');
-    
+  it('creates a unified zip backup with manifest and lynxscan.sql', async () => {
+    const result = await createBackup(userId, username, 'test-snapshot', { runCommand });
+
     expect(result.path).toContain(username);
     expect(result.filename).toContain('test-snapshot');
+    expect(result.scope).toBe('scan-only');
 
     const stats = await fs.stat(result.path);
     expect(stats.size).toBeGreaterThan(0);
-    
-    expect(exec).toHaveBeenCalled();
+    expect(runCommand).toHaveBeenCalled();
+
+    const paths = await readZipEntryNames(result.path);
+    expect(paths).toContain('manifest.json');
+    expect(paths).toContain('lynxscan.sql');
+    expect(paths).not.toContain('database.sql');
   });
 
-  it('restores a backup by unzipping and running psql', async () => {
-    const backup = await createBackup(userId, username, 'restore-test');
-    
-    await restoreBackup(userId, backup.path);
+  it('restores a unified backup by extracting and running psql', async () => {
+    const backup = await createBackup(userId, username, 'restore-test', { runCommand });
+    const { restored } = await restoreBackup(userId, backup.path, { runCommand });
 
-    expect(exec).toHaveBeenCalled();
+    expect(restored).toContain('lynxscan');
+    expect(runCommand).toHaveBeenCalled();
+  });
+
+  it('restores legacy database.sql-only backups for scan data', async () => {
+    const legacyDir = path.join(backupDir, 'legacy-build');
+    await fs.mkdir(legacyDir, { recursive: true });
+    const legacySql = path.join(legacyDir, 'database.sql');
+    await fs.writeFile(legacySql, '-- legacy dump');
+
+    const archiver = (await import('archiver')).default;
+    const { createWriteStream } = await import('fs');
+    const legacyZip = path.join(backupDir, `${username}-legacy-test.zip`);
+    await new Promise<void>((resolve, reject) => {
+      const output = createWriteStream(legacyZip);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      output.on('close', () => resolve());
+      archive.on('error', reject);
+      archive.pipe(output);
+      archive.file(legacySql, { name: 'database.sql' });
+      archive.finalize();
+    });
+
+    const { scope, restored } = await restoreBackup(userId, legacyZip, { runCommand });
+    expect(scope).toBe('legacy-scan-only');
+    expect(restored).toEqual(['lynxscan']);
   });
 });

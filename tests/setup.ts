@@ -1,6 +1,8 @@
-import { beforeAll, afterAll } from 'vitest';
+import { beforeAll, afterAll, vi } from 'vitest';
 import { closeAllPools } from '@/lib/db';
 import { loadTestEnv } from '@/scripts/test-env';
+
+vi.mock('server-only', () => ({}));
 
 loadTestEnv();
 
