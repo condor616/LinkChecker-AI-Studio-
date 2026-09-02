@@ -42,6 +42,7 @@ export async function POST(req: Request) {
       status: 'RUNNING',
       config: JSON.stringify(config),
       startUrl: body.startUrl,
+      seriesId: id,
       createdAt: now,
       updatedAt: now,
     });

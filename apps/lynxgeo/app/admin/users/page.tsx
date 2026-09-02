@@ -15,7 +15,7 @@ export default async function AdminUsersPage() {
   }));
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
         <p className="text-muted-foreground mt-1">Approve pending users and manage resource limits.</p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink, Search } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -141,6 +141,7 @@ function PaginationBar({
           size="icon"
           className="h-8 w-8"
           disabled={page === 1}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPageChange(page - 1)}
           aria-label="Previous page"
         >
@@ -158,6 +159,7 @@ function PaginationBar({
               variant={item === page ? 'default' : 'outline'}
               size="icon"
               className="h-8 w-8 text-xs"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => onPageChange(item)}
               aria-current={item === page ? 'page' : undefined}
             >
@@ -171,6 +173,7 @@ function PaginationBar({
           size="icon"
           className="h-8 w-8"
           disabled={page === totalPages}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPageChange(page + 1)}
           aria-label="Next page"
         >
@@ -195,11 +198,29 @@ function UrlList({
   docRef?: CheckRef;
 }) {
   const [page, setPage] = useState(1);
+  const paginationAnchorRef = useRef<HTMLDivElement>(null);
+  const paginationTopBeforeChangeRef = useRef<number | null>(null);
   const filtered = useMemo(() => rowsForQuery(rows, query), [rows, query]);
 
   useEffect(() => {
     setPage(1);
   }, [query, rows]);
+
+  useLayoutEffect(() => {
+    const beforeTop = paginationTopBeforeChangeRef.current;
+    if (beforeTop == null) return;
+    paginationTopBeforeChangeRef.current = null;
+    const anchor = paginationAnchorRef.current;
+    if (!anchor) return;
+    const delta = anchor.getBoundingClientRect().top - beforeTop;
+    if (delta !== 0) window.scrollBy(0, delta);
+  }, [page]);
+
+  const handlePageChange = (next: number) => {
+    const anchor = paginationAnchorRef.current;
+    if (anchor) paginationTopBeforeChangeRef.current = anchor.getBoundingClientRect().top;
+    setPage(next);
+  };
 
   if (filtered.length === 0) return null;
 
@@ -249,7 +270,9 @@ function UrlList({
           );
         })}
       </ul>
-      <PaginationBar page={safePage} total={filtered.length} pageSize={URL_PAGE_SIZE} onPageChange={setPage} />
+      <div ref={paginationAnchorRef}>
+        <PaginationBar page={safePage} total={filtered.length} pageSize={URL_PAGE_SIZE} onPageChange={handlePageChange} />
+      </div>
     </div>
   );
 }

@@ -1,10 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  countRerunsForMain,
+  isMainScan,
+  resolveSeriesId,
+} from '@/lib/geo/series';
 
 export default function HistoryPage() {
   const [audits, setAudits] = useState<any[]>([]);
@@ -18,8 +23,32 @@ export default function HistoryPage() {
       .then((d) => setAudits(d.audits || []));
   }, []);
 
-  const completed = audits.filter((a) => a.score != null);
-  const maxScore = Math.max(100, ...completed.map((a) => a.score || 0));
+  const mainScans = useMemo(
+    () => audits.filter((audit) => isMainScan(audit)),
+    [audits],
+  );
+
+  const seriesRunsById = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    for (const audit of audits) {
+      const key = resolveSeriesId(audit);
+      const list = groups.get(key) || [];
+      list.push(audit);
+      groups.set(key, list);
+    }
+    for (const runs of groups.values()) {
+      runs.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }
+    return groups;
+  }, [audits]);
+
+  const sortedMainScans = useMemo(
+    () =>
+      [...mainScans].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    [mainScans],
+  );
 
   const openDelete = (e: React.MouseEvent, audit: any) => {
     e.preventDefault();
@@ -46,62 +75,99 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-8 space-y-4">
+    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-4">
       <h1 className="text-3xl font-bold">Audit history</h1>
       <p className="text-sm text-muted-foreground">
-        Completed audits are frozen as append-only snapshots. Comparing two runs is only valid when{' '}
-        <code>scoreModelVersion</code> matches.
+        Each entry is a discovery scan — the first full crawl of a site. Re-runs of the same pages
+        appear on that scan&apos;s report page so you can track progress over time without cluttering
+        this list.
       </p>
-      {completed.length > 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Score timeline</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end gap-2 h-32">
-            {completed
-              .slice()
-              .reverse()
-              .map((a) => (
-                <Link key={a.id} href={`/audits/${a.id}`} className="flex-1 min-w-0 flex flex-col items-center gap-1">
-                  <div
-                    className="w-full rounded-t bg-primary/80"
-                    style={{ height: `${Math.max(8, ((a.score || 0) / maxScore) * 96)}px` }}
-                    title={`${a.score} (${a.scoreModelVersion})`}
-                  />
-                  <span className="text-[10px] text-muted-foreground truncate w-full text-center">{a.score}</span>
-                </Link>
-              ))}
-          </CardContent>
-        </Card>
-      )}
-      {audits.map((a) => (
-        <div key={a.id} className="relative mb-3">
-          <Link href={`/audits/${a.id}`} className="block">
-            <Card className="hover:border-primary/40">
+
+      {sortedMainScans
+        .filter((main) => {
+          const runs = seriesRunsById.get(resolveSeriesId(main)) || [main];
+          return runs.filter((a) => a.score != null).length > 1;
+        })
+        .map((main) => {
+          const runs = seriesRunsById.get(resolveSeriesId(main)) || [main];
+          const completed = runs.filter((a) => a.score != null);
+          const maxScore = Math.max(100, ...completed.map((a) => a.score || 0));
+          const rerunCount = countRerunsForMain(audits, main.id);
+          return (
+            <Card key={main.id}>
               <CardHeader>
-                <CardTitle className="text-lg flex justify-between items-start gap-3">
-                  <span className="min-w-0 pr-2">{a.name}</span>
-                  <span className="text-primary pr-10">{a.score ?? '—'}</span>
+                <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                  <Link href={`/audits/${main.id}`} className="hover:text-primary">
+                    {main.name}
+                  </Link>
+                  {rerunCount > 0 && (
+                    <span className="text-xs font-normal rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+                      {rerunCount} re-run{rerunCount === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({completed.length} scored runs)
+                  </span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {a.startUrl} · {a.status} · {a.scoreModelVersion || 'pending'} · {new Date(a.createdAt).toLocaleString()}
+              <CardContent className="flex items-end gap-2 h-32">
+                {completed.map((a, index) => (
+                  <Link key={a.id} href={`/audits/${a.id}`} className="flex-1 min-w-0 flex flex-col items-center gap-1">
+                    <div
+                      className="w-full rounded-t bg-primary/80"
+                      style={{ height: `${Math.max(8, ((a.score || 0) / maxScore) * 96)}px` }}
+                      title={`${index === 0 ? 'Discovery' : `Re-run ${index}`}: ${a.score} (${a.scoreModelVersion})`}
+                    />
+                    <span className="text-[10px] text-muted-foreground truncate w-full text-center">
+                      {index === 0 ? 'D' : `R${index}`}: {a.score}
+                    </span>
+                  </Link>
+                ))}
               </CardContent>
             </Card>
-          </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="absolute top-4 right-4 h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            aria-label={`Delete audit ${a.name}`}
-            onClick={(e) => openDelete(e, a)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      ))}
-      {audits.length === 0 && <p className="text-muted-foreground">No audits yet.</p>}
+          );
+        })}
+
+      {sortedMainScans.map((main) => {
+        const rerunCount = countRerunsForMain(audits, main.id);
+        return (
+          <div key={main.id} className="relative mb-3">
+            <Link href={`/audits/${main.id}`} className="block">
+              <Card className="hover:border-primary/40">
+                <CardHeader>
+                  <CardTitle className="text-lg flex justify-between items-start gap-3">
+                    <span className="min-w-0 pr-2 flex items-center gap-2 flex-wrap">
+                      {main.name}
+                      {rerunCount > 0 && (
+                        <span className="text-xs font-normal rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-primary">
+                          {rerunCount} re-run{rerunCount === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-primary pr-10">{main.score ?? '—'}</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground">
+                  {main.startUrl} · {main.status} · {main.scoreModelVersion || 'pending'} ·{' '}
+                  {new Date(main.createdAt).toLocaleString()}
+                </CardContent>
+              </Card>
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-4 right-4 h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              aria-label={`Delete audit ${main.name}`}
+              onClick={(e) => openDelete(e, main)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      })}
+
+      {mainScans.length === 0 && <p className="text-muted-foreground">No audits yet.</p>}
 
       {pendingDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

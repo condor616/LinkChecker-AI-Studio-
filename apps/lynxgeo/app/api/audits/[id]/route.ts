@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { geoAuthHttpStatus, requireGeoUser } from '@/lib/auth';
 import { getGeoDb } from '@/lib/db';
 import { auditPages, auditSnapshots, audits } from '@/lib/db/schema';
 import { canTransitionAuditStatus } from '@/lib/geo/frontier';
 import { enqueueGeoAudit } from '@/lib/geo/queue';
+import { resolveSeriesId } from '@/lib/geo/series';
 import { parseSnapshotPayload } from '@/lib/geo/snapshot';
 import { AuditControlSchema } from '@/lib/validation';
 
@@ -23,7 +24,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .orderBy(desc(auditSnapshots.createdAt))
       .limit(1);
     const snapshot = parseSnapshotPayload(snap?.payload);
-    return NextResponse.json({ audit, pages, snapshot });
+    const seriesId = resolveSeriesId(audit);
+    const allAudits = await geoDb
+      .select()
+      .from(audits)
+      .where(eq(audits.userId, session.id))
+      .orderBy(asc(audits.createdAt));
+    const seriesRuns = allAudits.filter((row) => resolveSeriesId(row) === seriesId);
+    return NextResponse.json({ audit, pages, snapshot, seriesRuns });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });
   }

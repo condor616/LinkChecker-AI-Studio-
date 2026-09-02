@@ -24,6 +24,9 @@ const GEO_DOCUMENT_EXTENSIONS = new Set([
   'ods',
   'odp',
   'rtf',
+  'xml',
+  'txt',
+  'json',
 ]);
 
 /** True when the URL pathname ends with a document extension (case-insensitive). */
@@ -51,8 +54,26 @@ export function isGeoDocumentContentType(contentType: string | null | undefined)
     type.includes('application/vnd.openxmlformats-officedocument') ||
     type.includes('application/vnd.oasis.opendocument') ||
     type.includes('application/rtf') ||
-    type.includes('text/rtf')
+    type.includes('text/rtf') ||
+    type.includes('xml') ||
+    type === 'text/plain' ||
+    type.includes('application/json')
   );
+}
+
+/** True when a fetched resource should be scored with HTML page checks (title, H1, etc.). */
+export function isGeoHtmlPage(
+  resource: { url: string; contentType?: string | null; bodyText?: string | null },
+  html: string | null,
+): boolean {
+  if (html) return true;
+  if (isGeoDocumentUrl(resource.url) || isGeoDocumentContentType(resource.contentType)) return false;
+  const type = (resource.contentType || '').toLowerCase();
+  if (type.includes('html') || type.includes('xhtml')) return true;
+  const body = (resource.bodyText || '').trimStart();
+  if (body.startsWith('<?xml') || body.startsWith('<urlset') || body.startsWith('<sitemapindex')) return false;
+  if (body.startsWith('<!DOCTYPE html') || /^<html[\s>]/i.test(body)) return true;
+  return false;
 }
 
 /**

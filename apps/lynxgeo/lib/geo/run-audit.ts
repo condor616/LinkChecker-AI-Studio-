@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { discoverLinks, fetchResource, getSkipReason, parseScanConfig, type CrawlConfig } from '@lynx/crawler-core';
+import { discoverLinks, fetchResource, getSkipReason, isTargetedScanConfig, parseScanConfig, type CrawlConfig } from '@lynx/crawler-core';
 import { getLynxGeoDbName } from '@lynx/db';
 import { getGeoDb, postgresTarget } from '../db';
 import { auditPages, auditSnapshots, audits } from '../db/schema';
@@ -20,8 +20,8 @@ import {
   forceGeoSkipExternal,
   geoPageUrlKey,
   geoStartPathPrefix,
-  isGeoDocumentContentType,
   isGeoDocumentUrl,
+  isGeoHtmlPage,
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
 } from './origin-scope';
@@ -32,6 +32,7 @@ import {
   resolveAuditMaxPages,
   type AuditPhase,
 } from './progress';
+import { AUDIT_SERIES_ALTER_SQL } from './series';
 import { aggregateScore, playbook, SCORE_MODEL_VERSION, type Finding } from './score';
 import { freezeSnapshot } from './snapshot';
 
@@ -64,6 +65,7 @@ export async function runAudit(
   const geoDb = getGeoDb(userId);
   await geoDb.execute(AUDIT_PROGRESS_ALTER_SQL);
   await geoDb.execute(AUDIT_FRONTIER_ALTER_SQL);
+  await geoDb.execute(AUDIT_SERIES_ALTER_SQL);
   let audit: typeof audits.$inferSelect | undefined;
   for (let attempt = 1; attempt <= 5; attempt++) {
     [audit] = await geoDb.select().from(audits).where(eq(audits.id, auditId)).limit(1);
@@ -161,6 +163,7 @@ export async function runAudit(
 
   try {
     const config = forceGeoSkipExternal(parseScanConfig(audit.config) as CrawlConfig);
+    const isTargeted = isTargetedScanConfig(config);
     const origin = new URL(config.startUrl).origin;
     const pathPrefix = geoStartPathPrefix(config.startUrl);
     const startPageUrl = geoPageUrlKey(config.startUrl);
@@ -171,11 +174,17 @@ export async function runAudit(
     const rateLimit = typeof config.rateLimit === 'number' && config.rateLimit > 0 ? config.rateLimit : 0;
     const ua = (config.customUserAgent || config.userAgent || 'default').slice(0, 80);
     log(
-      `audit ${auditId} startUrl=${config.startUrl} origin=${origin} pathPrefix=${pathPrefix} maxDepth=${depthNote} maxPages=${capNote} skipExternal=true stayInStartPath=true rateLimit=${rateLimit || 'off'} ua=${ua}`,
+      `audit ${auditId} startUrl=${config.startUrl} origin=${origin} pathPrefix=${pathPrefix} maxDepth=${depthNote} maxPages=${capNote} skipExternal=true stayInStartPath=true rateLimit=${rateLimit || 'off'} ua=${ua} targeted=${isTargeted}`,
     );
 
     if (!saved?.queue?.length) {
-      queue = [{ url: startPageUrl, depth: 0, parentUrl: null }];
+      if (isTargeted) {
+        const targetUrls = (config.targetUrls || []).map((url) => geoPageUrlKey(url));
+        queue = targetUrls.map((url) => ({ url, depth: 0, parentUrl: null }));
+        pageCap = targetUrls.length;
+      } else {
+        queue = [{ url: startPageUrl, depth: 0, parentUrl: null }];
+      }
     }
 
     await assertStillRunning();
@@ -287,9 +296,7 @@ export async function runAudit(
       }
       const resource = await fetchResource(item.url, config);
       const html = resource.bodyText && (resource.contentType || '').includes('html') ? resource.bodyText : null;
-      const isDocument =
-        !html && (isGeoDocumentUrl(item.url) || isGeoDocumentContentType(resource.contentType));
-      if (isDocument) {
+      if (!isGeoHtmlPage(resource, html)) {
         log(`page ${pageLogLabel(seen.size, pageCap)} SKIPPED document ${item.url}`);
         pageRows.push({ url: item.url, status: 'SKIPPED', statusCode: resource.statusCode });
         await persistFrontier('crawl');
@@ -317,7 +324,7 @@ export async function runAudit(
       });
       pageRows.push({ url: item.url, status, statusCode: resource.statusCode });
 
-      if (html && (maxDepth === 0 || item.depth < maxDepth)) {
+      if (!isTargeted && html && (maxDepth === 0 || item.depth < maxDepth)) {
         const discovered = discoverLinks(html, item.url, config, item.depth);
         const inScope = filterGeoEnqueueableLinks(discovered, config, seen);
         const droppedOffOrigin = discovered.filter((link) => isGeoExternalUrl(geoPageUrlKey(link.url), config)).length;

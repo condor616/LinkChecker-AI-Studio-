@@ -3,6 +3,7 @@ import { connectionStringFor, getGeoDb } from './index';
 import { getLynxGeoDbName, getLynxScanDbName } from '@lynx/db';
 import { AUDIT_FRONTIER_ALTER_SQL } from '../geo/frontier';
 import { AUDIT_PROGRESS_ALTER_SQL } from '../geo/progress';
+import { AUDIT_SERIES_ALTER_SQL } from '../geo/series';
 
 const provisioned = new Set<string>();
 
@@ -31,11 +32,17 @@ async function ensureAuditFrontierColumn(userId: string) {
   await geoDb.execute(AUDIT_FRONTIER_ALTER_SQL);
 }
 
+async function ensureAuditSeriesColumns(userId: string) {
+  const geoDb = getGeoDb(userId);
+  await geoDb.execute(AUDIT_SERIES_ALTER_SQL);
+}
+
 export async function provisionGeoDb(userId: string) {
   if (provisioned.has(userId)) {
     await ensureAuditTemplatesTable(userId);
     await ensureAuditProgressColumn(userId);
     await ensureAuditFrontierColumn(userId);
+    await ensureAuditSeriesColumns(userId);
     return;
   }
   const dbName = getLynxGeoDbName(userId);
@@ -59,6 +66,8 @@ export async function provisionGeoDb(userId: string) {
       "score_model_version" text,
       "category_scores" text,
       "start_url" text,
+      "series_id" text,
+      "baseline_audit_id" text,
       "progress" text,
       "frontier" text,
       "created_at" timestamp NOT NULL,
@@ -95,6 +104,7 @@ export async function provisionGeoDb(userId: string) {
   await ensureAuditTemplatesTable(userId);
   await ensureAuditProgressColumn(userId);
   await ensureAuditFrontierColumn(userId);
+  await ensureAuditSeriesColumns(userId);
   provisioned.add(userId);
 }
 

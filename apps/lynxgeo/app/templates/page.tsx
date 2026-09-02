@@ -62,7 +62,7 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-8">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-widest text-primary font-bold">Presets</p>

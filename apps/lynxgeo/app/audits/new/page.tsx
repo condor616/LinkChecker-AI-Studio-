@@ -296,7 +296,7 @@ export default function NewAuditPage() {
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto p-8 space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight">New AI discoverability audit</h1>

@@ -8,6 +8,7 @@ import {
   geoStartPathPrefix,
   isGeoDocumentContentType,
   isGeoDocumentUrl,
+  isGeoHtmlPage,
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
 } from '../lib/geo/origin-scope';
@@ -145,6 +146,7 @@ test('document URLs are not queued from HTML links', () => {
       <a href="/files/report.pdf">Report</a>
       <a href="/deck.pptx">Deck</a>
       <a href="/data/sheet.xlsx">Sheet</a>
+      <a href="/sitemap.xml">Sitemap</a>
     </body></html>
   `;
   const config = forceGeoSkipExternal({ startUrl });
@@ -154,7 +156,7 @@ test('document URLs are not queued from HTML links', () => {
 
   assert.ok(urls.some((url) => url.includes('/about')));
   assert.equal(
-    urls.some((url) => /\.(pdf|pptx|xlsx)(\?|$)/i.test(url)),
+    urls.some((url) => /\.(pdf|pptx|xlsx|xml)(\?|$)/i.test(url)),
     false,
     `document URLs must not be queued: ${urls.join(', ')}`,
   );
@@ -172,6 +174,39 @@ test('isGeoDocumentUrl matches extensions case-insensitively and ignores query',
 test('isGeoDocumentContentType detects document MIME types but not HTML', () => {
   assert.equal(isGeoDocumentContentType('application/pdf'), true);
   assert.equal(isGeoDocumentContentType('application/vnd.openxmlformats-officedocument.wordprocessingml.document'), true);
+  assert.equal(isGeoDocumentContentType('application/xml'), true);
+  assert.equal(isGeoDocumentContentType('text/xml; charset=utf-8'), true);
   assert.equal(isGeoDocumentContentType('text/html; charset=utf-8'), false);
   assert.equal(isGeoDocumentContentType('application/xhtml+xml'), false);
+});
+
+test('isGeoDocumentUrl treats sitemap.xml as a non-HTML resource', () => {
+  assert.equal(isGeoDocumentUrl('https://www.novartis.com/sitemap.xml'), true);
+});
+
+test('isGeoHtmlPage skips XML sitemaps and scores real HTML', () => {
+  const sitemapBody =
+    '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://www.novartis.com/</loc></url></urlset>';
+  assert.equal(
+    isGeoHtmlPage(
+      {
+        url: 'https://www.novartis.com/sitemap.xml',
+        contentType: 'application/xml',
+        bodyText: sitemapBody,
+      },
+      null,
+    ),
+    false,
+  );
+  assert.equal(
+    isGeoHtmlPage(
+      {
+        url: 'https://www.novartis.com/about',
+        contentType: 'text/html; charset=utf-8',
+        bodyText: '<html><head><title>About</title></head><body></body></html>',
+      },
+      '<html><head><title>About</title></head><body></body></html>',
+    ),
+    true,
+  );
 });

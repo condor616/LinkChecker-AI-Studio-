@@ -9,7 +9,7 @@ export default async function Home() {
   const canUse = !!(session && hasProductAccess(session.productAccess, 'lynxgeo'));
 
   return (
-    <div className="px-8 py-16 max-w-5xl mx-auto space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto px-8 py-16 space-y-8">
       <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-xs font-bold uppercase tracking-widest text-primary">
         AI discoverability
       </div>

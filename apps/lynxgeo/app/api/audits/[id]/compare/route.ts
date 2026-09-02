@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { requireGeoUser } from '@/lib/auth';
 import { getGeoDb } from '@/lib/db';
 import { auditSnapshots, audits } from '@/lib/db/schema';
 import { groupPlaybook, SCORE_MODEL_VERSION } from '@/lib/geo/score';
+import { configsMatchForCompare, resolveSeriesId, runLabelForIndex } from '@/lib/geo/series';
 import { diffSnapshots, parseSnapshotPayload, type FrozenSnapshot } from '@/lib/geo/snapshot';
 
 function fallbackSnapshot(audit: {
@@ -58,14 +59,45 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const to = await loadSnapshot(geoDb, otherId);
     if (!from || !to) return NextResponse.json({ error: 'Snapshots not ready' }, { status: 409 });
 
-    const diff = diffSnapshots(from, to);
+    const configChanged = !configsMatchForCompare(fromAudit.config, toAudit.config);
+    const diff = diffSnapshots(from, to, { configChanged });
+
+    const seriesId = resolveSeriesId(fromAudit);
+    const allAudits = await geoDb
+      .select()
+      .from(audits)
+      .where(eq(audits.userId, session.id))
+      .orderBy(asc(audits.createdAt));
+    const seriesRuns = allAudits
+      .filter((row) => resolveSeriesId(row) === seriesId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    function runLabelForAudit(auditId: string): string {
+      const idx = seriesRuns.findIndex((r) => r.id === auditId);
+      if (idx < 0) return 'Unknown';
+      return runLabelForIndex(seriesRuns[idx], idx);
+    }
+
     return NextResponse.json({
-      from: { id: fromAudit.id, score: from.score, createdAt: fromAudit.createdAt, scoreModelVersion: from.scoreModelVersion },
-      to: { id: toAudit.id, score: to.score, createdAt: toAudit.createdAt, scoreModelVersion: to.scoreModelVersion },
-      scoreDelta: diff.scoreDelta,
-      rubricChanged: diff.rubricChanged,
-      resolved: diff.resolved,
-      newIssues: diff.newIssues,
+      from: {
+        id: fromAudit.id,
+        name: fromAudit.name,
+        score: from.score,
+        createdAt: fromAudit.createdAt,
+        scoreModelVersion: from.scoreModelVersion,
+        pageCount: from.pages.length,
+        runLabel: runLabelForAudit(fromAudit.id),
+      },
+      to: {
+        id: toAudit.id,
+        name: toAudit.name,
+        score: to.score,
+        createdAt: toAudit.createdAt,
+        scoreModelVersion: to.scoreModelVersion,
+        pageCount: to.pages.length,
+        runLabel: runLabelForAudit(toAudit.id),
+      },
+      ...diff,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });

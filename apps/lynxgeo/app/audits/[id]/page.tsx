@@ -1,22 +1,32 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { collectAuditFindings, groupCriteria } from '@/lib/geo/score';
+import {
+  isRerun,
+  resolveBaselineAuditId,
+  resolveSeriesId,
+  runLabelForIndex,
+} from '@/lib/geo/series';
 import { AuditChecks } from './audit-checks';
 import { AuditLiveProgress } from './audit-progress';
 
+function runLabel(run: { id: string; baselineAuditId?: string | null }, index: number): string {
+  return runLabelForIndex(run, index);
+}
+
 export default function AuditReportPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [data, setData] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
   const [compareId, setCompareId] = useState('');
-  const [diff, setDiff] = useState<any>(null);
   const [controlBusy, setControlBusy] = useState(false);
+  const [rerunBusy, setRerunBusy] = useState(false);
   const [controlError, setControlError] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -28,16 +38,51 @@ export default function AuditReportPage() {
 
   useEffect(() => {
     load();
-    fetch('/api/audits')
-      .then((r) => r.json())
-      .then((d) => setHistory((d.audits || []).filter((a: any) => a.id !== id && a.status === 'COMPLETED')));
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
   }, [id]);
 
-  const runCompare = async () => {
-    const res = await fetch(`/api/audits/${compareId}/compare?other=${id}`);
-    setDiff(await res.json());
+  const seriesRuns = useMemo(() => {
+    const runs = data?.seriesRuns || [];
+    return [...runs].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [data?.seriesRuns]);
+
+  const baselineAuditId = useMemo(() => {
+    if (!data?.audit) return id;
+    return resolveBaselineAuditId(data.audit);
+  }, [data?.audit, id]);
+
+  const viewingRerun = useMemo(() => {
+    if (!data?.audit) return false;
+    return isRerun(data.audit);
+  }, [data?.audit]);
+
+  const comparableHistory = useMemo(() => {
+    if (!data?.audit) return [];
+    const seriesId = resolveSeriesId(data.audit);
+    return seriesRuns.filter(
+      (a: any) => a.id !== id && a.status === 'COMPLETED' && resolveSeriesId(a) === seriesId,
+    );
+  }, [data?.audit, seriesRuns, id]);
+
+  const seriesIndex = useMemo(() => {
+    const idx = seriesRuns.findIndex((a: any) => a.id === id);
+    return idx >= 0 ? idx + 1 : null;
+  }, [seriesRuns, id]);
+
+  const rerunAudit = async () => {
+    setRerunBusy(true);
+    setControlError('');
+    try {
+      const res = await fetch(`/api/audits/${id}/rerun`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to re-run audit');
+      router.push(`/audits/${json.id}`);
+    } catch (err: any) {
+      setControlError(err.message || 'Failed to re-run audit');
+    } finally {
+      setRerunBusy(false);
+    }
   };
 
   const patchStatus = async (status: 'PAUSED' | 'RUNNING' | 'CANCELLED') => {
@@ -88,9 +133,20 @@ export default function AuditReportPage() {
   const paused = audit.status === 'PAUSED';
   const cancelled = audit.status === 'CANCELLED';
   const canControl = running || paused;
+  const completed = audit.status === 'COMPLETED';
 
   return (
-    <div className="max-w-5xl mx-auto p-8 space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-6">
+      {viewingRerun && (
+        <Link
+          href={`/audits/${baselineAuditId}`}
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to discovery scan
+        </Link>
+      )}
+
       <div className="flex items-end justify-between gap-4">
         <div>
           <p
@@ -99,9 +155,19 @@ export default function AuditReportPage() {
             } ${running ? 'animate-pulse' : ''}`}
           >
             {audit.status}
+            {viewingRerun && (
+              <span className="ml-2 normal-case tracking-normal font-medium text-muted-foreground">
+                · Re-run
+              </span>
+            )}
           </p>
           <h1 className="text-3xl font-black">{audit.name}</h1>
           <p className="text-muted-foreground">{audit.startUrl}</p>
+          {seriesRuns.length > 1 && seriesIndex != null && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {runLabel(audit, seriesIndex - 1)} · {seriesIndex} of {seriesRuns.length} in this series
+            </p>
+          )}
         </div>
         <div className="text-right">
           <div className="text-5xl font-black text-primary">{audit.score ?? '—'}</div>
@@ -114,6 +180,52 @@ export default function AuditReportPage() {
           </div>
         </div>
       </div>
+
+      {seriesRuns.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">
+              {seriesRuns.length > 1 ? 'Audit series' : 'Discovery scan'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {seriesRuns.length > 1 && (
+              <p className="text-xs text-muted-foreground">
+                All runs on the same pinned pages, ordered oldest to newest. Re-runs are created from
+                the discovery scan or any prior run in this series.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {seriesRuns.map((run: any, index: number) => {
+                const isCurrent = run.id === id;
+                const canCompare = !isCurrent && run.status === 'COMPLETED' && completed;
+                return (
+                  <span key={run.id} className="inline-flex items-center gap-1">
+                    <Link
+                      href={`/audits/${run.id}`}
+                      className={`text-xs rounded-md border px-2 py-1 ${
+                        isCurrent
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border hover:border-primary/40'
+                      }`}
+                    >
+                      {runLabel(run, index)}: {run.score ?? '—'} · {new Date(run.createdAt).toLocaleString()}
+                    </Link>
+                    {canCompare && (
+                      <Link
+                        href={`/audits/${id}/compare?from=${run.id}`}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Compare
+                      </Link>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <AuditLiveProgress audit={audit} />
 
@@ -142,8 +254,15 @@ export default function AuditReportPage() {
         </div>
       )}
 
-      {audit.status === 'COMPLETED' && (
-        <div className="flex gap-2">
+      {completed && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <Button type="button" size="sm" disabled={rerunBusy} onClick={rerunAudit}>
+            {rerunBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+            Re-run audit
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Re-scans the same pages and adds a new run to this series
+          </span>
           <a href={`/api/audits/${id}/export?format=json`}>
             <Button variant="outline" size="sm">JSON</Button>
           </a>
@@ -153,6 +272,7 @@ export default function AuditReportPage() {
           <a href={`/api/audits/${id}/export?format=html`}>
             <Button variant="outline" size="sm">HTML</Button>
           </a>
+          {controlError && <p className="text-sm text-destructive w-full">{controlError}</p>}
         </div>
       )}
 
@@ -188,41 +308,46 @@ export default function AuditReportPage() {
 
       <AuditChecks criteria={criteria} startUrl={audit.startUrl} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Compare with a previous snapshot</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <select
-              className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
-              value={compareId}
-              onChange={(e) => setCompareId(e.target.value)}
-            >
-              <option value="">Select earlier audit</option>
-              {history.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {new Date(a.createdAt).toLocaleString()} — {a.score ?? '—'} ({a.scoreModelVersion})
-                </option>
-              ))}
-            </select>
-            <Button type="button" onClick={runCompare} disabled={!compareId}>
-              Diff
-            </Button>
-          </div>
-          {diff?.rubricChanged && (
-            <p className="text-sm text-destructive">
-              Score model changed between these snapshots — numeric delta is not comparable.
-            </p>
-          )}
-          {diff && !diff.error && (
-            <p className="text-sm">
-              Score delta: <strong>{diff.scoreDelta}</strong>. Resolved issues: {diff.resolved?.length ?? 0}. New issues:{' '}
-              {diff.newIssues?.length ?? 0}.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      {completed && comparableHistory.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Compare with a previous run</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2 items-center">
+              <select
+                className="flex-1 min-w-[200px] h-9 rounded-md border border-input bg-background px-3 text-sm"
+                value={compareId}
+                onChange={(e) => setCompareId(e.target.value)}
+              >
+                <option value="">Select earlier run…</option>
+                {comparableHistory.map((a: any) => {
+                  const idx = seriesRuns.findIndex((r: any) => r.id === a.id);
+                  return (
+                    <option key={a.id} value={a.id}>
+                      {runLabel(a, idx)} — {new Date(a.createdAt).toLocaleString()} — {a.score ?? '—'}
+                    </option>
+                  );
+                })}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!compareId}
+                onClick={() => router.push(`/audits/${id}/compare?from=${compareId}`)}
+              >
+                Compare
+              </Button>
+              <Link
+                href={`/audits/${id}/compare`}
+                className="text-xs text-primary hover:underline"
+              >
+                Open compare page
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Link href="/audits/history" className="text-sm text-primary">
         Back to history

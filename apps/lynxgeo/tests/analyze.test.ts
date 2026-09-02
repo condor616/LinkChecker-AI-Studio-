@@ -52,3 +52,18 @@ test('http failure includes status and content-type', () => {
   assert.match(findings[0].detail, /text\/html/);
   assert.equal(findings[0].url, 'https://www.example.com/news/story');
 });
+
+test('sitemap.xml is not scored for HTML title checks', () => {
+  const sitemapBody =
+    '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://www.novartis.com/</loc></url></urlset>';
+  const findings = analyzePage(
+    resource({
+      url: 'https://www.novartis.com/sitemap.xml',
+      contentType: 'application/xml',
+      bodyText: sitemapBody,
+    }),
+    null,
+  );
+  assert.equal(findings.length, 0);
+  assert.equal(findings.some((f) => f.id.startsWith('title-')), false);
+});

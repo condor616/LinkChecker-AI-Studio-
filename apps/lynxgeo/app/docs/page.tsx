@@ -63,7 +63,7 @@ function severityBadge(severity: FindingSeverity) {
 
 export default function DocsPage() {
   return (
-    <div className="max-w-5xl mx-auto p-8 space-y-10">
+    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-10">
       <div className="space-y-3">
         <p className="text-xs uppercase tracking-widest text-primary font-bold">{SCORE_MODEL_VERSION}</p>
         <h1 className="text-4xl font-black tracking-tight">Docs</h1>

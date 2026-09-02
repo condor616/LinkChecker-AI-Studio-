@@ -22,6 +22,8 @@ export const audits = pgTable('audits', {
   scoreModelVersion: text('score_model_version'),
   categoryScores: text('category_scores'),
   startUrl: text('start_url'),
+  seriesId: text('series_id'),
+  baselineAuditId: text('baseline_audit_id'),
   progress: text('progress'),
   frontier: text('frontier'),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull(),

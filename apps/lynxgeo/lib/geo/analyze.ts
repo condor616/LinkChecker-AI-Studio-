@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import type { FetchedResource } from '@lynx/crawler-core';
+import { isGeoHtmlPage } from './origin-scope';
 import type { Finding } from './score';
 
 function httpObserved(resource: FetchedResource): string {
@@ -39,6 +40,10 @@ export function analyzePage(resource: FetchedResource, html: string | null): Fin
         : `Fix ${url} so agents and search can retrieve the page (observed ${httpObserved(resource)}).`,
       url,
     });
+    return findings;
+  }
+
+  if (!isGeoHtmlPage(resource, html)) {
     return findings;
   }
 

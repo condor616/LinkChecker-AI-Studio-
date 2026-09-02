@@ -30,20 +30,18 @@ export const AuditStartSchema = z
         password: z.string().max(256),
       })
       .optional(),
+    isTargeted: z.boolean().optional(),
+    targetUrls: z.array(z.string().url()).max(10000).optional(),
   })
   .passthrough()
-  .transform((data) => {
-    const { isTargeted: _isTargeted, targetUrls: _targetUrls, ...rest } = data as typeof data & {
-      isTargeted?: boolean;
-      targetUrls?: string[];
-    };
-    return {
-      ...rest,
-      skipExternal: true as const,
-      doNotTraverseBackward: true as const,
-      maxPages: rest.maxPages && rest.maxPages > 0 ? rest.maxPages : 0,
-    };
-  });
+  .transform((data) => ({
+    ...data,
+    skipExternal: true as const,
+    doNotTraverseBackward: true as const,
+    maxPages: data.maxPages && data.maxPages > 0 ? data.maxPages : 0,
+    isTargeted: Boolean(data.isTargeted && data.targetUrls?.length),
+    targetUrls: data.isTargeted && data.targetUrls?.length ? data.targetUrls : undefined,
+  }));
 
 export const AuditTemplateSaveSchema = z.object({
   name: z.string().min(1).max(120),
