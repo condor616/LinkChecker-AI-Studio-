@@ -121,6 +121,23 @@ export function isGeoExternalUrl(url: string, config: CrawlConfig): boolean {
   return !!reason && reason.startsWith('External link');
 }
 
+/** True when the URL is a known non-page discovery/config file (robots.txt, sitemap*, etc) that should never be crawled as a page. */
+export function isGeoNonPageFile(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    // Never crawl these as pages - they are site discovery/configuration files
+    return (
+      pathname === '/robots.txt' ||
+      pathname === '/.well-known/mcp.json' ||
+      /^.*\/sitemap[^/]*\.xml/.test(pathname) || // sitemap.xml, sitemap-index.xml, sitemap_1.xml, etc
+      pathname === '/llms.txt' ||
+      pathname === '/llms-full.txt'
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Off-origin, off-path, or unparseable — GEO must not fetch or score these as pages. */
 export function isGeoOutOfScopeUrl(url: string, config: CrawlConfig): boolean {
   if (geoTraversalSkipReason(url, config)) return true;
@@ -139,6 +156,7 @@ export function filterGeoEnqueueableLinks(
     if (seen.has(url) || added.has(url)) continue;
     if (isGeoOutOfScopeUrl(url, config)) continue;
     if (isGeoDocumentUrl(url)) continue;
+    if (isGeoNonPageFile(url)) continue; // Explicitly exclude robots.txt, sitemap.xml, llms.txt, etc
     added.add(url);
     queued.push({ ...link, url });
   }

@@ -79,7 +79,7 @@ export async function runSiteProbes(
         id: `bot-${bot}`,
         category: 'crawlAccess',
         title: blocked ? `${bot} is disallowed` : `${bot} is allowed`,
-        detail: `robots.txt at ${robotsUrl}: ${uaBlockSnippet(robotsBody, bot)}`,
+        detail: `${bot} is ${blocked ? 'DISALLOWED' : 'ALLOWED'} by robots.txt. Matching User-Agent block: ${uaBlockSnippet(robotsBody, bot)}`,
         severity: blocked ? 'fail' : 'pass',
         standard: 'established',
         suggestion: blocked
@@ -94,7 +94,7 @@ export async function runSiteProbes(
         id: `bot-${bot}`,
         category: 'crawlAccess',
         title: blocked ? `${bot} (Search) is disallowed` : `${bot} (Search) is allowed`,
-        detail: `Googlebot is Search. Google-Extended is training and is scored separately. robots.txt at ${robotsUrl}: ${uaBlockSnippet(robotsBody, bot)}`,
+        detail: `${bot} is ${blocked ? 'DISALLOWED' : 'ALLOWED'} by robots.txt. Googlebot is Search; Google-Extended is training and is scored separately. Matching User-Agent block: ${uaBlockSnippet(robotsBody, bot)}`,
         severity: blocked ? 'fail' : 'pass',
         standard: 'established',
         suggestion: blocked
@@ -109,7 +109,7 @@ export async function runSiteProbes(
         id: `train-${bot}`,
         category: 'crawlAccess',
         title: `${bot} (training) ${blocked ? 'blocked' : 'allowed'}`,
-        detail: `Reported separately from AI search bots. robots.txt at ${robotsUrl}: ${uaBlockSnippet(robotsBody, bot)}`,
+        detail: `${bot} is ${blocked ? 'BLOCKED' : 'ALLOWED'} by robots.txt (training bot). Reported separately from AI search bots. Matching User-Agent block: ${uaBlockSnippet(robotsBody, bot)}`,
         severity: 'pass',
         standard: 'established',
         suggestion: blocked ? '' : `Consider blocking ${bot} in ${robotsUrl} if you do not want content used for model training.`,

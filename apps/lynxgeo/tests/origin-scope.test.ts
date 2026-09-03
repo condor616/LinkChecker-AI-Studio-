@@ -11,6 +11,7 @@ import {
   isGeoHtmlPage,
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
+  isGeoNonPageFile,
 } from '../lib/geo/origin-scope';
 import { AuditStartSchema } from '../lib/validation';
 
@@ -209,4 +210,20 @@ test('isGeoHtmlPage skips XML sitemaps and scores real HTML', () => {
     ),
     true,
   );
+});
+
+test('isGeoNonPageFile blocks robots.txt, sitemap.xml, llms.txt, and .well-known/mcp.json', () => {
+  // Should block these discovery and configuration files
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/robots.txt'), true);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/sitemap.xml'), true);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/sitemap-index.xml'), true);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/sitemaps/sitemap_1.xml'), true);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/llms.txt'), true);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/llms-full.txt'), true);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/.well-known/mcp.json'), true);
+
+  // Should allow regular pages
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/about'), false);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/news'), false);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/page.html'), false);
 });
