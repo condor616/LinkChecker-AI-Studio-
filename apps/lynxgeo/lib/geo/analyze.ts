@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import type { FetchedResource } from '@lynx/crawler-core';
-import { isGeoHtmlPage, isGeoDocumentUrl } from './origin-scope';
+import { isGeoHtmlPage, isGeoNonHtmlTarget } from './origin-scope';
 import type { Finding } from './score';
 
 function httpObserved(resource: FetchedResource): string {
@@ -43,13 +43,7 @@ export function analyzePage(resource: FetchedResource, html: string | null): Fin
     return findings;
   }
 
-  if (!isGeoHtmlPage(resource, html)) {
-    return findings;
-  }
-
-  // Double-check that this is not a non-HTML document like sitemap.xml or other data files
-  // (belt-and-suspenders with isGeoHtmlPage to ensure HTML checks never run on XML/JSON/etc)
-  if (isGeoDocumentUrl(url)) {
+  if (!isGeoHtmlPage(resource, html) || isGeoNonHtmlTarget(url)) {
     return findings;
   }
 

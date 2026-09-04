@@ -67,3 +67,34 @@ test('sitemap.xml is not scored for HTML title checks', () => {
   assert.equal(findings.length, 0);
   assert.equal(findings.some((f) => f.id.startsWith('title-')), false);
 });
+
+test('sitemap.xml served as text/html is still not scored for title', () => {
+  const sitemapBody =
+    '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://www.novartis.com/</loc></url></urlset>';
+  const findings = analyzePage(
+    resource({
+      url: 'https://www.novartis.com/sitemap.xml',
+      contentType: 'text/html; charset=utf-8',
+      bodyText: sitemapBody,
+    }),
+    sitemapBody,
+  );
+  assert.equal(findings.length, 0);
+  assert.equal(
+    findings.some((f) => f.id.startsWith('title-')),
+    false,
+    'XML sitemaps must not fail the HTML <title> check even when Content-Type is text/html',
+  );
+});
+
+test('PDF URLs are not scored for HTML title checks', () => {
+  const findings = analyzePage(
+    resource({
+      url: 'https://www.novartis.com/files/report.pdf',
+      contentType: 'text/html',
+      bodyText: '<html><body>PDF preview</body></html>',
+    }),
+    '<html><body>PDF preview</body></html>',
+  );
+  assert.equal(findings.some((f) => f.id.startsWith('title-')), false);
+});

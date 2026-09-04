@@ -20,8 +20,8 @@ import {
   forceGeoSkipExternal,
   geoPageUrlKey,
   geoStartPathPrefix,
-  isGeoDocumentUrl,
   isGeoHtmlPage,
+  isGeoNonHtmlTarget,
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
 } from './origin-scope';
@@ -238,7 +238,7 @@ export async function runAudit(
         log(isGeoExternalUrl(pageUrl, config) ? `ignored off-origin ${pageUrl}` : `ignored off-path ${pageUrl}`);
         continue;
       }
-      if (isGeoDocumentUrl(pageUrl)) {
+      if (isGeoNonHtmlTarget(pageUrl)) {
         log(`ignored document ${pageUrl}`);
         continue;
       }

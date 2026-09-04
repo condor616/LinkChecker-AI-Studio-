@@ -54,20 +54,19 @@ function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-function OfficialRequirement({ docRef, compact }: { docRef?: CheckRef; compact?: boolean }) {
+function OfficialRequirement({ docRef }: { docRef?: CheckRef }) {
   if (!docRef) return null;
   return (
     <a
       href={docRef.href}
       target="_blank"
       rel="noopener noreferrer"
-      className={cn(
-        'inline-flex items-center gap-1 text-primary hover:underline underline-offset-2',
-        compact ? 'text-[11px]' : 'text-sm',
-      )}
+      className="inline-flex items-center gap-1 text-sm text-primary hover:underline underline-offset-2"
       title={`${docRef.title} — ${docRef.publisher}`}
     >
-      <span>Official requirement{compact ? '' : `: ${docRef.title} (${docRef.publisher})`}</span>
+      <span>
+        Official requirement: {docRef.title} ({docRef.publisher})
+      </span>
       <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
     </a>
   );
@@ -189,13 +188,11 @@ function UrlList({
   query,
   severity,
   baseUrl,
-  docRef,
 }: {
   rows: CriterionUrl[];
   query: string;
   severity: FindingSeverity;
   baseUrl?: string | null;
-  docRef?: CheckRef;
 }) {
   const [page, setPage] = useState(1);
   const paginationAnchorRef = useRef<HTMLDivElement>(null);
@@ -261,11 +258,6 @@ function UrlList({
                 </p>
               )}
               {extra && <p className="text-muted-foreground mt-0.5 break-words">{extra}</p>}
-              {severity !== 'pass' && docRef && (
-                <p className="mt-1">
-                  <OfficialRequirement docRef={docRef} compact />
-                </p>
-              )}
             </li>
           );
         })}
@@ -496,7 +488,6 @@ export function AuditChecks({ criteria, startUrl }: { criteria: ReportCriterion[
                                   query={query}
                                   severity={sev}
                                   baseUrl={startUrl}
-                                  docRef={docRef}
                                 />
                               </div>
                             );

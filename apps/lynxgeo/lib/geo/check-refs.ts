@@ -53,22 +53,64 @@ const RFC_7763: CheckRef = {
 };
 
 const JSON_LD: CheckRef = {
-  title: 'JSON-LD 1.1',
-  href: 'https://www.w3.org/TR/json-ld11/',
+  title: 'JSON-LD 1.1 — embedding in HTML documents',
+  href: 'https://www.w3.org/TR/json-ld11/#embedding-json-ld-in-html-documents',
   publisher: 'W3C',
   kind: 'spec',
 };
 
-const HTML_SPEC: CheckRef = {
-  title: 'HTML Living Standard',
-  href: 'https://html.spec.whatwg.org/',
+const HTML_TITLE: CheckRef = {
+  title: 'HTML Living Standard — the title element',
+  href: 'https://html.spec.whatwg.org/multipage/semantics.html#the-title-element',
+  publisher: 'WHATWG',
+  kind: 'spec',
+};
+
+const HTML_TIME: CheckRef = {
+  title: 'HTML Living Standard — the time element',
+  href: 'https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-time-element',
+  publisher: 'WHATWG',
+  kind: 'spec',
+};
+
+const HTML_H1: CheckRef = {
+  title: 'HTML Living Standard — the h1–h6 elements',
+  href: 'https://html.spec.whatwg.org/multipage/sections.html#the-h1,-h2,-h3,-h4,-h5,-and-h6-elements',
+  publisher: 'WHATWG',
+  kind: 'spec',
+};
+
+const HTML_LANG: CheckRef = {
+  title: 'HTML Living Standard — the lang attribute',
+  href: 'https://html.spec.whatwg.org/multipage/dom.html#the-lang-and-xml:lang-attributes',
+  publisher: 'WHATWG',
+  kind: 'spec',
+};
+
+const HTML_HREFLANG: CheckRef = {
+  title: 'HTML Living Standard — rel=alternate (hreflang)',
+  href: 'https://html.spec.whatwg.org/multipage/links.html#rel-alternate',
   publisher: 'WHATWG',
   kind: 'spec',
 };
 
 const HTML_CANONICAL: CheckRef = {
   title: 'HTML Living Standard — rel=canonical',
-  href: 'https://html.spec.whatwg.org/multipage/links.html#rel-canonical',
+  href: 'https://html.spec.whatwg.org/multipage/links.html#link-type-canonical',
+  publisher: 'WHATWG',
+  kind: 'spec',
+};
+
+const HTML_NOSCRIPT: CheckRef = {
+  title: 'HTML Living Standard — the noscript element',
+  href: 'https://html.spec.whatwg.org/multipage/scripting.html#the-noscript-element',
+  publisher: 'WHATWG',
+  kind: 'spec',
+};
+
+const HTML_DOCUMENT: CheckRef = {
+  title: 'HTML Living Standard — writing HTML documents',
+  href: 'https://html.spec.whatwg.org/multipage/syntax.html#writing',
   publisher: 'WHATWG',
   kind: 'spec',
 };
@@ -101,14 +143,14 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   'train-Bytespider': RFC_9309,
   sitemap: SITEMAP_PROTOCOL,
   noindex: GOOGLE_ROBOTS,
-  wall: HTML_SPEC,
+  wall: HTML_NOSCRIPT,
   http: RFC_9110,
   ssrf: RFC_9110,
   excluded: RFC_9309,
-  h1: HTML_SPEC,
+  h1: HTML_H1,
   canonical: HTML_CANONICAL,
-  lang: HTML_SPEC,
-  hreflang: HTML_SPEC,
+  lang: HTML_LANG,
+  hreflang: HTML_HREFLANG,
   jsonld: JSON_LD,
   'accept-markdown': RFC_7763,
   'vary-accept': RFC_9110,
@@ -117,10 +159,10 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   'llms-full': LLMS_TXT,
   'mcp-json': MCP_SPEC,
   'https-origin': RFC_9110,
-  title: HTML_SPEC,
-  date: HTML_SPEC,
+  title: HTML_TITLE,
+  date: HTML_TIME,
   https: RFC_9110,
-  size: HTML_SPEC,
+  size: HTML_DOCUMENT,
 };
 
 /** Raw finding ids that do not equal their criterion key. */

@@ -12,6 +12,7 @@ import {
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
   isGeoNonPageFile,
+  isGeoNonHtmlTarget,
 } from '../lib/geo/origin-scope';
 import { AuditStartSchema } from '../lib/validation';
 
@@ -202,6 +203,18 @@ test('isGeoHtmlPage skips XML sitemaps and scores real HTML', () => {
   assert.equal(
     isGeoHtmlPage(
       {
+        url: 'https://www.novartis.com/sitemap.xml',
+        contentType: 'text/html; charset=utf-8',
+        bodyText: sitemapBody,
+      },
+      sitemapBody,
+    ),
+    false,
+    'passing an XML body as html must not treat sitemap.xml as an HTML page',
+  );
+  assert.equal(
+    isGeoHtmlPage(
+      {
         url: 'https://www.novartis.com/about',
         contentType: 'text/html; charset=utf-8',
         bodyText: '<html><head><title>About</title></head><body></body></html>',
@@ -210,6 +223,13 @@ test('isGeoHtmlPage skips XML sitemaps and scores real HTML', () => {
     ),
     true,
   );
+});
+
+test('isGeoNonHtmlTarget covers documents and discovery files', () => {
+  assert.equal(isGeoNonHtmlTarget('https://www.novartis.com/sitemap.xml'), true);
+  assert.equal(isGeoNonHtmlTarget('https://www.novartis.com/files/report.pdf'), true);
+  assert.equal(isGeoNonHtmlTarget('https://www.novartis.com/robots.txt'), true);
+  assert.equal(isGeoNonHtmlTarget('https://www.novartis.com/about'), false);
 });
 
 test('isGeoNonPageFile blocks robots.txt, sitemap.xml, llms.txt, and .well-known/mcp.json', () => {

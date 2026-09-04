@@ -287,6 +287,63 @@ test('collectAuditFindings prefers snapshot findings so site-level passes are ke
   assert.ok(grouped.find((c) => c.key === 'llms-txt'));
 });
 
+test('collectAuditFindings drops HTML title checks on sitemap.xml and PDFs', () => {
+  const sitemap = 'https://www.novartis.com/sitemap.xml';
+  const pdf = 'https://www.novartis.com/files/report.pdf';
+  const page = 'https://www.novartis.com/about';
+  const snapshotFindings: Finding[] = [
+    finding({
+      id: `title-${sitemap}`,
+      title: 'Missing title',
+      detail: `No <title> element in the HTML of ${sitemap}.`,
+      severity: 'fail',
+      url: sitemap,
+    }),
+    finding({
+      id: `title-${pdf}`,
+      title: 'Missing title',
+      detail: `No <title> element in the HTML of ${pdf}.`,
+      severity: 'fail',
+      url: pdf,
+    }),
+    finding({
+      id: `title-${page}`,
+      title: 'Title is present',
+      detail: '<title>About</title>',
+      severity: 'pass',
+      url: page,
+    }),
+    finding({
+      id: 'sitemap',
+      category: 'crawlAccess',
+      title: 'sitemap.xml found',
+      detail: `HTTP 200, Content-Type: application/xml for ${sitemap}.`,
+      severity: 'pass',
+      url: sitemap,
+    }),
+  ];
+  const collected = collectAuditFindings({ snapshotFindings, pages: [], playbook: [] });
+  assert.equal(
+    collected.some((f) => f.id.startsWith('title-') && f.url === sitemap),
+    false,
+  );
+  assert.equal(
+    collected.some((f) => f.id.startsWith('title-') && f.url === pdf),
+    false,
+  );
+  assert.ok(collected.some((f) => f.id === `title-${page}`));
+  assert.ok(collected.some((f) => f.id === 'sitemap'));
+
+  const grouped = groupCriteria(collected);
+  const title = grouped.find((c) => c.key === 'title');
+  assert.ok(title);
+  assert.equal(title.counts.fail, 0);
+  assert.equal(
+    title.urls.fail.some((row) => row.url.includes('sitemap.xml')),
+    false,
+  );
+});
+
 function pageFinding(
   key: string,
   url: string,

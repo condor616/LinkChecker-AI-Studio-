@@ -1,3 +1,5 @@
+import { isGeoNonHtmlTarget } from './document-url';
+
 export const SCORE_MODEL_VERSION = 'geo-1.0.1';
 
 // PHASE 2 REMINDER: schema.org validation must consume schema.org’s published
@@ -727,16 +729,30 @@ function isFinding(value: unknown): value is Finding {
   return Boolean(f.id && f.title && f.severity && f.category);
 }
 
+const PAGE_HTML_CRITERIA = new Set(
+  CRITERION_CATALOG.filter((c) => c.scope === 'page').map((c) => c.key),
+);
+
+/** Drop title/H1/etc findings that were stored against sitemaps, PDFs, and other non-HTML files. */
+function isHtmlPageFindingOnNonHtmlUrl(f: Finding): boolean {
+  if (!PAGE_HTML_CRITERIA.has(findingCriterionKey(f))) return false;
+  const urls = findingUrls(f);
+  const targets = urls.length ? urls : f.url ? [f.url] : [];
+  return targets.some((url) => isGeoNonHtmlTarget(url));
+}
+
 export function collectAuditFindings(input: {
   pages?: { findings?: string | Finding[] | null }[];
   snapshotFindings?: Finding[] | null;
   playbook?: Finding[] | null;
 }): Finding[] {
+  const keepPageHtmlFindings = (findings: Finding[]) => findings.filter((f) => !isHtmlPageFindingOnNonHtmlUrl(f));
+
   if (Array.isArray(input.snapshotFindings) && input.snapshotFindings.length > 0) {
-    return input.snapshotFindings.filter(isFinding);
+    return keepPageHtmlFindings(input.snapshotFindings.filter(isFinding));
   }
 
-  const fromPages = (input.pages || []).flatMap((p) => parseFindingsJson(p.findings));
+  const fromPages = keepPageHtmlFindings((input.pages || []).flatMap((p) => parseFindingsJson(p.findings)));
   const playbookItems = (input.playbook || []).filter(isFinding);
   if (playbookItems.length === 0) return fromPages;
 
@@ -764,7 +780,7 @@ export function collectAuditFindings(input: {
       urls: missing,
     } as Finding);
   }
-  return [...fromPages, ...extra];
+  return keepPageHtmlFindings([...fromPages, ...extra]);
 }
 
 function pageTitleFromFinding(f: Finding): string | undefined {

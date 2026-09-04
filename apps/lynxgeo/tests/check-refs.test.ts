@@ -37,9 +37,9 @@ test('raw probe finding ids resolve to the robots specification', () => {
 
 test('page finding ids carrying a URL suffix resolve to their criterion', () => {
   const cases: [string, string][] = [
-    ['date-https://example.com/blog/post', 'https://html.spec.whatwg.org/'],
-    ['canonical-https://example.com/', 'https://html.spec.whatwg.org/multipage/links.html#rel-canonical'],
-    ['jsonld-https://example.com/a?b=c', 'https://www.w3.org/TR/json-ld11/'],
+    ['date-https://example.com/blog/post', 'https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-time-element'],
+    ['canonical-https://example.com/', 'https://html.spec.whatwg.org/multipage/links.html#link-type-canonical'],
+    ['jsonld-https://example.com/a?b=c', 'https://www.w3.org/TR/json-ld11/#embedding-json-ld-in-html-documents'],
     ['md-alt-https://example.com/', 'https://www.rfc-editor.org/rfc/rfc7763.html'],
     ['http-https://example.com/404', 'https://www.rfc-editor.org/rfc/rfc9110.html'],
     ['noindex-https://example.com/x', 'https://developers.google.com/search/docs/crawling-indexing/robots/intro'],
@@ -47,6 +47,37 @@ test('page finding ids carrying a URL suffix resolve to their criterion', () => 
   ];
   for (const [id, href] of cases) {
     assert.equal(checkRefForFindingId(id)?.href, href, `unexpected ref for ${id}`);
+  }
+});
+
+test('HTML Living Standard refs point at a specific section, not the spec homepage', () => {
+  const homepage = new Set([
+    'https://html.spec.whatwg.org/',
+    'https://html.spec.whatwg.org',
+    'https://html.spec.whatwg.org/multipage/',
+    'https://html.spec.whatwg.org/multipage',
+  ]);
+  for (const [key, ref] of Object.entries(CHECK_REFS)) {
+    if (!ref.href.startsWith('https://html.spec.whatwg.org')) continue;
+    const url = new URL(ref.href);
+    assert.ok(!homepage.has(ref.href), `${key} must not use the HTML spec homepage`);
+    assert.ok(url.hash.length > 1, `${key} should include a spec fragment, got ${ref.href}`);
+  }
+});
+
+test('HTML markup checks resolve to their element or attribute section', () => {
+  const expected: Record<string, string> = {
+    title: 'https://html.spec.whatwg.org/multipage/semantics.html#the-title-element',
+    date: 'https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-time-element',
+    h1: 'https://html.spec.whatwg.org/multipage/sections.html#the-h1,-h2,-h3,-h4,-h5,-and-h6-elements',
+    lang: 'https://html.spec.whatwg.org/multipage/dom.html#the-lang-and-xml:lang-attributes',
+    hreflang: 'https://html.spec.whatwg.org/multipage/links.html#rel-alternate',
+    canonical: 'https://html.spec.whatwg.org/multipage/links.html#link-type-canonical',
+    wall: 'https://html.spec.whatwg.org/multipage/scripting.html#the-noscript-element',
+    size: 'https://html.spec.whatwg.org/multipage/syntax.html#writing',
+  };
+  for (const [key, href] of Object.entries(expected)) {
+    assert.equal(checkRefForKey(key)?.href, href, `unexpected ref for ${key}`);
   }
 });
 
