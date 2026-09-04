@@ -71,6 +71,33 @@ export function analyzePage(resource: FetchedResource, html: string | null): Fin
     });
   }
 
+  const xRobotsTag = (resource.headers['x-robots-tag'] || '').toLowerCase();
+  const noaiInMeta = /\bnoai\b|\bnoimageai\b/.test(robotsMeta);
+  const noaiInHeader = /\bnoai\b|\bnoimageai\b/.test(xRobotsTag);
+  const hasNoai = noaiInMeta || noaiInHeader;
+  const noaiSource =
+    noaiInMeta && noaiInHeader
+      ? 'meta robots and X-Robots-Tag'
+      : noaiInMeta
+        ? 'meta robots'
+        : noaiInHeader
+          ? 'X-Robots-Tag'
+          : 'neither meta robots nor X-Robots-Tag';
+  findings.push({
+    id: `noai-${url}`,
+    category: 'crawlAccess',
+    title: hasNoai ? 'AI training opt-out (noai/noimageai) present' : 'No noai/noimageai opt-out',
+    detail: hasNoai
+      ? `Observed noai/noimageai via ${noaiSource} on ${url}. Publisher training opt-out; not treated as a defect.`
+      : `No noai or noimageai in meta robots or X-Robots-Tag on ${url} (${noaiSource}).`,
+    severity: 'pass',
+    standard: 'convention',
+    suggestion: hasNoai
+      ? ''
+      : `Optional: set noai/noimageai in <meta name="robots"> or X-Robots-Tag on ${url} if you want to signal AI-training opt-out while remaining searchable.`,
+    url,
+  });
+
   findings.push({
     id: `title-${url}`,
     category: 'citeability',

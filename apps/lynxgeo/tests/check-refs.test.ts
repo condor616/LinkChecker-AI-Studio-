@@ -43,6 +43,7 @@ test('page finding ids carrying a URL suffix resolve to their criterion', () => 
     ['md-alt-https://example.com/', 'https://www.rfc-editor.org/rfc/rfc7763.html'],
     ['http-https://example.com/404', 'https://www.rfc-editor.org/rfc/rfc9110.html'],
     ['noindex-https://example.com/x', 'https://developers.google.com/search/docs/crawling-indexing/robots/intro'],
+    ['noai-https://example.com/x', 'https://datalicenses.org/initiatives/deviantart-noai/'],
     ['https-https://example.com/x', 'https://www.rfc-editor.org/rfc/rfc9110.html'],
   ];
   for (const [id, href] of cases) {
@@ -82,12 +83,24 @@ test('HTML markup checks resolve to their element or attribute section', () => {
 });
 
 test('bot criteria point at the robots protocol or Google crawler documentation', () => {
-  for (const bot of ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'PerplexityBot']) {
+  for (const bot of [
+    'GPTBot',
+    'OAI-SearchBot',
+    'ChatGPT-User',
+    'ClaudeBot',
+    'PerplexityBot',
+    'Bingbot',
+    'Meta-ExternalAgent',
+    'Amazonbot',
+    'YouBot',
+  ]) {
     assert.equal(checkRefForKey(`bot-${bot}`)?.href, 'https://www.rfc-editor.org/rfc/rfc9309.html');
   }
   const googleCrawlers = 'https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers';
   assert.equal(checkRefForKey('bot-Googlebot')?.href, googleCrawlers);
   assert.equal(checkRefForKey('train-Google-Extended')?.href, googleCrawlers);
+  assert.equal(checkRefForKey('train-Applebot-Extended')?.href, 'https://support.apple.com/en-us/119829');
+  assert.equal(checkRefForKey('train-Diffbot')?.href, 'https://www.rfc-editor.org/rfc/rfc9309.html');
 });
 
 test('convention files are labelled convention, not RFC', () => {
@@ -98,6 +111,13 @@ test('convention files are labelled convention, not RFC', () => {
   }
   assert.equal(checkRefForKey('mcp-json')?.href, 'https://modelcontextprotocol.io/specification/2025-03-26');
   assert.equal(checkRefForKey('sitemap')?.href, 'https://www.sitemaps.org/protocol.html');
+  assert.equal(
+    checkRefForKey('tdmrep')?.href,
+    'https://www.w3.org/community/reports/tdmrep/CG-FINAL-tdmrep-20240510/',
+  );
+  assert.equal(checkRefForKey('tdmrep')?.kind, 'convention');
+  assert.equal(checkRefForKey('noai')?.href, 'https://datalicenses.org/initiatives/deviantart-noai/');
+  assert.equal(checkRefForKey('noai')?.kind, 'convention');
 });
 
 test('unknown ids resolve to undefined instead of a wrong document', () => {

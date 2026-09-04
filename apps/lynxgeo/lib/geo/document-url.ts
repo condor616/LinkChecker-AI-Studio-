@@ -82,6 +82,7 @@ export function isGeoNonPageFile(url: string): boolean {
     return (
       pathname === '/robots.txt' ||
       pathname === '/.well-known/mcp.json' ||
+      pathname === '/.well-known/tdmrep.json' ||
       /^.*\/sitemap[^/]*\.xml/.test(pathname) || // sitemap.xml, sitemap-index.xml, sitemap_1.xml, etc
       pathname === '/llms.txt' ||
       pathname === '/llms-full.txt'

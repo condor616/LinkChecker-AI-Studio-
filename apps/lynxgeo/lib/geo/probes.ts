@@ -3,17 +3,64 @@ import { fetchResource } from '@lynx/crawler-core';
 import { geoStartPathPrefix } from './origin-scope';
 import type { Finding } from './score';
 
-const AI_SEARCH_BOTS = ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'PerplexityBot'];
+export const AI_SEARCH_BOTS = [
+  'GPTBot',
+  'OAI-SearchBot',
+  'ChatGPT-User',
+  'ClaudeBot',
+  'PerplexityBot',
+  'Bingbot',
+  'Meta-ExternalAgent',
+  'Amazonbot',
+  'YouBot',
+];
 const GOOGLE_SEARCH_BOTS = ['Googlebot'];
-const TRAINING_BOTS = ['Google-Extended', 'CCBot', 'Bytespider'];
+export const TRAINING_BOTS = ['Google-Extended', 'CCBot', 'Bytespider', 'Applebot-Extended', 'Diffbot'];
 
 function blockedByRobots(robotsTxt: string, bot: string): boolean {
-  const blocks = robotsTxt.match(new RegExp(`User-agent:\\s*${bot}[\\s\\S]*?(?=User-agent:|$)`, 'i'));
+  const escaped = bot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const blocks = robotsTxt.match(new RegExp(`User-agent:\\s*${escaped}[\\s\\S]*?(?=User-agent:|$)`, 'i'));
   if (!blocks) {
     const star = robotsTxt.match(/User-agent:\s*\*[\s\S]*?(?=User-agent:|$)/i);
     return !!star && /Disallow:\s*\//i.test(star[0]) && !/Allow:\s*\//i.test(star[0].split('Disallow')[0]);
   }
   return /Disallow:\s*\/\s*$/m.test(blocks[0]) || /Disallow:\s*\/\s*\n/i.test(blocks[0]);
+}
+
+/** Returns human-readable gaps when llms.txt is reachable but does not match llmstxt.org structure. */
+export function llmsTxtStructureIssues(body: string): string[] {
+  const issues: string[] = [];
+  const lines = body.split(/\r?\n/);
+  const hasH1 = lines.some((line) => /^#\s+\S/.test(line) && !line.startsWith('##'));
+  if (!hasH1) issues.push('missing H1 (# title)');
+
+  let hasLinkedSection = false;
+  let inSection = false;
+  let sectionHasLink = false;
+  const linkRe = /\[[^\]]+\]\([^)]+\)/;
+  for (const line of lines) {
+    if (/^##\s+\S/.test(line)) {
+      if (inSection && sectionHasLink) hasLinkedSection = true;
+      inSection = true;
+      sectionHasLink = false;
+      continue;
+    }
+    if (/^#\s+\S/.test(line) && !line.startsWith('##')) {
+      if (inSection && sectionHasLink) hasLinkedSection = true;
+      inSection = false;
+      sectionHasLink = false;
+      continue;
+    }
+    if (inSection && linkRe.test(line)) sectionHasLink = true;
+  }
+  if (inSection && sectionHasLink) hasLinkedSection = true;
+  if (!hasLinkedSection) issues.push('missing ## section with a markdown link');
+  return issues;
+}
+
+/** True when either /.well-known/tdmrep.json is reachable or a tdm-reservation header is set. */
+export function hasTdmRepSignal(wellKnownOk: boolean, tdmReservationHeader: string | undefined | null): boolean {
+  return wellKnownOk || (tdmReservationHeader || '').trim().length > 0;
 }
 
 function uaBlockSnippet(robotsTxt: string, bot: string): string {
@@ -134,16 +181,28 @@ export async function runSiteProbes(
 
   const llmsUrl = new URL('/llms.txt', origin).toString();
   const llms = await probe('/llms.txt');
+  const llmsIssues = llms.ok ? llmsTxtStructureIssues(llms.bodyText || '') : [];
+  const llmsStructured = llms.ok && llmsIssues.length === 0;
   findings.push({
     id: 'llms-txt',
     category: 'discovery',
-    title: llms.ok ? 'llms.txt found' : 'llms.txt not found',
-    detail: `${probeObserved(llms)} for ${llmsUrl}. Convention (llmstxt.org). Google Search ignores this file.`,
-    severity: llms.ok ? 'pass' : 'warn',
+    title: !llms.ok
+      ? 'llms.txt not found'
+      : llmsStructured
+        ? 'llms.txt found'
+        : 'llms.txt found but incomplete',
+    detail: !llms.ok
+      ? `${probeObserved(llms)} for ${llmsUrl}. Convention (llmstxt.org). Google Search ignores this file.`
+      : llmsStructured
+        ? `${probeObserved(llms)} for ${llmsUrl}. Structure looks valid (H1 + linked ## section). Convention (llmstxt.org).`
+        : `${probeObserved(llms)} for ${llmsUrl}, but structure is incomplete: ${llmsIssues.join('; ')}. Convention (llmstxt.org).`,
+    severity: llmsStructured ? 'pass' : 'warn',
     standard: 'convention',
-    suggestion: llms.ok
-      ? ''
-      : `Optional: add ${llmsUrl} as an agent map of canonical pages. This does not affect Google rankings.`,
+    suggestion: !llms.ok
+      ? `Optional: add ${llmsUrl} as an agent map of canonical pages. This does not affect Google rankings.`
+      : llmsStructured
+        ? ''
+        : `Fix ${llmsUrl}: include an H1 title and at least one ## section with a markdown link [text](url).`,
     url: llmsUrl,
   });
 
@@ -175,11 +234,34 @@ export async function runSiteProbes(
     url: mcpUrl,
   });
 
+  const tdmrepUrl = new URL('/.well-known/tdmrep.json', origin).toString();
+  const tdmrep = await probe('/.well-known/tdmrep.json');
+
   const homeUrl = new URL('/', origin).toString();
   const md = await probe('/', { Accept: 'text/markdown' });
   const isMarkdown = (md.contentType || '').includes('markdown');
   const varyHeader = md.headers['vary'] || '';
   const varyAccept = varyHeader.toLowerCase().includes('accept');
+  const tdmHeader = (md.headers['tdm-reservation'] || '').trim();
+  const hasTdmHeader = tdmHeader.length > 0;
+  const hasTdmSignal = hasTdmRepSignal(tdmrep.ok, md.headers['tdm-reservation']);
+  const tdmSignals: string[] = [];
+  if (tdmrep.ok) tdmSignals.push(`/.well-known/tdmrep.json (${probeObserved(tdmrep)})`);
+  if (hasTdmHeader) tdmSignals.push(`homepage tdm-reservation: ${tdmHeader}`);
+  findings.push({
+    id: 'tdmrep',
+    category: 'discovery',
+    title: hasTdmSignal ? 'TDMRep signal present' : 'No TDMRep signal',
+    detail: hasTdmSignal
+      ? `Observed TDM reservation via ${tdmSignals.join('; ')}.`
+      : `No /.well-known/tdmrep.json (${probeObserved(tdmrep)}) and no tdm-reservation header on ${homeUrl}. Emerging TDMRep (W3C Community Group).`,
+    severity: hasTdmSignal ? 'pass' : 'warn',
+    standard: 'emerging',
+    suggestion: hasTdmSignal
+      ? ''
+      : `Optional: publish ${tdmrepUrl} and/or send a tdm-reservation header so agents can discover text-and-data-mining consent. Emerging convention, not a ranking factor.`,
+    url: tdmrepUrl,
+  });
   findings.push({
     id: 'accept-markdown',
     category: 'negotiation',

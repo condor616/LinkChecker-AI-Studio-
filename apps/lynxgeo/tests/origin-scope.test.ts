@@ -232,7 +232,7 @@ test('isGeoNonHtmlTarget covers documents and discovery files', () => {
   assert.equal(isGeoNonHtmlTarget('https://www.novartis.com/about'), false);
 });
 
-test('isGeoNonPageFile blocks robots.txt, sitemap.xml, llms.txt, and .well-known/mcp.json', () => {
+test('isGeoNonPageFile blocks robots.txt, sitemap.xml, llms.txt, and .well-known discovery files', () => {
   // Should block these discovery and configuration files
   assert.equal(isGeoNonPageFile('https://www.novartis.com/robots.txt'), true);
   assert.equal(isGeoNonPageFile('https://www.novartis.com/sitemap.xml'), true);
@@ -241,6 +241,7 @@ test('isGeoNonPageFile blocks robots.txt, sitemap.xml, llms.txt, and .well-known
   assert.equal(isGeoNonPageFile('https://www.novartis.com/llms.txt'), true);
   assert.equal(isGeoNonPageFile('https://www.novartis.com/llms-full.txt'), true);
   assert.equal(isGeoNonPageFile('https://www.novartis.com/.well-known/mcp.json'), true);
+  assert.equal(isGeoNonPageFile('https://www.novartis.com/.well-known/tdmrep.json'), true);
 
   // Should allow regular pages
   assert.equal(isGeoNonPageFile('https://www.novartis.com/about'), false);

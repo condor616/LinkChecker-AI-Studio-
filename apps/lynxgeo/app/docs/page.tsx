@@ -79,9 +79,9 @@ export default function DocsPage() {
         <CardHeader>
           <CardTitle>How {SCORE_MODEL_VERSION} scores a site</CardTitle>
           <CardDescription>
-            Category weights are unchanged from geo-1.0. The {SCORE_MODEL_VERSION} patch changed aggregation: page
-            checks score as rates (or grouped criteria), so 79 identical “no date markup” warnings cannot zero
-            citeability.
+            Category weights are unchanged from geo-1.0. {SCORE_MODEL_VERSION} expands crawl and discovery
+            criteria (additional AI search/training bots, TDMRep, noai/noimageai, stricter llms.txt structure)
+            while keeping page-rate aggregation from geo-1.0.1.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm leading-relaxed">

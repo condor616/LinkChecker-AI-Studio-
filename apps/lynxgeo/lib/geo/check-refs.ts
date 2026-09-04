@@ -129,6 +129,27 @@ const MCP_SPEC: CheckRef = {
   kind: 'spec',
 };
 
+const APPLEBOT_EXTENDED: CheckRef = {
+  title: 'Applebot and Applebot-Extended',
+  href: 'https://support.apple.com/en-us/119829',
+  publisher: 'Apple',
+  kind: 'docs',
+};
+
+const NOAI_CONVENTION: CheckRef = {
+  title: 'DeviantArt NoAI / NoImageAI directives',
+  href: 'https://datalicenses.org/initiatives/deviantart-noai/',
+  publisher: 'DataLicenses.org',
+  kind: 'convention',
+};
+
+const TDMREP: CheckRef = {
+  title: 'TDM Reservation Protocol (TDMRep)',
+  href: 'https://www.w3.org/community/reports/tdmrep/CG-FINAL-tdmrep-20240510/',
+  publisher: 'W3C Community Group',
+  kind: 'convention',
+};
+
 /** Criterion key (see CRITERION_CATALOG) → official document behind the check. */
 export const CHECK_REFS: Record<string, CheckRef> = {
   robots: RFC_9309,
@@ -137,12 +158,19 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   'bot-ChatGPT-User': RFC_9309,
   'bot-ClaudeBot': RFC_9309,
   'bot-PerplexityBot': RFC_9309,
+  'bot-Bingbot': RFC_9309,
+  'bot-Meta-ExternalAgent': RFC_9309,
+  'bot-Amazonbot': RFC_9309,
+  'bot-YouBot': RFC_9309,
   'bot-Googlebot': GOOGLE_CRAWLERS,
   'train-Google-Extended': GOOGLE_CRAWLERS,
   'train-CCBot': RFC_9309,
   'train-Bytespider': RFC_9309,
+  'train-Applebot-Extended': APPLEBOT_EXTENDED,
+  'train-Diffbot': RFC_9309,
   sitemap: SITEMAP_PROTOCOL,
   noindex: GOOGLE_ROBOTS,
+  noai: NOAI_CONVENTION,
   wall: HTML_NOSCRIPT,
   http: RFC_9110,
   ssrf: RFC_9110,
@@ -158,6 +186,7 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   'llms-txt': LLMS_TXT,
   'llms-full': LLMS_TXT,
   'mcp-json': MCP_SPEC,
+  tdmrep: TDMREP,
   'https-origin': RFC_9110,
   title: HTML_TITLE,
   date: HTML_TIME,

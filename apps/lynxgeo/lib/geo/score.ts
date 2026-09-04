@@ -1,6 +1,6 @@
 import { isGeoNonHtmlTarget } from './document-url';
 
-export const SCORE_MODEL_VERSION = 'geo-1.0.1';
+export const SCORE_MODEL_VERSION = 'geo-1.1.0';
 
 // PHASE 2 REMINDER: schema.org validation must consume schema.org’s published
 // vocabulary (https://schema.org/docs/developers.html), not a homemade type list.
@@ -95,7 +95,7 @@ export const CATEGORY_META: Record<FindingCategory, { label: string; weight: num
   discovery: {
     label: 'Discovery',
     weight: CATEGORY_WEIGHTS.discovery,
-    summary: 'Optional agent maps (llms.txt, mcp.json). These are not Google ranking factors.',
+    summary: 'Optional agent maps (llms.txt, mcp.json, TDMRep). These are not Google ranking factors.',
   },
   citeability: {
     label: 'Citeability',
@@ -166,6 +166,46 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     why: 'Perplexity’s crawler. Same AI search-bot rate as GPTBot and ClaudeBot.',
   },
   {
+    key: 'bot-Bingbot',
+    title: 'Bingbot',
+    category: 'crawlAccess',
+    standard: 'established',
+    scope: 'site',
+    issueSeverity: 'fail',
+    scoreGroup: AI_SEARCH_BOT_GROUP,
+    why: 'Microsoft Bing’s crawler underpins Copilot citation. Scored with the other AI search bots as one rate.',
+  },
+  {
+    key: 'bot-Meta-ExternalAgent',
+    title: 'Meta-ExternalAgent',
+    category: 'crawlAccess',
+    standard: 'established',
+    scope: 'site',
+    issueSeverity: 'fail',
+    scoreGroup: AI_SEARCH_BOT_GROUP,
+    why: 'Meta’s external agent crawler for Meta AI / Llama citation. Same AI search-bot rate.',
+  },
+  {
+    key: 'bot-Amazonbot',
+    title: 'Amazonbot',
+    category: 'crawlAccess',
+    standard: 'established',
+    scope: 'site',
+    issueSeverity: 'fail',
+    scoreGroup: AI_SEARCH_BOT_GROUP,
+    why: 'Amazon’s crawler used by Alexa+ / Rufus-style answers. Same AI search-bot rate.',
+  },
+  {
+    key: 'bot-YouBot',
+    title: 'YouBot',
+    category: 'crawlAccess',
+    standard: 'established',
+    scope: 'site',
+    issueSeverity: 'fail',
+    scoreGroup: AI_SEARCH_BOT_GROUP,
+    why: 'you.com’s crawler. Same AI search-bot rate as GPTBot and ClaudeBot.',
+  },
+  {
     key: 'bot-Googlebot',
     title: 'Googlebot (Search)',
     category: 'crawlAccess',
@@ -209,6 +249,28 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     why: 'ByteDance training crawler. Reported separately from AI search bots; not scored.',
   },
   {
+    key: 'train-Applebot-Extended',
+    title: 'Applebot-Extended (training)',
+    category: 'crawlAccess',
+    standard: 'established',
+    scope: 'site',
+    issueSeverity: 'pass',
+    scoreGroup: 'training-bots',
+    informational: true,
+    why: 'Apple Intelligence training opt-out token (distinct from Applebot search). Reported for policy, not scored.',
+  },
+  {
+    key: 'train-Diffbot',
+    title: 'Diffbot (training)',
+    category: 'crawlAccess',
+    standard: 'established',
+    scope: 'site',
+    issueSeverity: 'pass',
+    scoreGroup: 'training-bots',
+    informational: true,
+    why: 'Diffbot training / extraction crawler. Reported separately from AI search bots; not scored.',
+  },
+  {
     key: 'sitemap',
     title: 'sitemap.xml',
     category: 'crawlAccess',
@@ -228,6 +290,18 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     scoreGroup: 'noindex',
     sparse: true,
     why: 'noindex tells crawlers not to include the page in search. Only pages that set it fail; other crawled pages count as pass.',
+  },
+  {
+    key: 'noai',
+    title: 'noai / noimageai',
+    category: 'crawlAccess',
+    standard: 'convention',
+    scope: 'page',
+    issueSeverity: 'pass',
+    scoreGroup: 'noai',
+    sparse: true,
+    informational: true,
+    why: 'Publisher opt-out for AI training via meta robots or X-Robots-Tag (noai / noimageai). Reported for policy awareness; does not change the score.',
   },
   {
     key: 'wall',
@@ -383,6 +457,16 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     issueSeverity: 'warn',
     scoreGroup: 'mcp-json',
     why: 'Emerging /.well-known/mcp.json discovery file for MCP endpoints. Weighted 20% so an experimental file cannot dominate discovery.',
+  },
+  {
+    key: 'tdmrep',
+    title: 'TDMRep',
+    category: 'discovery',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'tdmrep',
+    why: 'Emerging TDM Reservation Protocol: /.well-known/tdmrep.json and/or tdm-reservation HTTP header. Weighted 20% so an experimental signal cannot dominate discovery.',
   },
   {
     key: 'https-origin',

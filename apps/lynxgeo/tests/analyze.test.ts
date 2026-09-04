@@ -98,3 +98,49 @@ test('PDF URLs are not scored for HTML title checks', () => {
   );
   assert.equal(findings.some((f) => f.id.startsWith('title-')), false);
 });
+
+const pageHtml = (robotsContent?: string) => {
+  const robots = robotsContent
+    ? `<meta name="robots" content="${robotsContent}">`
+    : '';
+  return `<html lang="en"><head><title>Story</title>${robots}</head><body><h1>Story</h1><p>Hello world content here.</p></body></html>`;
+};
+
+test('noai absent when neither meta nor header set', () => {
+  const findings = analyzePage(resource(), pageHtml());
+  const noai = findings.find((f) => f.id.startsWith('noai-'));
+  assert.ok(noai);
+  assert.equal(noai.severity, 'pass');
+  assert.match(noai.title, /No noai/);
+  assert.match(noai.detail, /neither meta robots nor X-Robots-Tag/);
+});
+
+test('noai present via meta robots only', () => {
+  const findings = analyzePage(resource(), pageHtml('index, noai'));
+  const noai = findings.find((f) => f.id.startsWith('noai-'));
+  assert.equal(noai?.severity, 'pass');
+  assert.match(noai?.title || '', /opt-out/);
+  assert.match(noai?.detail || '', /meta robots/);
+  assert.doesNotMatch(noai?.detail || '', /X-Robots-Tag/);
+});
+
+test('noai present via X-Robots-Tag only', () => {
+  const findings = analyzePage(
+    resource({ headers: { 'x-robots-tag': 'noimageai' } }),
+    pageHtml(),
+  );
+  const noai = findings.find((f) => f.id.startsWith('noai-'));
+  assert.equal(noai?.severity, 'pass');
+  assert.match(noai?.detail || '', /X-Robots-Tag/);
+  assert.doesNotMatch(noai?.detail || '', /meta robots and/);
+});
+
+test('noai present via both meta and header', () => {
+  const findings = analyzePage(
+    resource({ headers: { 'x-robots-tag': 'noai, noimageai' } }),
+    pageHtml('noai'),
+  );
+  const noai = findings.find((f) => f.id.startsWith('noai-'));
+  assert.equal(noai?.severity, 'pass');
+  assert.match(noai?.detail || '', /meta robots and X-Robots-Tag/);
+});
