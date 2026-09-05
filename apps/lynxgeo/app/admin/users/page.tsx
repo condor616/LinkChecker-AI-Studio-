@@ -22,10 +22,10 @@ export default async function AdminUsersPage() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <CardTitle>All Users</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           <UsersTable initialUsers={initialUsers} />
         </CardContent>
       </Card>

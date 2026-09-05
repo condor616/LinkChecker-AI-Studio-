@@ -15,17 +15,17 @@ export default async function AdminUsersPage() {
   }));
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">User Management</h1>
         <p className="text-muted-foreground mt-1">Approve pending users and manage resource limits.</p>
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <CardTitle>All Users</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           <UsersTable initialUsers={initialUsers} />
         </CardContent>
       </Card>
