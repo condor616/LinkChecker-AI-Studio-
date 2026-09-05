@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { isTargetUrlMatch } from '@/lib/utils/url';
+import { buildTriageGroups, matchesScanTarget, parseScanConfigJson } from '@/lib/utils/scan-links';
 import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle, LayoutDashboard } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ExportButton } from './export-button';
 
@@ -55,18 +56,26 @@ function useStableGroupOrder(groups: any[], freeze: boolean, resetToken: string)
 
   if (!freeze) {
     frozenOrderRef.current = null;
+    const seen = new Set(orderRef.current);
     for (const group of groups) {
       const key = triageGroupKey(group);
-      if (!orderRef.current.includes(key)) orderRef.current.push(key);
+      if (!seen.has(key)) {
+        orderRef.current.push(key);
+        seen.add(key);
+      }
     }
     orderRef.current = orderRef.current.filter((key) => byKey.has(key));
     for (const key of [...lastByKeyRef.current.keys()]) {
       if (!byKey.has(key)) lastByKeyRef.current.delete(key);
     }
   } else if (!frozenOrderRef.current) {
+    const seen = new Set(orderRef.current);
     for (const group of groups) {
       const key = triageGroupKey(group);
-      if (!orderRef.current.includes(key)) orderRef.current.push(key);
+      if (!seen.has(key)) {
+        orderRef.current.push(key);
+        seen.add(key);
+      }
     }
     orderRef.current = orderRef.current.filter((key) => byKey.has(key));
     frozenOrderRef.current = [...orderRef.current];
@@ -128,7 +137,6 @@ export function ScanDashboard({
   const [isStopping, setIsStopping] = useState(false);
   const [isRecheckingAll, setIsRecheckingAll] = useState(false);
   const [expandedTriageKeys, setExpandedTriageKeys] = useState<Set<string>>(() => new Set());
-  const router = useRouter();
   const pageSize = 30;
 
   const reportTriageExpand = useCallback((key: string, expanded: boolean) => {
@@ -147,20 +155,28 @@ export function ScanDashboard({
     [reportTriageExpand],
   );
 
-  const fetchData = async (searchOverride?: string) => {
-    const searchToUse = searchOverride !== undefined ? searchOverride : (searchQuery.length >= 3 ? searchQuery : '');
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
+
+  const fetchData = useCallback(async (searchOverride?: string, signal?: AbortSignal) => {
+    const searchToUse = searchOverride !== undefined ? searchOverride : (searchQueryRef.current.length >= 3 ? searchQueryRef.current : '');
     const url = new URL(`/api/scans/${scanId}`, window.location.origin);
     if (searchToUse) {
       url.searchParams.set('search', searchToUse);
     }
 
-    const res = await fetch(url.toString());
-    if (res.ok) {
-      const json = await res.json();
-      setData(json);
-      setStatus(json.scan.status);
+    try {
+      const res = await fetch(url.toString(), { signal });
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+        setStatus(json.scan.status);
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      console.error(err);
     }
-  };
+  }, [scanId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -171,34 +187,33 @@ export function ScanDashboard({
   }, [searchQuery]);
 
   useEffect(() => {
-    let isMounted = true;
-    
-    // Initial fetch when scanId or debouncedSearch changes
-    const runFetch = async () => {
-      const searchToUse = debouncedSearch.length >= 3 ? debouncedSearch : '';
-      setIsSearching(true);
-      // Reset all pagination when search changes
-      setBrokenPage(1);
-      setSuccessPage(1);
-      setSkippedPage(1);
-      setRecheckedPage(1);
-      await fetchData(searchToUse);
-      if (isMounted) setIsSearching(false);
-    };
+    const controller = new AbortController();
+    const searchToUse = debouncedSearch.length >= 3 ? debouncedSearch : '';
+    setIsSearching(true);
+    setBrokenPage(1);
+    setSuccessPage(1);
+    setSkippedPage(1);
+    setRecheckedPage(1);
+    fetchData(searchToUse, controller.signal).finally(() => {
+      if (!controller.signal.aborted) setIsSearching(false);
+    });
 
-    runFetch();
+    return () => controller.abort();
+  }, [scanId, debouncedSearch, fetchData]);
 
-    // Polling fetch
+  useEffect(() => {
+    if (status !== 'RUNNING') return;
+    const controller = new AbortController();
     const interval = setInterval(() => {
       const searchToUse = debouncedSearch.length >= 3 ? debouncedSearch : '';
-      fetchData(searchToUse);
+      fetchData(searchToUse, controller.signal);
     }, 3000);
 
     return () => {
-      isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
-  }, [scanId, debouncedSearch]);
+  }, [status, scanId, debouncedSearch, fetchData]);
 
 
 
@@ -396,132 +411,37 @@ export function ScanDashboard({
 
   const links = data?.links ?? [];
   const scan = data?.scan ?? { config: '{}', name: scanName };
-  
-  // Parse config for filtering
-  let config: any = {};
-  try {
-    config = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
-  } catch (e) {}
-  
-  const startUrl = config.startUrl || '';
-  const internalDomain = startUrl ? new URL(startUrl).hostname.toLowerCase().replace(/^www\./, '') : '';
-  const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
+  const config = useMemo(() => parseScanConfigJson(scan.config), [scan.config]);
+  const isTargeted = !!config.isTargeted && (config.targetUrls?.length || 0) > 0;
   const targetUrls = config.targetUrls || [];
+  const matchesTarget = (url: string) => matchesScanTarget(url, config);
 
-    const matchesTarget = (url: string) => {
-        return targetUrls.some((target: string) => isTargetUrlMatch(url, target));
-    };
+  const triage = useMemo(
+    () => buildTriageGroups(links, config, viewMode),
+    [links, config, viewMode],
+  );
+  const {
+    filteredLinks,
+    uniqueFilteredLinks,
+    brokenLinks,
+    successLinks,
+    skippedLinks,
+    recheckedLinks,
+    currentBrokenGroups,
+    currentSuccessGroups,
+    currentSkippedGroups,
+    currentRecheckedGroups,
+    targetedGroups,
+  } = triage;
 
-  const isUrlInternal = (url: string) => {
-    try {
-      const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-      return host === internalDomain || (host.endsWith('.' + internalDomain) && !config.excludeSubdomains);
-    } catch (e) {
-      return url.startsWith('/');
-    }
-  };
-
-  // Filter links:
-  // 1. If targeted: only targets.
-  // 2. Regular: Only links found ON internal pages (or the entry point).
-  const groupLinks = (links: any[]) => {
-    const grouped: Record<string, any[]> = {};
-    links.forEach(link => {
-        const normalizedUrl = link.url.replace(/^https?:\/\//, '').toLowerCase();
-        if (!grouped[normalizedUrl]) {
-            grouped[normalizedUrl] = [];
-        }
-        grouped[normalizedUrl].push(link);
-    });
-    return Object.entries(grouped).map(([normalizedKey, instances]) => {
-        const displayUrl = instances.find(inst => inst.url.startsWith('https'))?.url || instances[0].url;
-        return {
-            url: displayUrl,
-            normalizedKey,
-            instances,
-            ...instances[0], 
-            count: instances.length
-        };
-    });
-  };
-
-  const groupLinksBySource = (links: any[]) => {
-    const grouped: Record<string, any[]> = {};
-    links.forEach(link => {
-        const source = link.parentUrl || 'Entry Point';
-        if (!grouped[source]) {
-            grouped[source] = [];
-        }
-        grouped[source].push(link);
-    });
-    return Object.entries(grouped).map(([source, instances]) => {
-        return {
-            url: source,
-            instances,
-            status: instances.some(i => i.status === 'BROKEN') ? 'BROKEN' : 'SUCCESS',
-            count: instances.length
-        };
-    });
-  };
-
-  const filteredLinks = links.filter((l: any) => {
-    // ALWAYS include SKIPPED links if they were recorded and found on a relevant page
-    if (l.status === 'SKIPPED') {
-      if (isTargeted) {
-        // In targeted scans, show skipped links if their parent was targeted
-                return !l.parentUrl || matchesTarget(l.parentUrl);
-      }
-      // In regular scans, show skipped links if their parent was internal
-      const parent = l.parentUrl;
-      if (!parent) return true;
-      return isUrlInternal(parent);
-    }
-
-    if (isTargeted) {
-      // If the link itself is a target, show it
-        const isTarget = matchesTarget(l.url);
-      if (isTarget) return true;
-
-      // If the link is BROKEN and found on a target page, show it (important for reporting broken external links)
-      if (l.status === 'BROKEN' && l.parentUrl) {
-                return matchesTarget(l.parentUrl);
-      }
-
-      return false;
-    }
-    
-    const parent = l.parentUrl;
-    if (!parent) return true; // Entry point
-    return isUrlInternal(parent);
-  });
-
-  const uniqueFilteredLinks = groupLinks(filteredLinks);
   const total = uniqueFilteredLinks.length;
-  const pending = filteredLinks.filter((l: any) => l.status === 'PENDING').length;
-  // Raw counts for internal use if needed, but UI uses unique counts derived below
-  
+  const pending = filteredLinks.filter((l) => l.status === 'PENDING').length;
   const progress = links.length > 0 ? ((links.length - links.filter((l: any) => l.status === 'PENDING').length) / links.length) * 100 : 0;
-
-  const brokenLinksRaw = filteredLinks.filter((l: any) => l.status === 'BROKEN');
-  const successLinksRaw = filteredLinks.filter((l: any) => l.status === 'SUCCESS' && !l.isRechecked);
-  const skippedLinksRaw = filteredLinks.filter((l: any) => l.status === 'SKIPPED' && !l.isRechecked);
-  const recheckedLinksRaw = filteredLinks.filter((l: any) => l.isRechecked);
-
-
-  const brokenLinks = groupLinks(brokenLinksRaw);
-  const successLinks = groupLinks(successLinksRaw);
-  const skippedLinks = groupLinks(skippedLinksRaw);
 
   const brokenCount = brokenLinks.length;
   const successCount = successLinks.length;
   const skippedCount = skippedLinks.length;
-  const recheckedLinks = groupLinks(recheckedLinksRaw);
   const recheckedCount = recheckedLinks.length;
-
-  const currentBrokenGroups = viewMode === 'url' ? brokenLinks : groupLinksBySource(brokenLinksRaw);
-  const currentSuccessGroups = viewMode === 'url' ? successLinks : groupLinksBySource(successLinksRaw);
-  const currentSkippedGroups = viewMode === 'url' ? skippedLinks : groupLinksBySource(skippedLinksRaw);
-  const currentRecheckedGroups = viewMode === 'url' ? recheckedLinks : groupLinksBySource(recheckedLinksRaw);
 
   const listResetToken = `${scanId}:${debouncedSearch}:${viewMode}`;
   const triageListFrozen = expandedTriageKeys.size > 0;
@@ -529,7 +449,6 @@ export function ScanDashboard({
   const stableSuccessGroups = useStableGroupOrder(currentSuccessGroups, triageListFrozen && activeTab === 'success', listResetToken);
   const stableSkippedGroups = useStableGroupOrder(currentSkippedGroups, triageListFrozen && activeTab === 'skipped', listResetToken);
   const stableRecheckedGroups = useStableGroupOrder(currentRecheckedGroups, triageListFrozen && activeTab === 'rechecked', listResetToken);
-  const targetedGroups = groupLinks(filteredLinks);
   const stableTargetedGroups = useStableGroupOrder(targetedGroups, triageListFrozen && isTargeted, `${listResetToken}:targeted`);
 
   const paginatedBroken = stableBrokenGroups.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);

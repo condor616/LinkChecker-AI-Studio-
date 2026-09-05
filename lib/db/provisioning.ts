@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { parseDatabaseUrl } from '../utils/db-command';
 import { getDb, getGeoDb, closePool, closeGeoPool, getUserDbName, getGeoUserDbName } from './index';
+import { ensureLinksIndexes } from './indexes';
 
 const pgUser = process.env.POSTGRES_USER || 'lynx_scan';
 const pgPassword = process.env.POSTGRES_PASSWORD || 'localpass';
@@ -83,6 +84,8 @@ export async function provisionUserDb(userId: string) {
         CONSTRAINT "links_scan_id_scans_id_fk" FOREIGN KEY ("scan_id") REFERENCES "scans"("id") ON DELETE CASCADE
       );
     `);
+
+    await ensureLinksIndexes((sql) => db.execute(sql));
 
     // Create 'templates' table
     await db.execute(`

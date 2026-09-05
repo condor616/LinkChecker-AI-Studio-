@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp, boolean, index } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
@@ -35,7 +35,11 @@ export const links = pgTable('links', {
   depth: integer('depth').notNull().default(0),
   checkedAt: timestamp('checked_at', { mode: 'date' }),
   isRechecked: boolean('is_rechecked').notNull().default(false),
-});
+}, (table) => [
+  index('links_scan_id_idx').on(table.scanId),
+  index('links_scan_id_status_idx').on(table.scanId, table.status),
+  index('links_scan_id_url_idx').on(table.scanId, table.url),
+]);
 
 export const templates = pgTable('templates', {
   id: text('id').primaryKey(),

@@ -83,7 +83,7 @@ export function ScanCard({ scan, i }: { scan: any, i: number }) {
                   <div className="mt-auto flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium min-w-0">
                       <Clock className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{new Date(scan.createdAt).toLocaleDateString()} at {new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span suppressHydrationWarning className="truncate">{new Date(scan.createdAt).toLocaleDateString()} at {new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                     <div className={cn(
                         "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-bold shrink-0",

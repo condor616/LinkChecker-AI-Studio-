@@ -2,28 +2,26 @@
 
 ## Architecture Overview
 
-This application is built using a modern Next.js stack with a distributed task processing system.
+LynxScan is the root Next.js app in this repository (port 3000). Lynx GEO lives in `apps/lynxgeo` and is a sibling product. Both share PostgreSQL and Redis but use separate BullMQ queues.
 
 ### Tech Stack
 - **Framework**: Next.js 15 (App Router)
-- **Database**: SQLite (via `better-sqlite3`, multi-tenant)
-- **ORM**: Drizzle ORM
-- **Task Queue**: BullMQ (running on Redis)
-- **Worker**: Standalone Node.js worker service (Docker-based)
-- **Styling**: Vanilla CSS + Shadcn UI components
-- **Authentication**: Custom JWT implementation using `jose`
+- **Database**: PostgreSQL via Drizzle ORM (central auth DB plus per-user Scan databases)
+- **Task Queue**: BullMQ on Redis (`scan-jobs`)
+- **Worker**: Standalone Node.js worker (`worker/index.ts`), typically Docker-based
+- **Styling**: Tailwind CSS v4 + shadcn-style UI
+- **Authentication**: JWT (`jose`) in an HTTP-only `session` cookie
 
 ### Database Schema
 The schema is defined in `lib/db/schema.ts`:
-- `users`: Stores user accounts, roles (ADMIN, PENDING, USER), and resource limits.
-- `scans`: Represents a crawling job. Contains the configuration JSON and current status.
-- `links`: Represents individual URLs found during a scan. Tracks status (PENDING, SUCCESS, BROKEN) and parent-child relationships.
+- `users` (central DB): accounts, roles (`ADMIN`, `PENDING`, `USER`, `BLOCKED`), product access, resource limits
+- `scans` (per-user Scan DB): crawl job config and status
+- `links` (per-user Scan DB): discovered URLs, status (`PENDING`, `PROCESSING`, `SUCCESS`, `BROKEN`, `SKIPPED`), parent/source
+- `templates` (per-user Scan DB): saved crawl configs
 
-> [!NOTE]
-> Each user has their own isolated SQLite database file, managed via a tenant-based connection system in `lib/db/index.ts`.
+Each approved LynxScan user gets an isolated Postgres database named `lynx_scan_<userId>`, provisioned in `lib/db/provisioning.ts`.
 
 ### Crawler Engine (BullMQ Worker)
-The crawler has been migrated from an internal interval to a robust, asynchronous queue-based system.
 
 LynxScan and Lynx GEO share one Redis instance but **two BullMQ queue names**:
 
@@ -34,32 +32,26 @@ LynxScan and Lynx GEO share one Redis instance but **two BullMQ queue names**:
 
 Do not merge these queues. GEO must never enqueue or process `scan-jobs`.
 
-`npm run dev:lynxgeo` matches LynxScan: cleanup leftover host Next/tsx processes, then Docker `lynxgeo-worker` listens and processes immediately. `predev` kills leftover `npm run worker:lynxgeo` / host `tsx worker/index.ts` so they do not sit beside compose. Use `npm run worker:lynxgeo` only when you are not using the Docker worker (`npm run stop-docker:lynxgeo` first).
+`npm run dev:lynxgeo` matches LynxScan: cleanup leftover host Next/tsx processes, then Docker `lynxgeo-worker` listens and processes immediately. Use `npm run worker:lynxgeo` only when you are not using the Docker worker (`npm run stop-docker:lynxgeo` first).
 
 Bull **Waiting = 0** with **Active = 1** means a worker is processing; the queue is not empty.
 
-- **Queue Management**: The Next.js app enqueues scan tasks into a `scan-jobs` queue managed by BullMQ and Redis.
-- **Worker Service**: A separate worker service (`worker/index.ts`) processes these jobs. It is containerized and can be scaled independently.
-- **Concurrency**: The worker supports configurable concurrency (via `BULLMQ_CONCURRENCY` env var).
-- **Extensibility**: The worker uses `cheerio` for extraction and respects user-defined crawl depth and exclusion rules.
+- **Queue Management**: The Next.js app enqueues scan tasks into `scan-jobs`.
+- **Worker Service**: `worker/index.ts` processes jobs, containerized and scalable independently.
+- **Concurrency**: `BULLMQ_CONCURRENCY`.
+- **Extraction**: `@lynx/crawler-core` (cheerio) plus LynxScan-specific persistence in `lib/crawler/processor.ts`.
 - **Monitoring**: Bull Board lists both queues. Local worker: `http://localhost:3001/admin/queues`. Docker `lynxscan-dev` stack maps that to `http://localhost:3002/admin/queues`.
 
 ### Local Development
-To run the full stack locally (including Redis and the Worker):
 ```bash
-# Using the provided docker-compose
-cd docker/services
-docker-compose up -d
+npm run dev
 ```
+This starts Docker PostgreSQL/Redis/worker (via `predev`) and Next.js on port 3000. See the root README for GEO and dual-app commands.
 
 ### Authentication Flow
-- Simple JWT-based auth.
-- Tokens are stored in HTTP-only cookies.
-- First user registration gets `ADMIN`. Others get `PENDING`.
-- Middleware or layout checks protect routes.
+- JWT stored in an HTTP-only cookie.
+- First registered user is `ADMIN`. Later users are `PENDING` until approved.
+- Middleware and `requireApprovedUser` protect Scan routes. Admins grant per-product access (LynxScan / Lynx GEO).
 
 ### Bidirectional JSON Sync
-The "New Scan" page features a bidirectional sync between a visual form and a JSON editor.
-- State is held in a single `config` object.
-- `useEffect` updates the JSON text when the UI changes.
-- An `onChange` handler parses the JSON text and updates the UI state if valid.
+The "New Scan" page keeps a visual form and a JSON editor in sync on a single `config` object.

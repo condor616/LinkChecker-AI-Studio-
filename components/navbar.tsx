@@ -19,7 +19,7 @@ import {
   Moon,
   Sun
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { useScanSelection } from '@/components/scans/scan-selection-provider';
 
 interface NavbarProps {

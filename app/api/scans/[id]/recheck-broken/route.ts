@@ -44,18 +44,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const config = typeof scan.config === 'string' ? JSON.parse(scan.config) : scan.config;
-
-    // Enqueue all broken links
-    for (const link of brokenLinks) {
-        await scanQueue.add(`recheck-${link.id}`, {
-            userId: session.id,
-            scanId: scan.id,
-            url: link.url,
-            depth: link.depth,
-            config,
-            linkId: link.id
-        });
-    }
+    await scanQueue.addBulk(
+      brokenLinks.map((link) => ({
+        name: `recheck-${link.id}`,
+        data: {
+          userId: session.id,
+          scanId: scan.id,
+          url: link.url,
+          depth: link.depth,
+          config,
+          linkId: link.id,
+        },
+      })),
+    );
 
     return NextResponse.json({ success: true, count: brokenLinks.length });
   } catch (error: any) {

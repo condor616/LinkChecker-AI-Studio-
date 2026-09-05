@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ShieldCheck, Database, User, Sparkles, Layout, Loader2 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useScanSelection } from '@/components/scans/scan-selection-provider';
 import { BackupRestorePanel } from '@/components/backup-restore-panel';

@@ -22,9 +22,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       updates.productAccess = stringifyProductAccess(mergedAccess);
     }
 
-    console.log(`PATCH /api/admin/users/${id} called with updates:`, updates);
-    const result = await db.update(users).set(updates).where(eq(users.id, id));
-    console.log(`Update result for user ${id}:`, result);
+    await db.update(users).set(updates).where(eq(users.id, id));
 
     if (updates.role === 'USER' || updates.role === 'ADMIN') {
       process.nextTick(() => {

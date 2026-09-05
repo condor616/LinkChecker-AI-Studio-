@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Database, UserPlus, CheckCircle2, ArrowRight, Activity } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function SetupPage() {
   const [step, setStep] = useState(1);
@@ -86,12 +86,12 @@ export default function SetupPage() {
                 <CardContent className="space-y-6">
                   <div className="p-4 border-2 border-primary bg-primary/5 rounded-xl space-y-2">
                     <div className="flex items-center justify-between">
-                        <span className="font-bold">Local SQLite</span>
+                        <span className="font-bold">PostgreSQL</span>
                         <Badge variant="default">Recommended</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        Perfect for local development, Google AI Studio, or single-user self-hosting. 
-                        No external configuration required.
+                        Docker PostgreSQL for local development and self-hosting.
+                        Schema is created automatically on first start.
                     </p>
                   </div>
                   <div className="p-4 border border-dashed rounded-xl opacity-50 grayscale flex items-center justify-between">

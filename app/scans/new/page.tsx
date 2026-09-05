@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Play, Save, Copy, Check, Trash2, LayoutTemplate, Plus, X, Shield, Filter, Globe, Code, ChevronDown, Key, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { USER_AGENTS, DEFAULT_USER_AGENT } from '@/lib/crawler/agents';
 
 

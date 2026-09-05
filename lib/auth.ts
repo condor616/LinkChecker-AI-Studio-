@@ -9,7 +9,6 @@ import {
   parseProductAccess,
   hasProductAccess,
   type ProductAccess,
-  type ProductId,
 } from '@lynx/auth';
 
 export { createToken, verifyToken };
@@ -85,16 +84,5 @@ export async function requireApprovedUser() {
   await provisionUserDb(session.id).catch((err) => {
     console.error(`User DB Provisioning failed for ${session.id}:`, err);
   });
-  return session;
-}
-
-export async function requireProduct(product: ProductId) {
-  const session = await requireAuth();
-  if (session.role !== 'ADMIN' && session.role !== 'USER') {
-    throw new Error('Forbidden: Your account is pending approval.');
-  }
-  if (session.role !== 'ADMIN' && !hasProductAccess(session.productAccess, product)) {
-    throw new Error(`Forbidden: You do not have access to ${product}.`);
-  }
   return session;
 }

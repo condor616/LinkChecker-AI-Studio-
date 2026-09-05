@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +25,7 @@ import {
   Activity,
   Ghost
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 
 interface ScanVisualDashboardProps {
@@ -40,15 +40,21 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
   const [priorityPage, setPriorityPage] = useState(1);
   const priorityPageSize = 5;
   const isTargetedScan = isTargetedScanConfig(data?.scan?.config);
+  const status = data?.scan?.status;
 
-  const fetchData = async () => {
-    const res = await fetch(`/api/scans/${scanId}`);
-    if (res.ok) {
-      const json = await res.json();
-      setData(json);
-      setLoading(false);
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(`/api/scans/${scanId}`, { signal });
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+        setLoading(false);
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      console.error(err);
     }
-  };
+  }, [scanId]);
 
   useEffect(() => {
     if (isTargetedScan) {
@@ -58,12 +64,21 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
 
   useEffect(() => {
     if (isTargetedScan) return;
-    if (!initialData) {
-      fetchData();
-    }
-    const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
-  }, [scanId, initialData, isTargetedScan]);
+    if (initialData) return;
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    return () => controller.abort();
+  }, [scanId, initialData, isTargetedScan, fetchData]);
+
+  useEffect(() => {
+    if (isTargetedScan || status !== 'RUNNING') return;
+    const controller = new AbortController();
+    const interval = setInterval(() => fetchData(controller.signal), 3000);
+    return () => {
+      clearInterval(interval);
+      controller.abort();
+    };
+  }, [scanId, isTargetedScan, status, fetchData]);
 
   const stats = useMemo(() => {
     if (!data || isTargetedScan) return null;
