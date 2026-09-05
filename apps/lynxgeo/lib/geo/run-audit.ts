@@ -198,7 +198,12 @@ export async function runAudit(
         seen.add(geoPageUrlKey(page.url));
         try {
           const extra = JSON.parse(page.findings || '[]');
-          if (Array.isArray(extra)) findings.push(...(extra as Finding[]));
+          if (Array.isArray(extra)) {
+            // Drop legacy exclusion warns so resumed audits do not score them.
+            findings.push(
+              ...(extra as Finding[]).filter((f) => !(typeof f?.id === 'string' && f.id.startsWith('excluded-'))),
+            );
+          }
         } catch {
           // ignore malformed stored findings
         }
@@ -261,6 +266,8 @@ export async function runAudit(
           await persistFrontier('crawl');
           continue;
         }
+        // Record the skip for the page list, but do not emit a warn finding —
+        // user-configured exclusions are intentional skips, not crawl-access issues.
         await geoDb.insert(auditPages).values({
           id: randomUUID(),
           auditId,
@@ -271,18 +278,7 @@ export async function runAudit(
           depth: item.depth,
           contentType: null,
           headers: null,
-          findings: JSON.stringify([
-            {
-              id: `excluded-${item.url}`,
-              category: 'crawlAccess',
-              title: skip,
-              detail: `${skip} (${item.url})`,
-              severity: 'warn',
-              standard: 'established',
-              suggestion: `Review crawl exclusions for ${item.url}.`,
-              url: item.url,
-            },
-          ]),
+          findings: JSON.stringify([]),
           checkedAt: new Date(),
         });
         pageRows.push({ url: item.url, status: 'SKIPPED', statusCode: null });

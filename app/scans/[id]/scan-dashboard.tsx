@@ -1,18 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext, type ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-function getStatusBadgeClass(statusCode: string | number | undefined, isBroken: boolean, isPending?: boolean): string {
-  if (isPending) return "bg-blue-500 text-white";
-  const code = typeof statusCode === 'string' ? parseInt(statusCode, 10) : (statusCode || 0);
-  if (code >= 500) return "bg-orange-500/15 text-orange-600 dark:text-orange-400";
-  if (code >= 400) return "bg-destructive/15 text-destructive";
-  if (code >= 300) return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400";
-  if (code >= 200) return "bg-green-500/10 text-green-500";
-  if (isBroken) return "bg-destructive/15 text-destructive";
-  return "bg-muted text-muted-foreground";
-}
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { isTargetUrlMatch } from '@/lib/utils/url';
@@ -24,6 +13,85 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ExportButton } from './export-button';
 
+function getStatusBadgeClass(statusCode: string | number | undefined, isBroken: boolean, isPending?: boolean): string {
+  if (isPending) return "bg-blue-500 text-white";
+  const code = typeof statusCode === 'string' ? parseInt(statusCode, 10) : (statusCode || 0);
+  if (code >= 500) return "bg-orange-500/15 text-orange-600 dark:text-orange-400";
+  if (code >= 400) return "bg-destructive/15 text-destructive";
+  if (code >= 300) return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400";
+  if (code >= 200) return "bg-green-500/10 text-green-500";
+  if (isBroken) return "bg-destructive/15 text-destructive";
+  return "bg-muted text-muted-foreground";
+}
+
+function triageGroupKey(group: { normalizedKey?: string; url: string }): string {
+  return group.normalizedKey || group.url;
+}
+
+/**
+ * Keep triage rows in first-seen order so live poll refreshes don't reshuffle.
+ * While `freeze` is true (an item is expanded), new rows are not inserted — existing
+ * rows keep their places so the open detail panel doesn't jump away.
+ */
+function useStableGroupOrder(groups: any[], freeze: boolean, resetToken: string) {
+  const orderRef = useRef<string[]>([]);
+  const frozenOrderRef = useRef<string[] | null>(null);
+  const lastByKeyRef = useRef<Map<string, any>>(new Map());
+  const tokenRef = useRef(resetToken);
+
+  if (tokenRef.current !== resetToken) {
+    tokenRef.current = resetToken;
+    orderRef.current = [];
+    frozenOrderRef.current = null;
+    lastByKeyRef.current = new Map();
+  }
+
+  const byKey = new Map<string, any>();
+  for (const group of groups) {
+    const key = triageGroupKey(group);
+    byKey.set(key, group);
+    lastByKeyRef.current.set(key, group);
+  }
+
+  if (!freeze) {
+    frozenOrderRef.current = null;
+    for (const group of groups) {
+      const key = triageGroupKey(group);
+      if (!orderRef.current.includes(key)) orderRef.current.push(key);
+    }
+    orderRef.current = orderRef.current.filter((key) => byKey.has(key));
+    for (const key of [...lastByKeyRef.current.keys()]) {
+      if (!byKey.has(key)) lastByKeyRef.current.delete(key);
+    }
+  } else if (!frozenOrderRef.current) {
+    for (const group of groups) {
+      const key = triageGroupKey(group);
+      if (!orderRef.current.includes(key)) orderRef.current.push(key);
+    }
+    orderRef.current = orderRef.current.filter((key) => byKey.has(key));
+    frozenOrderRef.current = [...orderRef.current];
+  }
+
+  const keys = frozenOrderRef.current ?? orderRef.current;
+  return keys
+    .map((key) => byKey.get(key) ?? (freeze ? lastByKeyRef.current.get(key) : undefined))
+    .filter(Boolean);
+}
+
+type TriageExpandContextValue = {
+  reportExpand: (key: string, expanded: boolean) => void;
+};
+
+const TriageExpandContext = createContext<TriageExpandContextValue | null>(null);
+
+function useReportTriageExpand(groupKey: string, expanded: boolean) {
+  const ctx = useContext(TriageExpandContext);
+  useEffect(() => {
+    if (!ctx) return;
+    ctx.reportExpand(groupKey, expanded);
+    return () => ctx.reportExpand(groupKey, false);
+  }, [ctx, groupKey, expanded]);
+}
 const headerOutlineChrome =
   "cursor-pointer gap-2 border-primary/50 bg-background text-foreground hover:border-primary hover:bg-primary/10 dark:border-primary/25 dark:hover:border-primary/50 dark:hover:bg-primary/5 transition-all";
 
@@ -59,8 +127,25 @@ export function ScanDashboard({
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isRecheckingAll, setIsRecheckingAll] = useState(false);
+  const [expandedTriageKeys, setExpandedTriageKeys] = useState<Set<string>>(() => new Set());
   const router = useRouter();
   const pageSize = 30;
+
+  const reportTriageExpand = useCallback((key: string, expanded: boolean) => {
+    setExpandedTriageKeys((prev) => {
+      const has = prev.has(key);
+      if (expanded && has) return prev;
+      if (!expanded && !has) return prev;
+      const next = new Set(prev);
+      if (expanded) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+  const triageExpandCtx = useMemo(
+    () => ({ reportExpand: reportTriageExpand }),
+    [reportTriageExpand],
+  );
 
   const fetchData = async (searchOverride?: string) => {
     const searchToUse = searchOverride !== undefined ? searchOverride : (searchQuery.length >= 3 ? searchQuery : '');
@@ -197,12 +282,12 @@ export function ScanDashboard({
   };
 
   const stickyHeader = (
-    <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-sm border-b border-border px-8 py-5">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground truncate">{scanName}</h1>
+    <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-sm border-b border-border px-4 sm:px-6 md:px-8 py-4 sm:py-5">
+      <div className="flex items-center justify-between gap-2 sm:gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <h1 className="truncate text-xl font-black tracking-tight text-foreground sm:text-3xl md:text-4xl">{scanName}</h1>
           <span className={cn(
-             "shrink-0 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
+             "shrink-0 px-2.5 sm:px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
              status === 'RUNNING' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
              status === 'COMPLETED' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
              status === 'FAILED' ? "bg-destructive/10 text-destructive border-destructive/20" :
@@ -211,7 +296,7 @@ export function ScanDashboard({
             {status}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {!isTargetedScan && (
             <ExportButton scanId={scanId} scanName={scanName} />
           )}
@@ -220,12 +305,13 @@ export function ScanDashboard({
               <Button
                 onClick={toggleStatus}
                 variant="outline"
-                className={cn("h-10 w-32", headerOutlineChrome)}
+                className={cn("h-10 w-auto min-w-0 px-2.5 sm:min-w-[7.5rem] sm:px-3", headerOutlineChrome)}
+                title={status === 'RUNNING' ? 'Pause' : 'Resume'}
               >
                 {status === 'RUNNING' ? (
-                  <><Pause className="h-4 w-4 text-primary" /> Pause</>
+                  <><Pause className="h-4 w-4 text-primary" /> <span className="hidden sm:inline">Pause</span></>
                 ) : (
-                  <><Play className="h-4 w-4 text-primary" /> Resume</>
+                  <><Play className="h-4 w-4 text-primary" /> <span className="hidden sm:inline">Resume</span></>
                 )}
               </Button>
               <Button
@@ -239,10 +325,11 @@ export function ScanDashboard({
             </>
           )}
           {!isTargetedScan && (
-            <Button asChild variant="outline" className={cn("h-10", headerOutlineChrome)}>
+            <Button asChild variant="outline" className={cn("h-10 px-2.5 sm:px-4", headerOutlineChrome)}>
               <Link href={`/scans/${scanId}/dashboard`}>
                 <LayoutDashboard className="h-4 w-4 text-primary" />
-                Visual Dashboard
+                <span className="sm:hidden">Dashboard</span>
+                <span className="hidden sm:inline">Visual Dashboard</span>
               </Link>
             </Button>
           )}
@@ -307,19 +394,8 @@ export function ScanDashboard({
     </AnimatePresence>
   );
 
-  if (!data) return (
-    <>
-      {stickyHeader}
-      <div className="px-8 pt-8 pb-10">
-        <div className="flex items-center justify-center p-20">
-          <RefreshCw className="h-10 w-10 animate-spin text-primary/50" />
-        </div>
-      </div>
-      {stopConfirmDialog}
-    </>
-  );
-
-  const { links, scan } = data;
+  const links = data?.links ?? [];
+  const scan = data?.scan ?? { config: '{}', name: scanName };
   
   // Parse config for filtering
   let config: any = {};
@@ -447,10 +523,19 @@ export function ScanDashboard({
   const currentSkippedGroups = viewMode === 'url' ? skippedLinks : groupLinksBySource(skippedLinksRaw);
   const currentRecheckedGroups = viewMode === 'url' ? recheckedLinks : groupLinksBySource(recheckedLinksRaw);
 
-  const paginatedBroken = currentBrokenGroups.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);
-  const paginatedSuccess = currentSuccessGroups.slice((successPage - 1) * pageSize, successPage * pageSize);
-  const paginatedSkipped = currentSkippedGroups.slice((skippedPage - 1) * pageSize, skippedPage * pageSize);
-  const paginatedRechecked = currentRecheckedGroups.slice((recheckedPage - 1) * pageSize, recheckedPage * pageSize);
+  const listResetToken = `${scanId}:${debouncedSearch}:${viewMode}`;
+  const triageListFrozen = expandedTriageKeys.size > 0;
+  const stableBrokenGroups = useStableGroupOrder(currentBrokenGroups, triageListFrozen && activeTab === 'broken', listResetToken);
+  const stableSuccessGroups = useStableGroupOrder(currentSuccessGroups, triageListFrozen && activeTab === 'success', listResetToken);
+  const stableSkippedGroups = useStableGroupOrder(currentSkippedGroups, triageListFrozen && activeTab === 'skipped', listResetToken);
+  const stableRecheckedGroups = useStableGroupOrder(currentRecheckedGroups, triageListFrozen && activeTab === 'rechecked', listResetToken);
+  const targetedGroups = groupLinks(filteredLinks);
+  const stableTargetedGroups = useStableGroupOrder(targetedGroups, triageListFrozen && isTargeted, `${listResetToken}:targeted`);
+
+  const paginatedBroken = stableBrokenGroups.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);
+  const paginatedSuccess = stableSuccessGroups.slice((successPage - 1) * pageSize, successPage * pageSize);
+  const paginatedSkipped = stableSkippedGroups.slice((skippedPage - 1) * pageSize, skippedPage * pageSize);
+  const paginatedRechecked = stableRecheckedGroups.slice((recheckedPage - 1) * pageSize, recheckedPage * pageSize);
 
   // Discovery: unique target URLs seen so far (any status). Orphans are only reported after the crawl finishes.
   const isScanComplete = status === 'COMPLETED';
@@ -467,11 +552,24 @@ export function ScanDashboard({
   const pagesCrawled = links.filter((l: any) => l.type?.includes('html') && l.status !== 'PENDING').length;
   const globalPending = links.filter((l: any) => l.status === 'PENDING').length;
 
+  if (!data) return (
+    <>
+      {stickyHeader}
+      <div className="px-4 sm:px-6 md:px-8 pt-6 sm:pt-8 pb-10">
+        <div className="flex items-center justify-center p-12 sm:p-20">
+          <RefreshCw className="h-10 w-10 animate-spin text-primary/50" />
+        </div>
+      </div>
+      {stopConfirmDialog}
+    </>
+  );
+
   return (
+    <TriageExpandContext.Provider value={triageExpandCtx}>
     <>
     {stickyHeader}
-    <div className="px-8 pt-8 pb-10 space-y-8">
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="px-4 sm:px-6 md:px-8 pt-6 sm:pt-8 pb-10 space-y-6 sm:space-y-8">
+    <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto min-w-0">
       <div className="space-y-2">
             <div className="flex justify-between text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 <span>{isTargeted ? 'Crawl Progress' : 'Overall Progress'}</span>
@@ -571,7 +669,7 @@ export function ScanDashboard({
 
         {/* Triage Section (Now at the top) */}
         <div className="w-full order-1">
-            <Card className="min-h-[500px] flex flex-col shadow-xl border-primary/5">
+            <Card className="min-h-[500px] min-w-0 flex flex-col shadow-xl border-primary/5 overflow-hidden">
                 <Tabs
                     value={activeTab}
                     onValueChange={(value) => {
@@ -626,12 +724,12 @@ export function ScanDashboard({
                         {/* Row 2: Filter Tabs - Desktop */}
                         {!isTargeted && (
                             <>
-                                {/* Mobile: Compact Filter Buttons */}
-                                <div className="flex md:hidden gap-1.5 pt-3 pb-2 overflow-x-auto scrollbar-hide">
+                                {/* Mobile: Compact Filter Buttons (2×2 so nothing clips) */}
+                                <div className="grid grid-cols-2 gap-1.5 md:hidden pt-3 pb-2">
                                     <Button
                                         variant={activeTab === 'broken' ? 'default' : 'outline'}
                                         size="sm"
-                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        className="h-8 px-2 text-[10px] font-bold uppercase tracking-tight justify-center"
                                         onClick={() => setActiveTab('broken')}
                                     >
                                         <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentBrokenGroups.length}</span>
@@ -640,7 +738,7 @@ export function ScanDashboard({
                                     <Button
                                         variant={activeTab === 'rechecked' ? 'default' : 'outline'}
                                         size="sm"
-                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        className="h-8 px-2 text-[10px] font-bold uppercase tracking-tight justify-center"
                                         onClick={() => setActiveTab('rechecked')}
                                     >
                                         <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentRecheckedGroups.length}</span>
@@ -649,7 +747,7 @@ export function ScanDashboard({
                                     <Button
                                         variant={activeTab === 'success' ? 'default' : 'outline'}
                                         size="sm"
-                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        className="h-8 px-2 text-[10px] font-bold uppercase tracking-tight justify-center"
                                         onClick={() => setActiveTab('success')}
                                     >
                                         <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentSuccessGroups.length}</span>
@@ -658,7 +756,7 @@ export function ScanDashboard({
                                     <Button
                                         variant={activeTab === 'skipped' ? 'default' : 'outline'}
                                         size="sm"
-                                        className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-tight whitespace-nowrap flex-shrink-0"
+                                        className="h-8 px-2 text-[10px] font-bold uppercase tracking-tight justify-center"
                                         onClick={() => setActiveTab('skipped')}
                                     >
                                         <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentSkippedGroups.length}</span>
@@ -689,8 +787,8 @@ export function ScanDashboard({
                     <CardContent ref={triageContentRef} className="flex-1 min-w-0 overflow-auto p-0 flex flex-col">
                         {isTargeted ? (
                             <div className="divide-y flex-1">
-                                {groupLinks(filteredLinks).map((group: any) => (
-                                    <TriageItemGeneral key={group.url} group={group} onRecheck={handleRecheck} />
+                                {stableTargetedGroups.map((group: any) => (
+                                    <TriageItemGeneral key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
                                 ))}
                                 {filteredLinks.length === 0 && (
                                     <EmptyState message="No target instances found yet. The engine is still scanning..." />
@@ -724,7 +822,7 @@ export function ScanDashboard({
                                     </div>
                                     <PaginationControls 
                                         currentPage={brokenPage} 
-                                        totalItems={currentBrokenGroups.length} 
+                                        totalItems={stableBrokenGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setBrokenPage} 
                                         position="top"
@@ -732,15 +830,15 @@ export function ScanDashboard({
                                     <div className="divide-y flex-1">
                                         {paginatedBroken.map((group: any) => (
                                             viewMode === 'url' ? (
-                                                <TriageItem key={group.url} group={group} onRecheck={handleRecheck} />
+                                                <TriageItem key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
                                             ) : (
-                                                <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                                <TriageItemSource key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
                                             )
                                         ))}
                                     </div>
                                     <PaginationControls 
                                         currentPage={brokenPage} 
-                                        totalItems={currentBrokenGroups.length} 
+                                        totalItems={stableBrokenGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setBrokenPage} 
                                         position="bottom"
@@ -759,7 +857,7 @@ export function ScanDashboard({
                                         {currentRecheckedGroups.length > pageSize && (
                                             <PaginationControls 
                                                 currentPage={recheckedPage} 
-                                                totalItems={currentRecheckedGroups.length} 
+                                                totalItems={stableRecheckedGroups.length} 
                                                 pageSize={pageSize} 
                                                 onPageChange={setRecheckedPage} 
                                                 position="top"
@@ -767,15 +865,15 @@ export function ScanDashboard({
                                         )}
                                         {paginatedRechecked.map((group: any) => (
                                             viewMode === 'url' ? (
-                                                <TriageItemRechecked key={group.url} group={group} onRecheck={handleRecheck} />
+                                                <TriageItemRechecked key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
                                             ) : (
-                                                <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                                <TriageItemSource key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
                                             )
                                         ))}
                                         {currentRecheckedGroups.length > pageSize && (
                                             <PaginationControls 
                                                 currentPage={recheckedPage} 
-                                                totalItems={currentRecheckedGroups.length} 
+                                                totalItems={stableRecheckedGroups.length} 
                                                 pageSize={pageSize} 
                                                 onPageChange={setRecheckedPage} 
                                                 position="bottom"
@@ -790,7 +888,7 @@ export function ScanDashboard({
                                 {currentSuccessGroups.length > pageSize && (
                                     <PaginationControls 
                                         currentPage={successPage} 
-                                        totalItems={currentSuccessGroups.length} 
+                                        totalItems={stableSuccessGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setSuccessPage} 
                                         position="top"
@@ -798,16 +896,16 @@ export function ScanDashboard({
                                 )}
                                 {paginatedSuccess.map((group: any) => (
                                     viewMode === 'url' ? (
-                                        <TriageItemSuccess key={group.url} group={group} />
+                                        <TriageItemSuccess key={triageGroupKey(group)} group={group} />
                                     ) : (
-                                        <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                        <TriageItemSource key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
                                     )
                                 ))}
                              </div>
                              {currentSuccessGroups.length > pageSize && (
                                 <PaginationControls 
                                     currentPage={successPage} 
-                                    totalItems={currentSuccessGroups.length} 
+                                    totalItems={stableSuccessGroups.length} 
                                     pageSize={pageSize} 
                                     onPageChange={setSuccessPage} 
                                     position="bottom"
@@ -819,7 +917,7 @@ export function ScanDashboard({
                                 {currentSkippedGroups.length > pageSize && (
                                     <PaginationControls 
                                         currentPage={skippedPage} 
-                                        totalItems={currentSkippedGroups.length} 
+                                        totalItems={stableSkippedGroups.length} 
                                         pageSize={pageSize} 
                                         onPageChange={setSkippedPage} 
                                         position="top"
@@ -827,9 +925,9 @@ export function ScanDashboard({
                                 )}
                                 {paginatedSkipped.map((group: any) => (
                                     viewMode === 'url' ? (
-                                        <TriageItemSkipped key={group.url} group={group} />
+                                        <TriageItemSkipped key={triageGroupKey(group)} group={group} />
                                     ) : (
-                                        <TriageItemSource key={group.url} group={group} onRecheck={handleRecheck} />
+                                        <TriageItemSource key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
                                     )
                                 ))}
                                 {currentSkippedGroups.length === 0 && (
@@ -841,7 +939,7 @@ export function ScanDashboard({
                              {currentSkippedGroups.length > pageSize && (
                                 <PaginationControls 
                                     currentPage={skippedPage} 
-                                    totalItems={currentSkippedGroups.length} 
+                                    totalItems={stableSkippedGroups.length} 
                                     pageSize={pageSize} 
                                     onPageChange={setSkippedPage} 
                                     position="bottom"
@@ -859,6 +957,7 @@ export function ScanDashboard({
     </div>
     {stopConfirmDialog}
     </>
+    </TriageExpandContext.Provider>
   );
 }
 
@@ -886,13 +985,13 @@ function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, p
 
     return (
         <div className={cn(
-            "flex items-center justify-between px-4 py-2.5 bg-muted/5",
+            "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-2.5 bg-muted/5",
             position === 'bottom' ? "border-t" : "border-b"
         )}>
-            <div className="text-[10px] text-muted-foreground font-medium">
+            <div className="text-[10px] text-muted-foreground font-medium shrink-0">
                 <span className="font-bold text-foreground">{totalItems.toLocaleString()}</span> results &middot; page <span className="font-bold text-foreground">{currentPage}</span> of <span className="font-bold text-foreground">{totalPages}</span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-0.5 -mx-0.5 px-0.5 scrollbar-hide">
                 <button
                     className={cn(
                         "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border",
@@ -965,9 +1064,50 @@ function StatCard({ title, value, icon, color = "", highlight = false }: any) {
 
 function EmptyState({ message }: { message: string }) {
     return (
-        <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
+        <div className="flex flex-col items-center justify-center p-10 sm:p-20 text-muted-foreground">
             <CheckCircle2 className="h-12 w-12 mb-4 text-green-500/20" />
-            <p className="text-sm italic">{message}</p>
+            <p className="text-sm italic text-center px-2">{message}</p>
+        </div>
+    );
+}
+
+/** Shared triage row chrome: full URL wraps (smaller type on mobile); badges/actions stay tappable. */
+function TriageRowHeader({
+    onClick,
+    countBadge,
+    url,
+    urlClassName,
+    actions,
+}: {
+    onClick: () => void;
+    countBadge?: ReactNode;
+    url: string;
+    urlClassName?: string;
+    actions: ReactNode;
+}) {
+    const urlTextClass =
+        "min-w-0 flex-1 break-all font-medium text-[11px] leading-snug sm:text-sm sm:leading-snug";
+
+    return (
+        <div
+            className="min-h-12 px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 cursor-pointer select-none"
+            onClick={onClick}
+        >
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+                {countBadge ? <div className="shrink-0">{countBadge}</div> : null}
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(urlTextClass, "hover:underline", urlClassName)}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {url}
+                </a>
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 self-center">
+                {actions}
+            </div>
         </div>
     );
 }
@@ -1016,11 +1156,11 @@ function FoundOnTable({
             <table className="w-full table-fixed text-left">
                 <thead>
                     <tr className="border-b border-border/60">
-                        <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground min-w-0">
+                        <th className="px-3 sm:px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground min-w-0">
                             Found on
                         </th>
                         {anyHtml && (
-                            <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-right w-[7.5rem]">
+                            <th className="px-2 sm:px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-right w-[5.5rem] sm:w-[7.5rem]">
                                 HTML
                             </th>
                         )}
@@ -1035,7 +1175,7 @@ function FoundOnTable({
                         const rowError = inst.error && inst.error !== groupError ? inst.error : null;
                         return (
                             <tr key={key} className="border-b border-border/40 last:border-0 align-top">
-                                <td className="px-4 py-2.5 min-w-0">
+                                <td className="px-3 sm:px-4 py-2.5 min-w-0">
                                     <div className="flex items-start gap-1.5 min-w-0 max-w-full">
                                         {inst.parentUrl ? (
                                             <a
@@ -1112,6 +1252,7 @@ function FoundOnTable({
 
 function TriageItemGeneral({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
+    useReportTriageExpand(triageGroupKey(group), expanded);
     const [showAll, setShowAll] = useState(false);
     const link = group;
     const isBroken = link.status === 'BROKEN';
@@ -1129,45 +1270,32 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                 "border-l-blue-500 hover:bg-blue-500/5"
             )}
         >
-            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                     {group.count > 1 && (
-                        <span
-                            className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
-                            title={`${group.count} occurrences`}
-                        >
-                            {group.count}
-                        </span>
-                    )}
-                    <span className={cn(
-                        "font-medium text-sm break-words",
-                        isBroken ? "text-destructive" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
-                    )}>
-                        {link.url}
-                    </span>
-                    <a 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Open in new tab"
+            <TriageRowHeader
+                onClick={() => setExpanded(!expanded)}
+                countBadge={group.count > 1 ? (
+                    <span
+                        className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                        title={`${group.count} occurrences`}
                     >
-                        <ExternalLink className="h-3 w-3" />
-                    </a>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                     <span className={cn(
-                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
-                        isPending ? "bg-blue-500 text-white flex items-center gap-1" :
-                        getStatusBadgeClass(link.statusCode, isBroken, isPending)
-                    )}>
-                        {isPending && <RefreshCw className="h-3 w-3 animate-spin" />}
-                        {isPending ? 'CHECKING' : link.statusCode ? `${link.statusCode}${isSuccess ? ' OK' : ''}` : (isBroken ? 'FAIL' : '—')}
+                        {group.count}
                     </span>
-                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                </div>
-            </div>
+                ) : undefined}
+                url={link.url}
+                urlClassName={isBroken ? "text-destructive" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"}
+                actions={
+                    <>
+                        <span className={cn(
+                            "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                            isPending ? "bg-blue-500 text-white flex items-center gap-1" :
+                            getStatusBadgeClass(link.statusCode, isBroken, isPending)
+                        )}>
+                            {isPending && <RefreshCw className="h-3 w-3 animate-spin" />}
+                            {isPending ? 'CHECKING' : link.statusCode ? `${link.statusCode}${isSuccess ? ' OK' : ''}` : (isBroken ? 'FAIL' : '—')}
+                        </span>
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </>
+                }
+            />
 
             <AnimatePresence>
                 {expanded && (
@@ -1195,6 +1323,7 @@ function TriageItemGeneral({ group, onRecheck }: any) {
 function TriageItem({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
     const [showAll, setShowAll] = useState(false);
+    useReportTriageExpand(triageGroupKey(group), expanded);
     const link = group; // primary info
 
     return (
@@ -1203,44 +1332,37 @@ function TriageItem({ group, onRecheck }: any) {
             animate={{ opacity: 1 }}
             className="border-l-4 border-l-red-500 hover:bg-muted/30 transition-colors overflow-hidden"
         >
-            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {group.count > 1 && (
-                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                            {group.count}
-                        </span>
-                    )}
-                    <a 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="font-medium text-sm text-destructive hover:underline break-words"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {link.url}
-                    </a>
-                    <ExternalLink className="h-3 w-3 text-destructive/50 shrink-0" />
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                    <span className={cn(
-                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
-                        getStatusBadgeClass(link.statusCode, true)
-                    )}>
-                        {link.statusCode || 'FAIL'}
+            <TriageRowHeader
+                onClick={() => setExpanded(!expanded)}
+                countBadge={group.count > 1 ? (
+                    <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        {group.count}
                     </span>
-                    <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:border-primary/50 transition-all" 
-                        onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }}
-                        title="Re-check link"
-                        aria-label="Re-check link"
-                    >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                    </Button>
-                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                </div>
-            </div>
+                ) : undefined}
+                url={link.url}
+                urlClassName="text-destructive"
+                actions={
+                    <>
+                        <span className={cn(
+                            "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                            getStatusBadgeClass(link.statusCode, true)
+                        )}>
+                            {link.statusCode || 'FAIL'}
+                        </span>
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-primary hover:border-primary/50 transition-all" 
+                            onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }}
+                            title="Re-check link"
+                            aria-label="Re-check link"
+                        >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                        </Button>
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </>
+                }
+            />
 
             <AnimatePresence>
                 {expanded && (
@@ -1268,37 +1390,30 @@ function TriageItem({ group, onRecheck }: any) {
 function TriageItemSuccess({ group }: any) {
     const [expanded, setExpanded] = useState(false);
     const [showAll, setShowAll] = useState(false);
+    useReportTriageExpand(triageGroupKey(group), expanded);
     const link = group;
 
     return (
         <div className="border-l-4 border-l-green-500 hover:bg-green-500/5 transition-colors overflow-hidden">
-            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {group.count > 1 && (
-                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                            {group.count}
-                        </span>
-                    )}
-                    <span className="font-medium text-sm text-green-600 dark:text-green-400 break-words">{link.url}</span>
-                    <a 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Open in new tab"
-                    >
-                        <ExternalLink className="h-3 w-3" />
-                    </a>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                    <span className={cn(
-                        "text-[10px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-tighter",
-                        getStatusBadgeClass(link.statusCode, false)
-                    )}>{link.statusCode || 200} OK</span>
-                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                </div>
-            </div>
+            <TriageRowHeader
+                onClick={() => setExpanded(!expanded)}
+                countBadge={group.count > 1 ? (
+                    <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        {group.count}
+                    </span>
+                ) : undefined}
+                url={link.url}
+                urlClassName="text-green-600 dark:text-green-400"
+                actions={
+                    <>
+                        <span className={cn(
+                            "text-[10px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-tighter",
+                            getStatusBadgeClass(link.statusCode, false)
+                        )}>{link.statusCode || 200} OK</span>
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </>
+                }
+            />
             <AnimatePresence>
                 {expanded && (
                     <motion.div
@@ -1324,34 +1439,27 @@ function TriageItemSuccess({ group }: any) {
 function TriageItemSkipped({ group }: any) {
     const [expanded, setExpanded] = useState(false);
     const [showAll, setShowAll] = useState(false);
+    useReportTriageExpand(triageGroupKey(group), expanded);
     const link = group;
 
     return (
         <div className="hover:bg-muted/10 transition-colors border-l-4 border-l-transparent overflow-hidden">
-             <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {group.count > 1 && (
-                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                            {group.count}
-                        </span>
-                    )}
-                    <span className="font-medium text-slate-400 text-sm break-words">{link.url}</span>
-                    <a 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="text-muted-foreground/40 hover:text-primary shrink-0 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Open in new tab"
-                    >
-                        <ExternalLink className="h-3 w-3" />
-                    </a>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                    <span className="bg-slate-500/10 text-slate-500 px-1.5 py-0.5 rounded-sm text-[10px] uppercase font-bold tracking-tighter">Skipped</span>
-                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                </div>
-            </div>
+            <TriageRowHeader
+                onClick={() => setExpanded(!expanded)}
+                countBadge={group.count > 1 ? (
+                    <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        {group.count}
+                    </span>
+                ) : undefined}
+                url={link.url}
+                urlClassName="text-slate-400"
+                actions={
+                    <>
+                        <span className="bg-slate-500/10 text-slate-500 px-1.5 py-0.5 rounded-sm text-[10px] uppercase font-bold tracking-tighter">Skipped</span>
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </>
+                }
+            />
 
             <AnimatePresence>
                 {expanded && (
@@ -1378,6 +1486,7 @@ function TriageItemSkipped({ group }: any) {
 function TriageItemRechecked({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
     const [showAll, setShowAll] = useState(false);
+    useReportTriageExpand(triageGroupKey(group), expanded);
     const link = group;
     const isBroken = link.status === 'BROKEN';
     const isSuccess = link.status === 'SUCCESS';
@@ -1394,50 +1503,40 @@ function TriageItemRechecked({ group, onRecheck }: any) {
                 "border-l-blue-500 hover:bg-blue-500/5"
             )}
         >
-            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {group.count > 1 && (
-                        <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
-                            {group.count}
-                        </span>
-                    )}
-                    <a 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className={cn(
-                            "font-medium text-sm break-words hover:underline",
-                            isBroken ? "text-destructive" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"
-                        )}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {link.url}
-                    </a>
-                    <ExternalLink className={cn("h-3 w-3 shrink-0", isBroken ? "text-destructive/50" : "text-muted-foreground/40")} />
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                    <span className={cn(
-                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
-                        isPending ? "bg-blue-500 text-white flex items-center gap-1" :
-                        getStatusBadgeClass(link.statusCode, isBroken)
-                    )}>
-                        {isPending && <RefreshCw className="h-3 w-3 animate-spin inline mr-1" />}
-                        {isPending ? 'CHECKING' : link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
+            <TriageRowHeader
+                onClick={() => setExpanded(!expanded)}
+                countBadge={group.count > 1 ? (
+                    <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        {group.count}
                     </span>
-                    <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:border-primary/50 transition-all" 
-                        onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }} 
-                        disabled={isPending}
-                        title="Re-check link"
-                        aria-label="Re-check link"
-                    >
-                        <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
-                    </Button>
-                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                </div>
-            </div>
+                ) : undefined}
+                url={link.url}
+                urlClassName={isBroken ? "text-destructive" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"}
+                actions={
+                    <>
+                        <span className={cn(
+                            "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                            isPending ? "bg-blue-500 text-white flex items-center gap-1" :
+                            getStatusBadgeClass(link.statusCode, isBroken)
+                        )}>
+                            {isPending && <RefreshCw className="h-3 w-3 animate-spin inline mr-1" />}
+                            {isPending ? 'CHECKING' : link.statusCode || (isBroken ? 'FAIL' : '200 OK')}
+                        </span>
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-primary hover:border-primary/50 transition-all" 
+                            onClick={(e) => { e.stopPropagation(); onRecheck(link.id); }} 
+                            disabled={isPending}
+                            title="Re-check link"
+                            aria-label="Re-check link"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
+                        </Button>
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </>
+                }
+            />
 
             <AnimatePresence>
                 {expanded && (
@@ -1464,6 +1563,7 @@ function TriageItemRechecked({ group, onRecheck }: any) {
 
 function TriageItemSource({ group, onRecheck }: any) {
     const [expanded, setExpanded] = useState(false);
+    useReportTriageExpand(triageGroupKey(group), expanded);
     const hasBroken = group.instances.some((i: any) => i.status === 'BROKEN');
 
     return (
@@ -1475,29 +1575,27 @@ function TriageItemSource({ group, onRecheck }: any) {
                 hasBroken ? "border-l-destructive hover:bg-destructive/5 shadow-[inset_4px_0_0_rgba(var(--destructive),0.2)]" : "border-l-green-500 hover:bg-green-500/5"
             )}
         >
-            <div className="h-12 px-4 flex items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+            <TriageRowHeader
+                onClick={() => setExpanded(!expanded)}
+                countBadge={
                     <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
                         {group.count} {group.count === 1 ? 'link' : 'links'}
                     </span>
-                    <span className={cn(
-                        "font-medium text-sm break-words",
-                        hasBroken ? "text-destructive" : "text-green-600 dark:text-green-400"
-                    )}>
-                        {group.url}
-                    </span>
-                    <ExternalLink className="h-3 w-3 text-muted-foreground/40 shrink-0" />
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                     <span className={cn(
-                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
-                        hasBroken ? "bg-destructive/15 text-destructive shadow-sm" : "bg-green-500/10 text-green-500"
-                    )}>
-                        {hasBroken ? 'FIX NEEDED' : 'CLEAN'}
-                    </span>
-                    {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
-                </div>
-            </div>
+                }
+                url={group.url}
+                urlClassName={hasBroken ? "text-destructive" : "text-green-600 dark:text-green-400"}
+                actions={
+                    <>
+                        <span className={cn(
+                            "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                            hasBroken ? "bg-destructive/15 text-destructive shadow-sm" : "bg-green-500/10 text-green-500"
+                        )}>
+                            {hasBroken ? 'FIX NEEDED' : 'CLEAN'}
+                        </span>
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </>
+                }
+            />
 
             <AnimatePresence>
                 {expanded && (
@@ -1507,19 +1605,21 @@ function TriageItemSource({ group, onRecheck }: any) {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden bg-muted/20 border-t"
                     >
-                        <div className="p-4 space-y-3">
+                        <div className="p-3 sm:p-4 space-y-3">
                             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 opacity-50">Links on this page:</p>
                             {group.instances.map((inst: any) => (
-                                <div key={inst.id} className="flex items-center justify-between gap-4 p-3 rounded-lg bg-black/5 border border-white/5 hover:bg-black/10 transition-colors">
+                                <div key={inst.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 p-3 rounded-lg bg-black/5 border border-white/5 hover:bg-black/10 transition-colors">
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className={cn(
-                                                "text-xs font-bold leading-none",
-                                                inst.status === 'BROKEN' ? "text-destructive" : "text-green-500"
-                                            )}>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span
+                                                className={cn(
+                                                    "text-[11px] sm:text-xs font-bold leading-snug min-w-0 flex-1 break-all",
+                                                    inst.status === 'BROKEN' ? "text-destructive" : "text-green-500"
+                                                )}
+                                            >
                                                 {inst.url}
                                             </span>
-                                            <a href={inst.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                                            <a href={inst.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors shrink-0">
                                                 <ExternalLink className="h-3.5 w-3.5" />
                                             </a>
                                         </div>
@@ -1530,7 +1630,7 @@ function TriageItemSource({ group, onRecheck }: any) {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-3 shrink-0">
+                                    <div className="flex items-center gap-2 sm:gap-3 shrink-0 self-end sm:self-auto">
                                         <span className={cn(
                                             "text-[10px] font-black px-2 py-0.5 rounded shadow-sm",
                                             inst.status === 'BROKEN' ? getStatusBadgeClass(inst.statusCode, true) : "bg-green-500/10 text-green-500"

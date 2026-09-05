@@ -431,7 +431,7 @@ export function ComparePanel({ diff }: { diff: any }) {
       {diff.categoryDeltas?.length > 0 && (
         <div>
           <p className="font-medium mb-2">Category scores</p>
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-lg border border-border overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
@@ -472,8 +472,8 @@ export function ComparePanel({ diff }: { diff: any }) {
             Page status changes ({pageChanges.length})
           </button>
           {showPageChanges && (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full min-w-[480px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     <th className="text-left px-3 py-2 font-medium">URL</th>

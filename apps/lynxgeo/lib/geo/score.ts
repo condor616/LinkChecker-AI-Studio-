@@ -1,9 +1,6 @@
 import { isGeoNonHtmlTarget } from './document-url';
 
-export const SCORE_MODEL_VERSION = 'geo-1.1.0';
-
-// PHASE 2 REMINDER: schema.org validation must consume schema.org’s published
-// vocabulary (https://schema.org/docs/developers.html), not a homemade type list.
+export const SCORE_MODEL_VERSION = 'geo-1.2.0';
 
 export type FindingSeverity = 'pass' | 'warn' | 'fail';
 export type FindingStandard = 'established' | 'convention' | 'emerging';
@@ -85,7 +82,8 @@ export const CATEGORY_META: Record<FindingCategory, { label: string; weight: num
   extractability: {
     label: 'Extractability',
     weight: CATEGORY_WEIGHTS.extractability,
-    summary: 'Is the HTML structured so an agent can parse the page? Headings, canonical, language, JSON-LD presence.',
+    summary:
+      'Is the HTML structured so an agent can parse the page? Headings, canonical, language, JSON-LD presence, and schema.org vocabulary checks.',
   },
   negotiation: {
     label: 'Negotiation',
@@ -342,10 +340,11 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     category: 'crawlAccess',
     standard: 'established',
     scope: 'page',
-    issueSeverity: 'warn',
+    issueSeverity: 'pass',
     scoreGroup: 'excluded',
     sparse: true,
-    why: 'URL matched a crawl skip rule (file type, path, etc.). A warning that the page was not audited, not that the live site is broken.',
+    informational: true,
+    why: 'URL matched a crawl skip rule (file type, path, etc.). Skipped pages are not audited and are not scored as crawl-access failures.',
   },
   {
     key: 'h1',
@@ -396,7 +395,29 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     scope: 'page',
     issueSeverity: 'warn',
     scoreGroup: 'jsonld',
-    why: 'Presence of application/ld+json only. Schema.org type/vocabulary validation is phase 2 (official schema.org docs, not a homemade type list).',
+    why: 'Presence of application/ld+json script blocks. Vocabulary correctness is a separate schemaorg check.',
+  },
+  {
+    key: 'schemaorg',
+    title: 'Schema.org vocabulary',
+    category: 'extractability',
+    standard: 'established',
+    scope: 'page',
+    issueSeverity: 'fail',
+    scoreGroup: 'schemaorg',
+    sparse: true,
+    why: 'When JSON-LD is present, types and properties must match the pinned official schema.org vocabulary (not a homemade type list). Emitted only on pages with JSON-LD.',
+  },
+  {
+    key: 'schema-rich',
+    title: 'Google Rich Results fields',
+    category: 'extractability',
+    standard: 'convention',
+    scope: 'page',
+    issueSeverity: 'warn',
+    scoreGroup: 'schema-rich',
+    sparse: true,
+    why: 'Google Rich Results required-property guidance for a small set of types. Warnings are labeled as Google’s docs, not as invalid schema.org.',
   },
   {
     key: 'accept-markdown',
@@ -831,13 +852,18 @@ export function collectAuditFindings(input: {
   playbook?: Finding[] | null;
 }): Finding[] {
   const keepPageHtmlFindings = (findings: Finding[]) => findings.filter((f) => !isHtmlPageFindingOnNonHtmlUrl(f));
+  /** User-configured crawl skips must not surface as crawl-access warnings. */
+  const dropExclusionWarns = (findings: Finding[]) =>
+    findings.filter((f) => findingCriterionKey(f) !== 'excluded');
 
   if (Array.isArray(input.snapshotFindings) && input.snapshotFindings.length > 0) {
-    return keepPageHtmlFindings(input.snapshotFindings.filter(isFinding));
+    return dropExclusionWarns(keepPageHtmlFindings(input.snapshotFindings.filter(isFinding)));
   }
 
-  const fromPages = keepPageHtmlFindings((input.pages || []).flatMap((p) => parseFindingsJson(p.findings)));
-  const playbookItems = (input.playbook || []).filter(isFinding);
+  const fromPages = dropExclusionWarns(
+    keepPageHtmlFindings((input.pages || []).flatMap((p) => parseFindingsJson(p.findings))),
+  );
+  const playbookItems = dropExclusionWarns((input.playbook || []).filter(isFinding));
   if (playbookItems.length === 0) return fromPages;
 
   const covered = new Set<string>();
@@ -864,7 +890,7 @@ export function collectAuditFindings(input: {
       urls: missing,
     } as Finding);
   }
-  return keepPageHtmlFindings([...fromPages, ...extra]);
+  return dropExclusionWarns(keepPageHtmlFindings([...fromPages, ...extra]));
 }
 
 function pageTitleFromFinding(f: Finding): string | undefined {

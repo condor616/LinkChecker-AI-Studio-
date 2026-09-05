@@ -80,7 +80,7 @@ export default function SettingsPage() {
                     <Sparkles className="h-6 w-6" />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-lg font-bold text-foreground">New Scan Wizard</h4>
+                    <h4 className="text-lg font-bold text-foreground">New audit wizard</h4>
                     <p className="text-sm text-muted-foreground leading-relaxed max-w-md">
                       A step-by-step guide to help you configure your scans. Disable this to go directly to the
                       advanced configuration page.

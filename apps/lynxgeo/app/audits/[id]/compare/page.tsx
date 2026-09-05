@@ -88,12 +88,12 @@ export default function AuditComparePage() {
     return 'Compare snapshots';
   }, [diff, compareId, data?.audit, seriesRuns, id]);
 
-  if (!data?.audit) return <div className="p-8">Loading…</div>;
+  if (!data?.audit) return <div className="px-4 py-6 sm:p-8">Loading…</div>;
   const audit = data.audit;
   const completed = audit.status === 'COMPLETED';
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 space-y-6">
       <Link
         href={`/audits/${id}`}
         className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
@@ -102,10 +102,10 @@ export default function AuditComparePage() {
         Back to audit report
       </Link>
 
-      <div>
+      <div className="min-w-0">
         <p className="text-xs uppercase tracking-widest font-bold text-primary">Snapshot compare</p>
-        <h1 className="text-3xl font-black">{pageTitle}</h1>
-        <p className="text-muted-foreground">{audit.name} · {audit.startUrl}</p>
+        <h1 className="text-2xl sm:text-3xl font-black break-words">{pageTitle}</h1>
+        <p className="text-muted-foreground break-all">{audit.name} · {audit.startUrl}</p>
       </div>
 
       {!completed && (

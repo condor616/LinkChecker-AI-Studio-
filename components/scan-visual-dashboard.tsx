@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { isTargetUrlMatch, isTargetedScanConfig } from '@/lib/utils/url';
+import { computeSiteHealthScore } from '@/lib/utils/site-health-score';
 import { useRouter } from 'next/navigation';
 import { 
   AlertCircle, 
@@ -122,38 +123,20 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
     const total = filteredLinks.length;
     const brokenLinks = filteredLinks.filter((l: any) => l.status === 'BROKEN');
     const broken = brokenLinks.length;
-    const success = filteredLinks.filter((l: any) => l.status === 'SUCCESS' && !l.isRechecked).length;
+    // Count all successful checks (including rechecked) so Healthy Links matches the score.
+    const success = filteredLinks.filter((l: any) => l.status === 'SUCCESS').length;
     const pending = filteredLinks.filter((l: any) => l.status === 'PENDING').length;
+    const processing = filteredLinks.filter((l: any) => l.status === 'PROCESSING').length;
     const skipped = filteredLinks.filter((l: any) => l.status === 'SKIPPED').length;
-    
-    // Refined Health Score Algorithm (Using filtered links)
-    let totalPenalty = 0;
 
-    brokenLinks.forEach((l: any) => {
-      // 1. Base penalty by status code
-      let penalty = 1.0;
-      const code = parseInt(l.statusCode || '0');
-      if (code >= 500) penalty = 2.0;
-      else if (code >= 400) penalty = 1.2;
-      else if (l.error?.toLowerCase().includes('timeout')) penalty = 1.5;
-
-      // 2. Origin multiplier
-      let isInternal = false;
-      try {
-        isInternal = new URL(l.url).hostname === internalDomain || l.url.startsWith('/');
-      } catch (e) {}
-      
-      const originMultiplier = isInternal ? 2.0 : 0.8;
-
-      totalPenalty += (penalty * originMultiplier);
+    const healthResult = computeSiteHealthScore({
+      success,
+      broken,
+      pending,
+      processing,
+      skipped,
+      total,
     });
-
-    const sensitivity = 10.0; 
-    const healthValue = total > 0 
-      ? Math.max(0, 100 - (totalPenalty / total) * 100 * sensitivity) 
-      : 100;
-    
-    const finalHealth = broken > 0 ? Math.min(99, Math.round(healthValue)) : 100;
 
     // Group by parent page for prioritized fix list (normalizing URLs to avoid duplication)
     const brokenByPage: Record<string, { count: number, originalUrl: string }> = {};
@@ -181,7 +164,10 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       pending,
       skipped,
       topPagesToFix,
-      health: finalHealth
+      health: healthResult.score,
+      healthMessage: healthResult.message,
+      failureRate: healthResult.failureRate,
+      verified: healthResult.verified,
     };
   }, [data, isTargetedScan]);
 
@@ -201,20 +187,20 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
   const { scan } = data;
 
   return (
-    <div className="space-y-10 pb-20">
+    <div className="space-y-8 sm:space-y-10 pb-20 min-w-0">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 min-w-0">
+        <div className="space-y-2 min-w-0">
           <Link href={`/scans/${scanId}`} className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-primary transition-colors group mb-2">
             <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
             Back to Scan Report
           </Link>
-          <div className="flex items-center gap-3">
-             <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+             <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 shrink-0">
                 <LayoutDashboard className="h-6 w-6 text-primary" />
              </div>
-             <div>
-                <h1 className="text-3xl font-black tracking-tight text-foreground">{scan.name} Dashboard</h1>
+             <div className="min-w-0">
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground break-words">{scan.name} Dashboard</h1>
                 <p className="text-muted-foreground text-sm">Visual analysis of your site's health and issues.</p>
              </div>
           </div>
@@ -261,11 +247,24 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                       cx="96"
                       cy="96"
                       r="88"
-                      stroke={stats.health > 90 ? "#10b981" : stats.health > 70 ? "#f59e0b" : "#ef4444"}
+                      stroke={
+                        stats.health === null
+                          ? "#94a3b8"
+                          : stats.health > 90
+                            ? "#10b981"
+                            : stats.health > 70
+                              ? "#f59e0b"
+                              : "#ef4444"
+                      }
                       strokeWidth="12"
                       strokeDasharray={552.92}
                       initial={{ strokeDashoffset: 552.92 }}
-                      animate={{ strokeDashoffset: 552.92 - (552.92 * stats.health) / 100 }}
+                      animate={{
+                        strokeDashoffset:
+                          stats.health === null
+                            ? 552.92
+                            : 552.92 - (552.92 * stats.health) / 100,
+                      }}
                       transition={{ duration: 1.5, ease: "easeOut" }}
                       strokeLinecap="round"
                       fill="transparent"
@@ -277,17 +276,13 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                       animate={{ opacity: 1, scale: 1 }}
                       className="text-5xl font-black text-foreground"
                     >
-                      {stats.health}%
+                      {stats.health === null ? '—' : `${stats.health}%`}
                     </motion.span>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SCORE</span>
                  </div>
               </div>
               <p className="text-sm font-medium text-muted-foreground">
-                {stats.health === 100 ? "Perfect Health! No broken links found." : 
-                 stats.health > 90 ? "Excellent. Minor issues to resolve." : 
-                 stats.health > 70 ? "Needs attention. Several broken links discovered." :
-                 stats.health > 40 ? "Warning. Moderate impact on user experience." :
-                 "Critical state. Immediate action required. Your SEO and UX are at risk."}
+                {stats.healthMessage}
               </p>
            </CardContent>
         </Card>
@@ -306,7 +301,7 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
               value={stats.broken} 
               icon={<AlertCircle className="h-5 w-5" />} 
               color="danger"
-              description={`${Math.round((stats.broken/stats.total)*100 || 0)}% failure rate`}
+              description={`${stats.failureRate}% failure rate`}
            />
            <StatMetric 
               label="Healthy Links" 
@@ -333,19 +328,19 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
       </div>
 
       {/* Priority Fix List */}
-      <div className="grid grid-cols-1 gap-8">
-        <Card className="bg-card border-primary/5 shadow-xl flex flex-col">
-           <CardHeader className="flex flex-row items-center justify-between border-b border-primary/5 pb-4">
-              <div>
-                <CardTitle className="text-xl font-black tracking-tight italic">Priority: Pages to Fix</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1 text-destructive/70 flex items-center gap-2 font-bold">
-                   <AlertTriangle className="h-4 w-4" />
-                   {stats.broken} broken links found across {stats.topPagesToFix.length} pages.
+      <div className="grid grid-cols-1 gap-8 min-w-0">
+        <Card className="bg-card border-primary/5 shadow-xl flex flex-col min-w-0 overflow-hidden">
+           <CardHeader className="flex flex-row items-start sm:items-center justify-between gap-3 border-b border-primary/5 pb-4">
+              <div className="min-w-0">
+                <CardTitle className="text-lg sm:text-xl font-black tracking-tight italic">Priority: Pages to Fix</CardTitle>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1 text-destructive/70 flex items-start sm:items-center gap-2 font-bold">
+                   <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 sm:mt-0" />
+                   <span className="min-w-0 leading-snug">{stats.broken} broken links found across {stats.topPagesToFix.length} pages.</span>
                 </p>
               </div>
-              <TrendingDown className="h-6 w-6 text-red-500/50" />
+              <TrendingDown className="h-6 w-6 text-red-500/50 shrink-0" />
            </CardHeader>
-           <CardContent className="p-0 flex-1 flex flex-col">
+           <CardContent className="p-0 flex-1 flex flex-col min-w-0">
               {stats.topPagesToFix.length > 0 ? (
                 <>
                  <PaginationControls 
@@ -362,35 +357,35 @@ export function ScanVisualDashboard({ scanId, initialData }: ScanVisualDashboard
                         const globalIdx = ((priorityPage - 1) * priorityPageSize) + idx;
                         return (
                          <div key={page.url} className={cn(
-                           "p-4 flex items-center justify-between hover:bg-primary/5 transition-colors group",
+                           "p-3 sm:p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between hover:bg-primary/5 transition-colors group min-w-0",
                            globalIdx < 3 && "bg-red-500/[0.02]"
                          )}>
-                            <div className="flex flex-col min-w-0 mr-4">
+                            <div className="flex flex-col min-w-0 flex-1 sm:mr-4">
                                <div className="flex items-center gap-2 mb-1">
-                                  {globalIdx < 3 && <Zap className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />}
+                                  {globalIdx < 3 && <Zap className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 shrink-0" />}
                                   <span className="text-xs font-black uppercase tracking-widest text-primary/60">Page {globalIdx + 1}</span>
                                </div>
                                <a 
                                  href={page.url} 
                                  target="_blank" 
                                  rel="noreferrer" 
-                                 className="text-sm font-bold text-foreground break-words hover:text-primary transition-colors flex items-center gap-2 group/link"
+                                 className="text-[11px] sm:text-sm font-bold text-foreground break-all hover:text-primary transition-colors inline-flex items-start gap-1.5 group/link"
                                  title="Visit page in new tab"
                                >
-                                  {page.url}
-                                  <ExternalLink className="h-3 w-3 opacity-0 group-hover/link:opacity-100 transition-opacity shrink-0 mt-0.5" />
+                                  <span className="min-w-0">{page.url}</span>
+                                  <ExternalLink className="h-3 w-3 opacity-60 group-hover/link:opacity-100 transition-opacity shrink-0 mt-0.5" />
                                </a>
                                <p className="text-[10px] text-muted-foreground mt-1">Found {page.count} broken links on this page.</p>
                             </div>
-                            <div className="flex items-center gap-6 shrink-0">
-                               <div className="text-right">
+                            <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 shrink-0">
+                               <div className="text-left sm:text-right">
                                   <div className="text-lg font-black text-foreground leading-tight">{page.count}</div>
                                   <div className="text-[10px] font-bold uppercase tracking-tighter text-destructive">ERRORS</div>
                                </div>
                                <Button 
                                  variant="ghost" 
                                  size="sm" 
-                                 className="text-[10px] font-black underline uppercase tracking-widest h-8 text-primary/60 hover:text-primary"
+                                 className="text-[10px] font-black underline uppercase tracking-widest h-8 text-primary/60 hover:text-primary px-2"
                                  asChild
                                >
                                  <Link href={`/scans/${scanId}?search=${encodeURIComponent(page.url)}`}>
@@ -475,16 +470,16 @@ function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, p
 
     return (
         <div className={cn(
-            "flex items-center justify-between px-4 py-2.5 bg-muted/5",
+            "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-2.5 bg-muted/5 min-w-0",
             position === 'bottom' ? "border-t" : "border-b"
         )}>
-            <div className="text-[10px] text-muted-foreground font-medium">
+            <div className="text-[10px] text-muted-foreground font-medium shrink-0">
                 <span className="font-bold text-foreground">{totalItems.toLocaleString()}</span> results &middot; page <span className="font-bold text-foreground">{currentPage}</span> of <span className="font-bold text-foreground">{totalPages}</span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 max-w-full overflow-x-auto pb-0.5 -mx-0.5 px-0.5">
                 <button
                     className={cn(
-                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border",
+                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border shrink-0",
                         currentPage === 1
                             ? "opacity-30 cursor-not-allowed border-transparent"
                             : "hover:bg-muted border-border hover:border-primary/30 cursor-pointer"
@@ -498,13 +493,13 @@ function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, p
 
                 {getPages().map((page, i) =>
                     page === '...' ? (
-                        <span key={`ellipsis-${i}`} className="h-8 w-8 flex items-center justify-center text-xs text-muted-foreground">…</span>
+                        <span key={`ellipsis-${i}`} className="h-8 w-8 flex items-center justify-center text-xs text-muted-foreground shrink-0">…</span>
                     ) : (
                         <button
                             key={page}
                             onClick={() => onPageChange(page)}
                             className={cn(
-                                "h-8 w-8 rounded-md flex items-center justify-center text-xs font-medium transition-colors border",
+                                "h-8 w-8 rounded-md flex items-center justify-center text-xs font-medium transition-colors border shrink-0",
                                 page === currentPage
                                     ? "bg-primary text-primary-foreground border-primary shadow-sm"
                                     : "hover:bg-muted border-border hover:border-primary/30 text-muted-foreground cursor-pointer"
@@ -518,7 +513,7 @@ function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, p
 
                 <button
                     className={cn(
-                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border",
+                        "h-8 w-8 rounded-md flex items-center justify-center text-sm transition-colors border shrink-0",
                         currentPage === totalPages
                             ? "opacity-30 cursor-not-allowed border-transparent"
                             : "hover:bg-muted border-border hover:border-primary/30 cursor-pointer"

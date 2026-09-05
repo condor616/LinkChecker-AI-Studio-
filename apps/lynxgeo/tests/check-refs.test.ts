@@ -40,6 +40,8 @@ test('page finding ids carrying a URL suffix resolve to their criterion', () => 
     ['date-https://example.com/blog/post', 'https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-time-element'],
     ['canonical-https://example.com/', 'https://html.spec.whatwg.org/multipage/links.html#link-type-canonical'],
     ['jsonld-https://example.com/a?b=c', 'https://www.w3.org/TR/json-ld11/#embedding-json-ld-in-html-documents'],
+    ['schemaorg-https://example.com/a', 'https://schema.org/docs/developers.html'],
+    ['schema-rich-https://example.com/a', 'https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data'],
     ['md-alt-https://example.com/', 'https://www.rfc-editor.org/rfc/rfc7763.html'],
     ['http-https://example.com/404', 'https://www.rfc-editor.org/rfc/rfc9110.html'],
     ['noindex-https://example.com/x', 'https://developers.google.com/search/docs/crawling-indexing/robots/intro'],

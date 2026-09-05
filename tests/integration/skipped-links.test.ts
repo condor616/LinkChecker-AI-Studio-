@@ -175,6 +175,80 @@ describe('Skipped Links Feature Verification', () => {
         expect(result[0].error).toContain('External link (Verified)');
     });
 
+    it('should skip subdomain links without fetching when excludeSubdomains is true', async () => {
+        const config = {
+            startUrl: baseUrl,
+            saveSkippedLinks: true,
+            excludeSubdomains: true,
+            skipExternal: true,
+        };
+        const scanId = await setupScan(config);
+        const subdomainUrl = `http://api.localhost:${port}/forms/v1/processing-requests`;
+
+        const pageLink = {
+            id: crypto.randomUUID(),
+            url: `${baseUrl}/subdomain-trigger`,
+            scanId,
+            depth: 0,
+            status: 'PENDING',
+        };
+        await testDb.insert(links).values(pageLink);
+        const newLinks = await processLink(testDb, pageLink, { id: scanId }, config);
+
+        const skipped = await testDb.select().from(links).where(and(
+            eq(links.scanId, scanId),
+            eq(links.url, subdomainUrl),
+        )).then(res => res[0]);
+
+        expect(skipped).toBeDefined();
+        expect(skipped?.status).toBe('SKIPPED');
+        expect(skipped?.error).toContain('Subdomain excluded');
+        expect(newLinks?.find(l => l.url === subdomainUrl)).toBeUndefined();
+
+        const formVariant = await testDb.select().from(links).where(and(
+            eq(links.scanId, scanId),
+            eq(links.status, 'SKIPPED'),
+        ));
+        expect(formVariant.some(l =>
+            l.url.includes('api.localhost') &&
+            l.url.includes('roche-dropdown-location-region'),
+        )).toBe(true);
+    });
+
+    it('should mark already-queued subdomain links as SKIPPED without fetching', async () => {
+        const config = {
+            startUrl: baseUrl,
+            excludeSubdomains: true,
+        };
+        const scanId = await setupScan(config);
+        // Intentionally unresolvable host — must not attempt a network fetch.
+        const subdomainUrl = 'http://api-prod.localhost/never-fetch';
+
+        await testDb.insert(links).values({
+            id: crypto.randomUUID(),
+            scanId,
+            url: subdomainUrl,
+            status: 'PENDING',
+            depth: 1,
+        });
+
+        await processLink(
+            testDb,
+            { url: subdomainUrl, scanId, depth: 1, status: 'PENDING' },
+            { id: scanId },
+            config,
+        );
+
+        const result = await testDb.select().from(links).where(and(
+            eq(links.scanId, scanId),
+            eq(links.url, subdomainUrl),
+        )).then(res => res[0]);
+
+        expect(result?.status).toBe('SKIPPED');
+        expect(result?.error).toBe('Subdomain excluded');
+        expect(result?.statusCode).toBeNull();
+    });
+
     it('should match regexRules and wildcardExclusions case-insensitively', async () => {
         const config = {
             startUrl: baseUrl,

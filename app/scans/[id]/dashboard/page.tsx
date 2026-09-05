@@ -20,7 +20,7 @@ export default async function ScanDashboardPage({ params }: { params: Promise<{ 
   }
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto min-h-screen">
+    <div className="p-4 sm:p-6 md:p-8 max-w-[1600px] mx-auto min-h-screen min-w-0">
       <ScanVisualDashboard scanId={scan.id} />
     </div>
   );

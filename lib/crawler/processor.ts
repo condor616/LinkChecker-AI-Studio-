@@ -60,6 +60,24 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
   activeCrawls.set(crawlKey, crawlPromise);
 
   try {
+        // Honor discovery-time exclusions (regex/wildcard/subdomain) if a link was
+        // already queued — e.g. before excludeSubdomains started skipping at enqueue.
+        const preSkipReason = getSkipReason(link.url, config);
+        if (preSkipReason) {
+            await userDb.update(links).set({
+                status: 'SKIPPED',
+                statusCode: null,
+                type: null,
+                checkedAt: new Date(),
+                error: preSkipReason,
+            }).where(and(
+                eq(links.scanId, scan.id),
+                eq(links.url, link.url),
+                or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+            ));
+            return;
+        }
+
         const currentTarget = new URL(link.url);
       const scanRootHost = normalizeHostname(new URL(config.startUrl).hostname);
         const targetHost = normalizeHostname(currentTarget.hostname);

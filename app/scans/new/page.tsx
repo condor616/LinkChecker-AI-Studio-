@@ -40,7 +40,7 @@ interface ScanConfig {
 
 
 const DEFAULT_CONFIG: ScanConfig = {
-  name: 'My New Scan',
+  name: 'My New Audit',
   startUrl: 'https://example.com',
   maxDepth: 2,
   rateLimit: 60,
@@ -385,7 +385,7 @@ export default function NewScanPage() {
         className="flex flex-col md:flex-row md:items-end justify-between gap-4"
       >
         <div>
-            <h1 className="text-3xl font-bold tracking-tight">Initialize Scan</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Initialize audit</h1>
             <p className="text-muted-foreground mt-1">Configure your crawling parameters or select a preset.</p>
         </div>
         
@@ -633,7 +633,7 @@ export default function NewScanPage() {
                             </div>
                             <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
                                 {config.excludeSubdomains 
-                                    ? "Treat subdomains (like blog.site.com) as external. Verified but not crawled." 
+                                    ? "Skip subdomain URLs (like api.site.com or blog.site.com). Not fetched or crawled." 
                                     : "Crawl subdomains as if they were internal pages."}
                             </p>
                         </motion.div>
@@ -893,7 +893,7 @@ https://mysite.com/assets/banner.png"
                 </CardContent>
             </Card>
 
-            {/* Ignite Button moved to sidebar */}
+            {/* Start audit button moved to sidebar */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -907,16 +907,16 @@ https://mysite.com/assets/banner.png"
                     {loading ? (
                         <span className="flex items-center gap-3">
                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Powering up...
+                            Starting...
                         </span>
                     ) : (
                         <span className="flex items-center gap-2">
-                            <Play className="h-6 w-6 fill-current" /> Ignite Scan
+                            <Play className="h-6 w-6 fill-current" /> Start audit
                         </span>
                     )}
                 </Button>
                 <p className="text-[10px] text-center text-muted-foreground mt-4 px-4 italic leading-relaxed">
-                    By clicking Ignite, you confirm that you have permission to crawl the target domain and will adhere to its robots.txt policies.
+                    By clicking Start audit, you confirm that you have permission to crawl the target domain and will adhere to its robots.txt policies.
                 </p>
                                 {startError && (
                                     <p className="text-xs text-destructive mt-3 text-center">{startError}</p>

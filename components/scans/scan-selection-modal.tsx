@@ -86,7 +86,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                   <Zap className="h-3 w-3 fill-current" /> Initialize engine
                 </div>
                 <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-foreground">
-                  Choose your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-cyan-400">Scan Mode</span>
+                  Choose your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-cyan-400">Audit Mode</span>
                 </h2>
                 <p className="text-muted-foreground text-lg max-w-xl mx-auto">
                   Select the crawling strategy that best fits your current requirements. 
@@ -112,7 +112,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                       <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform mb-6">
                         <Globe className="h-7 w-7" />
                       </div>
-                      <CardTitle className="text-2xl font-bold text-foreground mb-3">Normal Scan</CardTitle>
+                      <CardTitle className="text-2xl font-bold text-foreground mb-3">Normal audit</CardTitle>
                       <CardDescription className="text-muted-foreground text-base leading-relaxed">
                         Comprehensive site-wide audit. Recursively crawls your entire domain to verify every internal and external connection.
                       </CardDescription>
@@ -129,7 +129,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                       </ul>
                       
                       <Button className="w-full h-12 text-base font-bold bg-primary hover:bg-primary/90 rounded-xl group-hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] transition-all">
-                        Launch Normal Scan
+                        Start audit
                         <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                       </Button>
                     </CardContent>
@@ -153,7 +153,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                       <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform mb-6">
                         <Target className="h-7 w-7" />
                       </div>
-                      <CardTitle className="text-2xl font-bold text-foreground mb-3">Targeted Scan</CardTitle>
+                      <CardTitle className="text-2xl font-bold text-foreground mb-3">Targeted audit</CardTitle>
                       <CardDescription className="text-muted-foreground text-base leading-relaxed">
                         Precision asset verification. Focuses exclusively on a list of specific URLs, PDFs, or images for immediate feedback.
                       </CardDescription>
@@ -170,7 +170,7 @@ export function ScanSelectionModal({ isOpen, onClose }: ScanSelectionModalProps)
                       </ul>
 
                       <Button className="w-full h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-500 rounded-xl group-hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all border-none">
-                        Launch Targeted Scan
+                        Start targeted audit
                         <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                       </Button>
                     </CardContent>

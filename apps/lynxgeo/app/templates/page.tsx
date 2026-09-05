@@ -62,16 +62,16 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
+    <div className="w-full max-w-[1600px] mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 space-y-6 sm:space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="min-w-0">
           <p className="text-xs uppercase tracking-widest text-primary font-bold">Presets</p>
-          <h1 className="text-3xl font-black tracking-tight mt-1">Audit templates</h1>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-1">Audit templates</h1>
           <p className="text-muted-foreground mt-1">
             Save crawler configs and reuse them on a new GEO audit. Templates live in your Lynx GEO database.
           </p>
         </div>
-        <Button onClick={() => router.push('/audits/new')}>
+        <Button onClick={() => router.push('/audits/new')} className="shrink-0 w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           New template
         </Button>
@@ -89,7 +89,7 @@ export default function TemplatesPage() {
           ))}
         </div>
       ) : templates.length === 0 ? (
-        <Card className="p-16 text-center space-y-4 border-dashed border-primary/30">
+        <Card className="p-8 sm:p-16 text-center space-y-4 border-dashed border-primary/30">
           <div className="flex justify-center">
             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
               <LayoutTemplate className="h-8 w-8 text-primary" />

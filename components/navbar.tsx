@@ -68,7 +68,7 @@ export function Navbar({ user }: NavbarProps) {
     { href: '/', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
     { href: '/templates', label: 'Templates', icon: <LayoutTemplate className="h-4 w-4" /> },
     { href: '/scans/history', label: 'History', icon: <History className="h-4 w-4" /> },
-    { href: '/scans/new', label: 'New Scan', icon: <PlusCircle className="h-4 w-4" /> },
+    { href: '/scans/new', label: 'New audit', icon: <PlusCircle className="h-4 w-4" /> },
   ] : [];
 
   return (
@@ -91,7 +91,7 @@ export function Navbar({ user }: NavbarProps) {
 
             <nav className="hidden md:flex items-center gap-1">
               {navLinks.map((link) => {
-                if (link.label === 'New Scan') {
+                if (link.label === 'New audit') {
                   return (
                     <button
                       key={link.href}
@@ -250,56 +250,69 @@ export function Navbar({ user }: NavbarProps) {
 
       <AnimatePresence>
         {isMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-x-0 top-16 z-30 md:hidden bg-card shadow-card border-b border-border p-6"
-          >
-            <nav className="flex flex-col gap-4">
-              {navLinks.map((link) => (
-                <div key={link.href}>
-                  {link.label === 'New Scan' ? (
-                    <button
-                      onClick={() => {
-                        openModal();
-                        setIsMenuOpen(false);
-                      }}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-md text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent"
-                    >
-                      {link.icon}
-                      <span>{link.label}</span>
-                    </button>
-                  ) : (
-                    <Link
-                      href={link.href}
-                      onClick={() => setIsMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-md border",
-                        pathname === link.href 
-                          ? "text-primary bg-primary/10 border-primary/30" 
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
-                      )}
-                    >
-                      {link.icon}
-                      <span>{link.label}</span>
-                    </Link>
-                  )}
-                </div>
-              ))}
-              
-              {!user && (
-                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-border">
-                  <Button variant="ghost" asChild onClick={() => setIsMenuOpen(false)}>
-                    <Link href="/login">Sign In</Link>
-                  </Button>
-                  <Button asChild onClick={() => setIsMenuOpen(false)}>
-                    <Link href="/login">Get Started</Link>
-                  </Button>
-                </div>
-              )}
-            </nav>
-          </motion.div>
+          <>
+            <motion.button
+              key="mobile-nav-backdrop"
+              type="button"
+              aria-label="Close menu"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMenuOpen(false)}
+              className="fixed inset-0 top-16 z-40 md:hidden bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div
+              key="mobile-nav-sheet"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed inset-x-0 top-16 z-50 md:hidden bg-card shadow-card border-b border-border p-6"
+            >
+              <nav className="flex flex-col gap-4">
+                {navLinks.map((link) => (
+                  <div key={link.href}>
+                    {link.label === 'New audit' ? (
+                      <button
+                        onClick={() => {
+                          openModal();
+                          setIsMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-md text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent"
+                      >
+                        {link.icon}
+                        <span>{link.label}</span>
+                      </button>
+                    ) : (
+                      <Link
+                        href={link.href}
+                        onClick={() => setIsMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-3 text-lg font-semibold transition-all rounded-md border",
+                          pathname === link.href 
+                            ? "text-primary bg-primary/10 border-primary/30" 
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
+                        )}
+                      >
+                        {link.icon}
+                        <span>{link.label}</span>
+                      </Link>
+                    )}
+                  </div>
+                ))}
+                
+                {!user && (
+                  <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-border">
+                    <Button variant="ghost" asChild onClick={() => setIsMenuOpen(false)}>
+                      <Link href="/login">Sign In</Link>
+                    </Button>
+                    <Button asChild onClick={() => setIsMenuOpen(false)}>
+                      <Link href="/login">Get Started</Link>
+                    </Button>
+                  </div>
+                )}
+              </nav>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </>

@@ -33,18 +33,18 @@ test.describe('Scan Management', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL('/');
 
-    // 2. Go to New Scan page (via Modal)
-    await page.click('text=New Scan');
-    await expect(page.locator('text=Choose your Scan Mode')).toBeVisible();
-    await page.click('text=Launch Normal Scan');
+    // 2. Go to New audit page (via Modal)
+    await page.click('text=New audit');
+    await expect(page.locator('text=Choose your Audit Mode')).toBeVisible();
+    await page.click('text=Start audit');
     await expect(page).toHaveURL('/scans/new');
 
     // 3. Fill scan configuration
     await page.fill('input[placeholder="e.g. Weekly Health Check"]', 'E2E Test Scan');
     await page.fill('input[type="url"]', 'https://example.com');
     
-    // 4. Ignite Scan
-    await page.click('button:has-text("Ignite Scan")');
+    // 4. Start audit
+    await page.click('button:has-text("Start audit")');
 
     // 5. Should be redirected to scan results page
     // URL pattern: /scans/[id]

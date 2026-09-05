@@ -36,7 +36,7 @@ export function snapshotToHtml(name: string, startUrl: string, snapshot: FrozenS
 <p>${escapeHtml(startUrl)}</p>
 <p>Score ${snapshot.score} (${escapeHtml(snapshot.scoreModelVersion)})</p>
 <ul>${items}</ul>
-<p>Schema.org vocabulary validation is phase 2 and is not included in this report.</p>
+<p>Schema.org vocabulary checks use a pinned official schema.org release (local validation on already-fetched HTML).</p>
 </body></html>`;
 }
 

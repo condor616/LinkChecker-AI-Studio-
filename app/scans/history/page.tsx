@@ -36,7 +36,7 @@ export default async function HistoryPage() {
         <Button asChild size="lg" className="h-12 px-8 font-bold bg-primary hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] transition-all rounded-xl">
           <Link href="/scans/new">
             <PlusCircle className="mr-2 h-5 w-5" />
-            New Scan
+            New audit
           </Link>
         </Button>
       </motion.div>

@@ -59,6 +59,20 @@ const JSON_LD: CheckRef = {
   kind: 'spec',
 };
 
+const SCHEMA_ORG_VOCAB: CheckRef = {
+  title: 'Schema.org — vocabulary for developers',
+  href: 'https://schema.org/docs/developers.html',
+  publisher: 'Schema.org',
+  kind: 'spec',
+};
+
+const GOOGLE_STRUCTURED_DATA: CheckRef = {
+  title: 'Google Search — intro to structured data markup',
+  href: 'https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data',
+  publisher: 'Google',
+  kind: 'docs',
+};
+
 const HTML_TITLE: CheckRef = {
   title: 'HTML Living Standard — the title element',
   href: 'https://html.spec.whatwg.org/multipage/semantics.html#the-title-element',
@@ -180,6 +194,8 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   lang: HTML_LANG,
   hreflang: HTML_HREFLANG,
   jsonld: JSON_LD,
+  schemaorg: SCHEMA_ORG_VOCAB,
+  'schema-rich': GOOGLE_STRUCTURED_DATA,
   'accept-markdown': RFC_7763,
   'vary-accept': RFC_9110,
   'md-alt': RFC_7763,

@@ -47,7 +47,7 @@
     "start:lynxgeo": "npm --prefix apps/lynxgeo run start",
     "worker:lynxgeo": "npm --prefix apps/lynxgeo run worker",
     "test:lynxgeo": "npm --prefix apps/lynxgeo run test",
-    "postinstall": "npm install --prefix apps/lynxgeo --no-fund --no-audit"
+    "postinstall": "node -e \"const fs=require('fs');const{execSync}=require('child_process');if(!fs.existsSync('apps/lynxgeo/package.json'))process.exit(0);execSync('npm install --prefix apps/lynxgeo --no-fund --no-audit',{stdio:'inherit'})\""
   },
   "dependencies": {
     "@bull-board/api": "^6.20.6",

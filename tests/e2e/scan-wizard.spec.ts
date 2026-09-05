@@ -25,10 +25,10 @@ test.describe('Scan Setup Wizard Flow', () => {
     });
 
     test('should progress through mandatory steps and validate input', async ({ page }) => {
-        await page.click('text=Launch New Scan');
+        await page.click('text=Start audit');
         
         // Step 1: Mode Selection
-        await expect(page.locator('text=Choose Scan Mode')).toBeVisible();
+        await expect(page.locator('text=Choose Audit Mode')).toBeVisible();
         await page.click('h4:has-text("Recursive Discovery")');
 
         // Step 2: Basic Details (Validation)
@@ -62,15 +62,15 @@ test.describe('Scan Setup Wizard Flow', () => {
         await expect(page.locator('text=Review Configuration')).toBeVisible();
         await expect(page.locator('text=E2E Test Scan')).toBeVisible();
         
-        // Launch Scan
-        await page.click('button:has-text("Launch Engine")');
+        // Start audit
+        await page.click('button:has-text("Start audit")');
         
         // Verify redirection
         await expect(page).toHaveURL(/\/scans\/[a-f0-9-]{36}/);
     });
 
     test('should require target URLs for targeted scans', async ({ page }) => {
-        await page.click('text=Launch New Scan');
+        await page.click('text=Start audit');
         
         // Step 1: Mode Selection
         await page.click('h4:has-text("Targeted Audit")');
@@ -109,15 +109,15 @@ test.describe('Scan Setup Wizard Flow', () => {
     });
 
     test('should allow skipping to manual setup', async ({ page }) => {
-        await page.click('text=Launch New Scan');
+        await page.click('text=Start audit');
         await page.click('button:has-text("Skip to Manual Setup")');
         
         await expect(page).toHaveURL('/scans/new');
-        await expect(page.locator('h1:has-text("Initialize Scan")')).toBeVisible();
+        await expect(page.locator('h1:has-text("Initialize audit")')).toBeVisible();
     });
 
     test('should persist "Do not show again" preference', async ({ page }) => {
-        await page.click('text=Launch New Scan');
+        await page.click('text=Start audit');
         
         await page.click('h4:has-text("Recursive Discovery")');
         await page.fill('input[placeholder="e.g. My Website Audit"]', 'Preference Test');
@@ -132,16 +132,16 @@ test.describe('Scan Setup Wizard Flow', () => {
         // Final Step: Review
         await expect(page.locator('text=Review Configuration')).toBeVisible();
         await page.click('text=Do not show this wizard again');
-        await page.click('button:has-text("Launch Engine")');
+        await page.click('button:has-text("Start audit")');
         
         await expect(page).toHaveURL(/\/scans\/[a-f0-9-]{36}/);
 
         await page.goto('/');
         await page.waitForLoadState('networkidle');
-        await page.click('text=Launch New Scan');
+        await page.click('text=Start audit');
         
         // Should go to the selection modal, NOT the wizard
-        await expect(page.locator('text=Choose your Scan Mode')).toBeVisible();
-        await expect(page.locator('text=Launch Normal Scan')).toBeVisible();
+        await expect(page.locator('text=Choose your Audit Mode')).toBeVisible();
+        await expect(page.locator('text=Start audit')).toBeVisible();
     });
 });

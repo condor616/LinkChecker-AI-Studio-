@@ -126,7 +126,7 @@ export default function AuditReportPage() {
     return groupCriteria(findings, { baseUrl: data?.audit?.startUrl });
   }, [data?.pages, data?.snapshot, categories.playbook, data?.audit?.startUrl]);
 
-  if (!data?.audit) return <div className="p-8">Loading…</div>;
+  if (!data?.audit) return <div className="px-4 py-6 sm:p-8">Loading…</div>;
   const audit = data.audit;
   const running = audit.status === 'RUNNING';
   const failed = audit.status === 'FAILED';
@@ -136,7 +136,7 @@ export default function AuditReportPage() {
   const completed = audit.status === 'COMPLETED';
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 space-y-6">
       {viewingRerun && (
         <Link
           href={`/audits/${baselineAuditId}`}
@@ -147,8 +147,8 @@ export default function AuditReportPage() {
         </Link>
       )}
 
-      <div className="flex items-end justify-between gap-4">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="min-w-0">
           <p
             className={`text-xs uppercase tracking-widest font-bold ${
               failed || cancelled ? 'text-destructive' : paused ? 'text-amber-700 dark:text-amber-400' : 'text-primary'
@@ -161,16 +161,16 @@ export default function AuditReportPage() {
               </span>
             )}
           </p>
-          <h1 className="text-3xl font-black">{audit.name}</h1>
-          <p className="text-muted-foreground">{audit.startUrl}</p>
+          <h1 className="text-2xl sm:text-3xl font-black break-words">{audit.name}</h1>
+          <p className="text-muted-foreground break-all">{audit.startUrl}</p>
           {seriesRuns.length > 1 && seriesIndex != null && (
             <p className="text-xs text-muted-foreground mt-1">
               {runLabel(audit, seriesIndex - 1)} · {seriesIndex} of {seriesRuns.length} in this series
             </p>
           )}
         </div>
-        <div className="text-right">
-          <div className="text-5xl font-black text-primary">{audit.score ?? '—'}</div>
+        <div className="text-left sm:text-right shrink-0">
+          <div className="text-4xl sm:text-5xl font-black text-primary">{audit.score ?? '—'}</div>
           <div className="text-xs text-muted-foreground">
             {cancelled
               ? 'cancelled — no snapshot'
@@ -276,7 +276,7 @@ export default function AuditReportPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {['crawlAccess', 'extractability', 'negotiation', 'discovery', 'citeability'].map((key) => {
           const score = categories[key];
           const tone =

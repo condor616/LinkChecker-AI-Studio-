@@ -25,9 +25,9 @@ test.describe('Scan Selection Modal & Mode Switching', () => {
     });
 
     test('should open modal and navigate to normal scan', async ({ page }) => {
-        await page.click('nav >> text=New Scan');
-        await expect(page.locator('text=Choose your Scan Mode')).toBeVisible();
-        await page.click('text=Launch Normal Scan');
+        await page.click('nav >> text=New audit');
+        await expect(page.locator('text=Choose your Audit Mode')).toBeVisible();
+        await page.click('text=Start audit');
         await expect(page).toHaveURL('/scans/new');
         
         // Verify Targeted Audit is NOT active
@@ -36,9 +36,9 @@ test.describe('Scan Selection Modal & Mode Switching', () => {
     });
 
     test('should open modal and navigate to targeted scan', async ({ page }) => {
-        await page.click('nav >> text=New Scan');
-        await expect(page.locator('text=Choose your Scan Mode')).toBeVisible();
-        await page.click('text=Launch Targeted Scan');
+        await page.click('nav >> text=New audit');
+        await expect(page.locator('text=Choose your Audit Mode')).toBeVisible();
+        await page.click('text=Start targeted audit');
         await expect(page).toHaveURL('/scans/new?target=true');
         
         // Verify Targeted Audit IS active
@@ -47,17 +47,17 @@ test.describe('Scan Selection Modal & Mode Switching', () => {
     });
 
     test('should reset state when switching from targeted to normal mode', async ({ page }) => {
-        // 1. Go to Targeted Scan
-        await page.click('nav >> text=New Scan');
-        await page.click('text=Launch Targeted Scan');
+        // 1. Go to Targeted audit
+        await page.click('nav >> text=New audit');
+        await page.click('text=Start targeted audit');
         await expect(page).toHaveURL('/scans/new?target=true');
         
         // Verify Targeted Audit is active
         await expect(page.locator('div.cursor-pointer:has-text("Targeted Audit")')).toHaveClass(/bg-primary\/10/);
 
-        // 2. Open modal again and select Normal Scan
-        await page.click('nav >> text=New Scan');
-        await page.click('text=Launch Normal Scan');
+        // 2. Open modal again and select Normal audit
+        await page.click('nav >> text=New audit');
+        await page.click('text=Start audit');
         await expect(page).toHaveURL('/scans/new');
 
         // 3. Verify Targeted Audit is now INACTIVE
@@ -66,17 +66,17 @@ test.describe('Scan Selection Modal & Mode Switching', () => {
 
     test('should open modal from Dashboard CTA', async ({ page }) => {
         await page.goto('/');
-        await page.click('text=Launch New Scan');
-        await expect(page.locator('text=Choose your Scan Mode')).toBeVisible();
-        await page.click('button:has-text("Launch Normal Scan")');
+        await page.click('text=Start audit');
+        await expect(page.locator('text=Choose your Audit Mode')).toBeVisible();
+        await page.click('button:has-text("Start audit")');
         await expect(page).toHaveURL('/scans/new');
     });
 
     test('should open modal from Targeted Audit Highlight', async ({ page }) => {
         await page.goto('/');
         await page.click('text=Try Targeted Audit');
-        await expect(page.locator('text=Choose your Scan Mode')).toBeVisible();
-        await page.click('button:has-text("Launch Targeted Scan")');
+        await expect(page.locator('text=Choose your Audit Mode')).toBeVisible();
+        await page.click('button:has-text("Start targeted audit")');
         await expect(page).toHaveURL('/scans/new?target=true');
     });
 });

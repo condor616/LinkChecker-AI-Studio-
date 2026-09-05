@@ -50,8 +50,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <Card className="w-[400px]">
+    <div className="flex items-center justify-center min-h-screen px-4 py-8">
+      <Card className="w-full max-w-[400px]">
         <CardHeader className="items-center text-center">
           <div className="mb-2 overflow-hidden rounded-lg border border-border">
             <img src="/logo.png" alt="Lynx GEO" className="h-14 w-14 object-cover" />

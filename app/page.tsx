@@ -73,7 +73,7 @@ export default async function Dashboard() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8">
               {session ? (
                 <StartScanButton size="lg" className="px-10 h-14 text-lg font-bold bg-primary text-primary-foreground hover:shadow-hover transition-all rounded-lg">
-                  Launch New Scan
+                  Start audit
                 </StartScanButton>
               ) : (
                 <Button size="lg" asChild className="px-10 h-14 text-lg font-bold bg-primary text-primary-foreground hover:shadow-hover transition-all rounded-lg">
@@ -137,7 +137,7 @@ export default async function Dashboard() {
                 <FeatureCard 
                     href="/scans/new"
                     icon={<PlusCircle className="h-6 w-6" />}
-                    title="New Scan"
+                    title="New audit"
                     description="Launch a comprehensive verification job."
                     delay={0.1}
                     color="primary"
@@ -336,7 +336,7 @@ function FeatureCard({ href, icon, title, description, delay, color }: { href: s
             transition={{ delay }}
             className="h-full w-full min-h-0 min-w-0"
         >
-            {title === 'New Scan' ? (
+            {title === 'New audit' ? (
                 <StartScanButton asChild>
                     <div
                         role="button"

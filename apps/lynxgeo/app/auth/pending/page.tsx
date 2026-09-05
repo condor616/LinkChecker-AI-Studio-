@@ -13,8 +13,8 @@ export default function PendingPage() {
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-16 text-center space-y-3">
-      <h1 className="text-2xl font-bold">Account pending approval</h1>
+    <div className="w-full max-w-[1600px] mx-auto px-4 py-10 sm:p-16 text-center space-y-3">
+      <h1 className="text-xl sm:text-2xl font-bold">Account pending approval</h1>
       <p className="text-muted-foreground">An administrator must approve your account before you can run GEO audits.</p>
       <Button variant="outline" onClick={handleLogout}>
         Sign out

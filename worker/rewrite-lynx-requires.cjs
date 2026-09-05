@@ -12,6 +12,11 @@ const specToAbs = {
   '@lynx/crawler-core': path.join(distRoot, 'packages/crawler-core/src'),
   '@lynx/auth': path.join(distRoot, 'packages/auth/src'),
   '@lynx/db': path.join(distRoot, 'packages/db/src'),
+  '@lynx/backup/db-command': path.join(distRoot, 'packages/backup/src/db-command'),
+  '@lynx/backup/manifest': path.join(distRoot, 'packages/backup/src/manifest'),
+  '@lynx/backup/paths': path.join(distRoot, 'packages/backup/src/paths'),
+  '@lynx/backup/backup': path.join(distRoot, 'packages/backup/src/backup'),
+  '@lynx/backup': path.join(distRoot, 'packages/backup/src'),
 };
 const specs = Object.keys(specToAbs).sort((a, b) => b.length - a.length);
 

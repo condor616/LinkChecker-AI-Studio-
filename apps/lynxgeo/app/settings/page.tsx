@@ -10,34 +10,34 @@ export default function SettingsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">System Settings</h1>
+    <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8 max-w-6xl mx-auto space-y-6 sm:space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2 sm:mb-6">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">System Settings</h1>
           <p className="text-muted-foreground mt-1">
             Manage infrastructure, data snapshots, and global configurations.
           </p>
         </div>
         {isAdmin && (
-          <div className="px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+          <div className="px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-wider flex items-center gap-2 shrink-0 w-fit">
             <ShieldCheck className="h-3.5 w-3.5" /> Admin Panel
           </div>
         )}
       </div>
 
       <Tabs defaultValue="backup" className="w-full space-y-6">
-        <TabsList className="bg-white/5 border border-white/10 p-1 h-12 shadow-2xl rounded-xl backdrop-blur-md">
+        <TabsList className="bg-white/5 border border-white/10 p-1 h-auto min-h-12 shadow-2xl rounded-xl backdrop-blur-md w-full sm:w-auto flex flex-wrap sm:flex-nowrap justify-start">
           <TabsTrigger
             value="backup"
-            className="px-8 py-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all rounded-lg font-bold"
+            className="px-3 sm:px-8 py-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all rounded-lg font-bold text-xs sm:text-sm flex-1 sm:flex-none"
           >
-            <Database className="h-4 w-4 mr-2" /> Backup & Restore
+            <Database className="h-4 w-4 mr-2 shrink-0" /> Backup & Restore
           </TabsTrigger>
           <TabsTrigger
             value="preferences"
-            className="px-8 py-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-500 transition-all rounded-lg font-bold"
+            className="px-3 sm:px-8 py-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-500 transition-all rounded-lg font-bold text-xs sm:text-sm flex-1 sm:flex-none"
           >
-            <User className="h-4 w-4 mr-2" /> User Preferences
+            <User className="h-4 w-4 mr-2 shrink-0" /> User Preferences
           </TabsTrigger>
         </TabsList>
 

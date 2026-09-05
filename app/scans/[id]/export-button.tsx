@@ -39,13 +39,14 @@ export function ExportButton({ scanId, scanName }: { scanId: string, scanName: s
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-10 cursor-pointer gap-2 border-primary/50 bg-background text-foreground hover:border-primary hover:bg-primary/10 dark:border-primary/25 dark:hover:border-primary/50 dark:hover:bg-primary/5 transition-all">
+                <Button variant="outline" className="h-10 cursor-pointer gap-2 px-2.5 sm:px-4 border-primary/50 bg-background text-foreground hover:border-primary hover:bg-primary/10 dark:border-primary/25 dark:hover:border-primary/50 dark:hover:bg-primary/5 transition-all">
                     {isExporting ? (
                         <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     ) : (
                         <Download className="h-4 w-4 text-primary" />
                     )}
-                    Export Data
+                    <span className="sm:hidden">Export</span>
+                    <span className="hidden sm:inline">Export Data</span>
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 glass-vibrant border-border text-foreground">

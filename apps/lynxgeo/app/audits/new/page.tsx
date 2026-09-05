@@ -296,12 +296,12 @@ export default function NewAuditPage() {
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 space-y-6 sm:space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight">New AI discoverability audit</h1>
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">New AI discoverability audit</h1>
         </div>
-        <div className="flex flex-col gap-2 min-w-[240px]">
+        <div className="flex flex-col gap-2 w-full md:w-auto md:min-w-[240px]">
           <Label htmlFor="template-select" className="text-[10px] uppercase font-bold text-muted-foreground">
             Template
           </Label>
@@ -359,7 +359,7 @@ export default function NewAuditPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-4 sm:p-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Audit name</Label>
@@ -401,7 +401,7 @@ export default function NewAuditPage() {
               </div>
 
               {showAuth && (
-                <div className="p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 grid grid-cols-2 gap-3">
+                <div className="p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="user" className="text-xs uppercase text-muted-foreground">
                       Username
@@ -498,7 +498,7 @@ export default function NewAuditPage() {
                   title="Exclude subdomains"
                   on={
                     config.excludeSubdomains
-                      ? 'blog.example.com is treated as external.'
+                      ? 'blog.example.com / api.example.com are skipped (not fetched).'
                       : 'Crawl subdomains as internal pages.'
                   }
                   onClick={() => setConfig((prev) => ({ ...prev, excludeSubdomains: !prev.excludeSubdomains }))}
@@ -518,7 +518,7 @@ export default function NewAuditPage() {
                   title="Record skipped"
                   on={
                     config.saveSkippedLinks
-                      ? 'Excluded URLs appear in the audit with a reason.'
+                      ? 'Excluded URLs appear in the page list as SKIPPED (not as warnings).'
                       : 'Excluded URLs are dropped from the page list.'
                   }
                   onClick={() => setConfig((prev) => ({ ...prev, saveSkippedLinks: !prev.saveSkippedLinks }))}
@@ -539,7 +539,7 @@ export default function NewAuditPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <CardContent className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="ua">Browser agent</Label>
@@ -601,7 +601,7 @@ export default function NewAuditPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-4 sm:p-6 space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="excludeRegex">Exclusion regex</Label>
                 <Input
@@ -676,7 +676,7 @@ export default function NewAuditPage() {
             <CardContent className="p-0">
               <Textarea
                 aria-label="Scan config JSON"
-                className="font-mono min-h-[420px] rounded-none border-0 bg-transparent text-primary/90 text-[11px] leading-relaxed p-5 focus-visible:ring-0"
+                className="font-mono min-h-[280px] sm:min-h-[420px] rounded-none border-0 bg-transparent text-primary/90 text-[11px] leading-relaxed p-4 sm:p-5 focus-visible:ring-0"
                 value={jsonText}
                 onChange={(e) => handleJsonChange(e.target.value)}
                 spellCheck={false}

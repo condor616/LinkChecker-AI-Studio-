@@ -75,8 +75,8 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-8 space-y-4">
-      <h1 className="text-3xl font-bold">Audit history</h1>
+    <div className="w-full max-w-[1600px] mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold">Audit history</h1>
       <p className="text-sm text-muted-foreground">
         Each entry is a discovery scan — the first full crawl of a site. Re-runs of the same pages
         appear on that scan&apos;s report page so you can track progress over time without cluttering
@@ -148,7 +148,9 @@ export default function HistoryPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  {main.startUrl} · {main.status} · {main.scoreModelVersion || 'pending'} ·{' '}
+                  <span className="break-all">{main.startUrl}</span>
+                  {' · '}
+                  {main.status} · {main.scoreModelVersion || 'pending'} ·{' '}
                   {new Date(main.createdAt).toLocaleString()}
                 </CardContent>
               </Card>

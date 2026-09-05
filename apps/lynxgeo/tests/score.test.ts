@@ -13,7 +13,7 @@ import {
   type Finding,
 } from '../lib/geo/score';
 
-test('geo-1.1.0 keeps category weights that sum to 1.00', () => {
+test('geo-1.2.0 keeps category weights that sum to 1.00', () => {
   const sum = Object.values(CATEGORY_WEIGHTS).reduce((a, b) => a + b, 0);
   assert.equal(Number(sum.toFixed(2)), 1);
   assert.equal(CATEGORY_WEIGHTS.crawlAccess, 0.28);
@@ -21,7 +21,7 @@ test('geo-1.1.0 keeps category weights that sum to 1.00', () => {
   assert.equal(CATEGORY_WEIGHTS.negotiation, 0.18);
   assert.equal(CATEGORY_WEIGHTS.discovery, 0.16);
   assert.equal(CATEGORY_WEIGHTS.citeability, 0.1);
-  assert.equal(SCORE_MODEL_VERSION, 'geo-1.1.0');
+  assert.equal(SCORE_MODEL_VERSION, 'geo-1.2.0');
 });
 
 test('geo-1.0 weights sum to 1.00 via a perfect score', () => {
@@ -545,6 +545,8 @@ test('catalog lists every scored check', () => {
     'lang',
     'hreflang',
     'jsonld',
+    'schemaorg',
+    'schema-rich',
     'md-alt',
     'noindex',
     'noai',

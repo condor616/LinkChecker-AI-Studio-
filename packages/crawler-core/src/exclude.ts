@@ -63,6 +63,16 @@ export function getSkipReason(urlStr: string, config: CrawlConfig | any): string
     if (exclusion.excluded) {
       return exclusion.reason || 'Matches exclusion rule';
     }
+
+    // Exclude subdomains before fetch so they are never queued or verified.
+    // (skipExternal still verifies other hosts once; this flag is stricter.)
+    if (config.excludeSubdomains && config.startUrl) {
+      const startHost = new URL(config.startUrl).hostname.toLowerCase().replace(/^www\./, '');
+      const currentHost = new URL(urlStr).hostname.toLowerCase().replace(/^www\./, '');
+      if (currentHost !== startHost && currentHost.endsWith('.' + startHost)) {
+        return 'Subdomain excluded';
+      }
+    }
   } catch (e: any) {
     return `Invalid URL format: ${e.message}`;
   }

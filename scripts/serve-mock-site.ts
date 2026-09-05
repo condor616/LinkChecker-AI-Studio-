@@ -132,6 +132,24 @@ app.get('/exclusion-trigger', (c) => {
     `);
 });
 
+// Route for testing excludeSubdomains (links + GET form action on a subdomain of localhost)
+app.get('/subdomain-trigger', (c) => {
+    return c.html(`
+      <html>
+        <body>
+          <a href="http://api.localhost:${port}/forms/v1/processing-requests">API Link</a>
+          <form action="http://api.localhost:${port}/forms/v1/processing-requests" method="get">
+            <select name="roche-dropdown-location-region">
+              <option value="dy">DY</option>
+              <option value="us">US</option>
+            </select>
+          </form>
+          <a href="/about">Internal About</a>
+        </body>
+      </html>
+    `);
+});
+
 const port = 3102;
 
 let serverInstance: any = null;

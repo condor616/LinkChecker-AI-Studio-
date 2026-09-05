@@ -144,3 +144,55 @@ test('noai present via both meta and header', () => {
   assert.equal(noai?.severity, 'pass');
   assert.match(noai?.detail || '', /meta robots and X-Robots-Tag/);
 });
+
+test('schemaorg is sparse when page has no JSON-LD', () => {
+  const findings = analyzePage(resource(), pageHtml());
+  assert.equal(findings.some((f) => f.id.startsWith('schemaorg-')), false);
+  assert.equal(findings.some((f) => f.id.startsWith('schema-rich-')), false);
+  const jsonld = findings.find((f) => f.id.startsWith('jsonld-'));
+  assert.equal(jsonld?.severity, 'warn');
+});
+
+test('schemaorg passes for valid Organization JSON-LD', () => {
+  const html = `<html lang="en"><head><title>Acme</title>
+<script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Acme',
+  })}</script>
+</head><body><h1>Acme</h1><p>Hello world content here.</p></body></html>`;
+  const findings = analyzePage(resource(), html);
+  const schema = findings.find((f) => f.id.startsWith('schemaorg-'));
+  assert.ok(schema);
+  assert.equal(schema.severity, 'pass');
+  assert.equal(findings.some((f) => f.id.startsWith('schema-rich-')), false);
+});
+
+test('schemaorg fails on unknown property and schema-rich warns for incomplete JobPosting', () => {
+  const html = `<html lang="en"><head><title>Job</title>
+<script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'JobPosting',
+    title: 'Engineer',
+    postedDate: '2026-01-01',
+  })}</script>
+</head><body><h1>Job</h1><p>Hello world content here.</p></body></html>`;
+  const findings = analyzePage(resource(), html);
+  const schema = findings.find((f) => f.id.startsWith('schemaorg-'));
+  assert.equal(schema?.severity, 'fail');
+  assert.match(schema?.detail || '', /postedDate/);
+  const rich = findings.find((f) => f.id.startsWith('schema-rich-'));
+  assert.ok(rich);
+  assert.equal(rich.severity, 'warn');
+  assert.match(rich.detail || '', /Google Rich Results/);
+});
+
+test('malformed JSON-LD does not throw and fails schemaorg', () => {
+  const html = `<html lang="en"><head><title>Bad</title>
+<script type="application/ld+json">{not-json</script>
+</head><body><h1>Bad</h1><p>Hello world content here.</p></body></html>`;
+  const findings = analyzePage(resource(), html);
+  const schema = findings.find((f) => f.id.startsWith('schemaorg-'));
+  assert.equal(schema?.severity, 'fail');
+  assert.match(schema?.detail || '', /Malformed JSON-LD/);
+});

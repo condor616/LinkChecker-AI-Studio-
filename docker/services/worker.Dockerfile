@@ -3,7 +3,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY packages ./packages
-RUN npm ci
+# LynxScan worker does not need apps/lynxgeo; skip lifecycle scripts that install it.
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build:worker
 
@@ -17,8 +18,8 @@ RUN apk add --no-cache curl
 
 COPY package*.json ./
 COPY packages ./packages
-# Install only production dependencies
-RUN npm ci --omit=dev
+# Install only production dependencies (no GEO postinstall)
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy the built worker code
 # Structure will be dist/worker/worker/index.js and dist/worker/lib/...

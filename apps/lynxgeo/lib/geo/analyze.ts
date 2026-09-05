@@ -1,6 +1,10 @@
 import * as cheerio from 'cheerio';
 import type { FetchedResource } from '@lynx/crawler-core';
 import { isGeoHtmlPage, isGeoNonHtmlTarget } from './origin-scope';
+import { findGoogleRichGaps, summarizeGoogleRichGaps } from './schemaorg/google-rich';
+import { parseJsonLdBlocksFromHtml } from './schemaorg/parse-jsonld';
+import { summarizeIssues, validateParsedBlocks, worstSeverity } from './schemaorg/validate';
+import { loadVocabIndex } from './schemaorg/vocab';
 import type { Finding } from './score';
 
 function httpObserved(resource: FetchedResource): string {
@@ -160,13 +164,53 @@ export function analyzePage(resource: FetchedResource, html: string | null): Fin
     category: 'extractability',
     title: jsonLd ? 'JSON-LD present' : 'No JSON-LD',
     detail: jsonLd
-      ? `${jsonLd} <script type="application/ld+json"> block(s) on ${url}. Schema.org type validation is phase 2 (official schema.org vocabulary, not homemade rules).`
-      : `No <script type="application/ld+json"> on ${url}. Schema.org type validation is phase 2.`,
+      ? `${jsonLd} <script type="application/ld+json"> block(s) on ${url}.`
+      : `No <script type="application/ld+json"> on ${url}.`,
     severity: jsonLd ? 'pass' : 'warn',
     standard: 'established',
-    suggestion: jsonLd ? '' : `Add JSON-LD on ${url} (Organization / WebPage / MedicalWebPage where relevant). Type/vocabulary checks are phase 2.`,
+    suggestion: jsonLd ? '' : `Add JSON-LD on ${url} (Organization / WebPage / MedicalWebPage where relevant).`,
     url,
   });
+
+  if (jsonLd > 0) {
+    const pageHtml = html || resource.bodyText || '';
+    const blocks = parseJsonLdBlocksFromHtml(pageHtml);
+    const vocab = loadVocabIndex();
+    const issues = validateParsedBlocks(blocks, vocab);
+    const severity = worstSeverity(issues);
+    findings.push({
+      id: `schemaorg-${url}`,
+      category: 'extractability',
+      title:
+        severity === 'pass'
+          ? 'Schema.org vocabulary OK'
+          : severity === 'warn'
+            ? 'Schema.org vocabulary warnings'
+            : 'Schema.org vocabulary errors',
+      detail: `${summarizeIssues(issues)} Validated against schema.org ${vocab.version} (local pin; no network).`,
+      severity,
+      standard: 'established',
+      suggestion:
+        severity === 'pass'
+          ? ''
+          : `Fix JSON-LD on ${url} so @type and properties match the official schema.org vocabulary (${vocab.version}).`,
+      url,
+    });
+
+    const richGaps = findGoogleRichGaps(blocks);
+    if (richGaps.length > 0) {
+      findings.push({
+        id: `schema-rich-${url}`,
+        category: 'extractability',
+        title: 'Google Rich Results fields incomplete',
+        detail: `${summarizeGoogleRichGaps(richGaps)} Not schema.org invalidity — Google feature guidance only.`,
+        severity: 'warn',
+        standard: 'convention',
+        suggestion: `If you want Google rich results for these types on ${url}, add the missing required properties per Google’s structured-data docs.`,
+        url,
+      });
+    }
+  }
 
   const mdAlt = $('link[rel="alternate"][type="text/markdown"], link[rel="alternate"][type="text/x-markdown"]').length;
   findings.push({

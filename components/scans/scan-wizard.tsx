@@ -48,7 +48,7 @@ interface WizardData {
 }
 
 const INITIAL_DATA: WizardData = {
-  name: 'My New Scan',
+  name: 'My New Audit',
   startUrl: 'https://',
   isTargeted: false,
   targetUrls: [],
@@ -198,7 +198,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step}
           </div>
           <div>
-            <h3 className="font-bold text-foreground">Scan Setup Wizard</h3>
+            <h3 className="font-bold text-foreground">Audit Setup Wizard</h3>
             <p className="text-xs text-muted-foreground">Step {step} of {totalSteps}</p>
           </div>
         </div>
@@ -229,7 +229,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
             {step === 1 && (
               <div className="space-y-6">
                 <div className="text-center space-y-2">
-                  <h2 className="text-2xl font-black text-foreground">Choose Scan Mode</h2>
+                  <h2 className="text-2xl font-black text-foreground">Choose Audit Mode</h2>
                   <p className="text-muted-foreground">Select how the engine should navigate through your site.</p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -277,7 +277,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-xs font-bold uppercase tracking-wider text-primary">Scan Project Name</Label>
+                    <Label className="text-xs font-bold uppercase tracking-wider text-primary">Audit Project Name</Label>
                     <Input 
                       value={data.name} 
                       onChange={e => setData({...data, name: e.target.value})}
@@ -364,7 +364,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                   <SelectionToggle 
                     icon={<Users className="h-4 w-4" />}
                     title="Exclude Subdomains"
-                    description="Treats blog.site.com as external if you start at site.com. Keeps the scan focused."
+                    description="Drops links to blog.site.com / api.site.com when you start at site.com. Not fetched."
                     active={data.excludeSubdomains}
                     onClick={() => setData({...data, excludeSubdomains: !data.excludeSubdomains})}
                   />
@@ -622,7 +622,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
               disabled={loading}
               className="px-10 rounded-xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] transition-all font-black text-lg h-12"
             >
-              {loading ? "Initializing..." : "Launch Engine"}
+              {loading ? "Starting..." : "Start audit"}
             </Button>
           )}
         </div>
