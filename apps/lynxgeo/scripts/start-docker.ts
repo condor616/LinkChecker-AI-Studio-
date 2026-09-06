@@ -72,13 +72,58 @@ try {
   }
 
   console.log('🚀 Starting Lynx GEO Docker worker...');
-  try {
+  const lynxscanNetwork = 'lynxscan-dev_default';
+  const geoUp = () =>
     execSync(`docker compose --env-file "${envPath}" -f "${geoCompose}" up -d`, {
       cwd: repoRoot,
       stdio: 'inherit',
     });
+  const networkExists = () => {
+    try {
+      execSync(`docker network inspect "${lynxscanNetwork}"`, { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const resetGeoWorker = () => {
+    try {
+      execSync(`docker compose --env-file "${envPath}" -f "${geoCompose}" down --remove-orphans`, {
+        cwd: repoRoot,
+        stdio: 'ignore',
+      });
+    } catch {
+      // ignore
+    }
+    try {
+      execSync('docker rm -f lynxgeo-dev-lynxgeo-worker-1', { stdio: 'ignore' });
+    } catch {
+      // ignore
+    }
+  };
+
+  try {
+    if (!networkExists()) {
+      execSync(`docker compose --env-file .env -f "${sharedCompose}" up -d db redis`, {
+        cwd: repoRoot,
+        stdio: 'inherit',
+      });
+    }
+    geoUp();
   } catch (composeError: any) {
-    throw new Error(`GEO worker Compose failed to start. (Error: ${composeError.message})`);
+    console.warn('⚠️ GEO worker failed to attach to Docker network. Recreating it...');
+    resetGeoWorker();
+    if (!networkExists()) {
+      execSync(`docker compose --env-file .env -f "${sharedCompose}" up -d db redis`, {
+        cwd: repoRoot,
+        stdio: 'inherit',
+      });
+    }
+    try {
+      geoUp();
+    } catch {
+      throw new Error(`GEO worker Compose failed to start. (Error: ${composeError.message})`);
+    }
   }
 
   console.log('✅ Backend services started gracefully.');

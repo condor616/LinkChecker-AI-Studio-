@@ -109,17 +109,16 @@ function cleanup() {
       console.log('✅ No existing GEO processes found in this directory.');
     } else {
       console.log(`🔍 Found ${pids.length} processes to check.`);
-      const psOutput = execSync(`ps -p ${pids.join(',')} -o pid,args`).toString();
-      const psLines = psOutput.split('\n').slice(1);
       const processesToKill: { pid: string; cmd: string }[] = [];
 
-      for (const line of psLines) {
-        if (!line.trim()) continue;
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[0];
-        const cmd = parts.slice(1).join(' ');
-
-        if (protectedPids.has(pid) || isProtectedCmd(cmd)) continue;
+      for (const pid of pids) {
+        let cmd = '';
+        try {
+          cmd = execSync(`ps -p ${pid} -o args=`, { encoding: 'utf8' }).trim();
+        } catch {
+          continue;
+        }
+        if (!cmd || protectedPids.has(pid) || isProtectedCmd(cmd)) continue;
         if (isGeoAppProcess(cmd)) {
           processesToKill.push({ pid, cmd: cmd.substring(0, 100) });
         }
