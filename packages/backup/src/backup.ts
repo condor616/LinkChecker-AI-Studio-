@@ -10,6 +10,16 @@ import { getLynxGeoDbName, getLynxScanDbName } from '@lynx/db';
 import { getDbCommand, parseDatabaseUrl } from './db-command';
 import { buildManifest, getBackupScope, parseManifest, type BackupManifestV1, type BackupProductId, type BackupScope } from './manifest';
 import { getBackupDir, sanitizeBackupFilename } from './paths';
+import {
+  SYSTEM_SETTINGS_FILE,
+  fromBackupSettingsFile,
+  loadSystemSettingsFromDb,
+  parseSystemSettingsFile,
+  saveSystemSettingsToDb,
+  serializeSystemSettingsFile,
+  toBackupSettingsFile,
+  type SystemSettingRow,
+} from './system-settings';
 import { extractZip, listZipEntryNames, readZipEntryText } from './zip';
 
 const execAsync = promisify(exec);
@@ -37,6 +47,12 @@ export interface BackupOptions {
   cwd?: string;
   databaseUrl?: string;
   runCommand?: (command: string, password: string) => Promise<void>;
+  /** Include/restore central system_settings (SMTP). Defaults to true. */
+  includeSystemSettings?: boolean;
+  /** Override JWT_SECRET for credential encryption (tests). */
+  backupSecret?: string;
+  loadSystemSettings?: () => Promise<SystemSettingRow[]>;
+  saveSystemSettings?: (rows: SystemSettingRow[]) => Promise<void>;
 }
 
 function getConnectionInfo(options: BackupOptions = {}) {
@@ -176,6 +192,8 @@ export async function createBackup(
   const scanSqlPath = path.join(tempSqlDir, SCAN_SQL);
   const geoSqlPath = path.join(tempSqlDir, GEO_SQL);
   const manifestPath = path.join(tempSqlDir, MANIFEST_FILE);
+  const settingsPath = path.join(tempSqlDir, SYSTEM_SETTINGS_FILE);
+  const includeSystemSettings = options.includeSystemSettings !== false;
 
   const products: BackupManifestV1['products'] = {};
 
@@ -191,7 +209,17 @@ export async function createBackup(
       products.lynxgeo = { file: GEO_SQL, dbName: geoDbName };
     }
 
-    const manifest = buildManifest(userId, products);
+    let wroteSystemSettings = false;
+    if (includeSystemSettings) {
+      const rows = options.loadSystemSettings
+        ? await options.loadSystemSettings()
+        : await loadSystemSettingsFromDb(rawInfo);
+      const settingsFile = toBackupSettingsFile(rows, options.backupSecret);
+      await fs.writeFile(settingsPath, serializeSystemSettingsFile(settingsFile));
+      wroteSystemSettings = true;
+    }
+
+    const manifest = buildManifest(userId, products, { systemSettings: wroteSystemSettings });
     await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
     const filesToZip = [
@@ -200,6 +228,9 @@ export async function createBackup(
     ];
     if (products.lynxgeo) {
       filesToZip.push({ path: geoSqlPath, name: GEO_SQL });
+    }
+    if (wroteSystemSettings) {
+      filesToZip.push({ path: settingsPath, name: SYSTEM_SETTINGS_FILE });
     }
 
     const size = await zipFiles(zipPath, filesToZip);
@@ -240,11 +271,42 @@ async function restoreProduct(
   await restoreDatabaseFromSql(targetDbName, sqlPath, rawInfo, cwd, runCommand);
 }
 
+async function readAndDecryptSystemSettings(
+  tempDir: string,
+  options: BackupOptions,
+): Promise<SystemSettingRow[] | null> {
+  if (options.includeSystemSettings === false) return null;
+
+  const settingsPath = path.join(tempDir, SYSTEM_SETTINGS_FILE);
+  if (!(await fs.stat(settingsPath).catch(() => false))) return null;
+
+  const raw = await fs.readFile(settingsPath, 'utf-8');
+  const parsed = parseSystemSettingsFile(raw);
+  if (!parsed) {
+    throw new Error('Backup system-settings.json is invalid');
+  }
+
+  const rows = fromBackupSettingsFile(parsed, options.backupSecret);
+  return rows.length > 0 ? rows : null;
+}
+
+async function applySystemSettings(
+  rows: SystemSettingRow[],
+  rawInfo: ReturnType<typeof parseDatabaseUrl>,
+  options: BackupOptions,
+): Promise<void> {
+  if (options.saveSystemSettings) {
+    await options.saveSystemSettings(rows);
+    return;
+  }
+  await saveSystemSettingsToDb(rawInfo, rows);
+}
+
 export async function restoreBackup(
   userId: string,
   zipFilePath: string,
   options: BackupOptions = {},
-): Promise<{ scope: BackupScope; restored: BackupProductId[] }> {
+): Promise<{ scope: BackupScope; restored: BackupProductId[]; restoredSystemSettings: boolean }> {
   const { cwd, rawInfo, runCommand } = getConnectionInfo(options);
   const backupDir = getBackupDir(cwd);
   const tempDir = path.join(backupDir, 'tmp-restore');
@@ -258,6 +320,7 @@ export async function restoreBackup(
     const hasLegacy = Boolean(await fs.stat(path.join(tempDir, LEGACY_SQL)).catch(() => false));
     const scope = getBackupScope(manifest, hasLegacy);
     const restored: BackupProductId[] = [];
+    const pendingSettings = await readAndDecryptSystemSettings(tempDir, options);
 
     if (manifest) {
       if (manifest.products.lynxscan) {
@@ -276,8 +339,14 @@ export async function restoreBackup(
       throw new Error('Backup archive is missing manifest.json and database.sql');
     }
 
+    let restoredSystemSettings = false;
+    if (pendingSettings) {
+      await applySystemSettings(pendingSettings, rawInfo, options);
+      restoredSystemSettings = true;
+    }
+
     console.log('Restore complete!');
-    return { scope, restored };
+    return { scope, restored, restoredSystemSettings };
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }

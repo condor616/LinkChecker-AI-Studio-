@@ -10,6 +10,8 @@ export interface BackupManifestV1 {
   userId: string;
   createdAt: string;
   products: Partial<Record<BackupProductId, BackupProductEntry>>;
+  /** True when system-settings.json is in the archive. Never includes secret values. */
+  systemSettings?: boolean;
 }
 
 export type BackupScope = 'scan-only' | 'scan-geo' | 'legacy-scan-only';
@@ -17,12 +19,14 @@ export type BackupScope = 'scan-only' | 'scan-geo' | 'legacy-scan-only';
 export function buildManifest(
   userId: string,
   products: Partial<Record<BackupProductId, BackupProductEntry>>,
+  extras?: { systemSettings?: boolean },
 ): BackupManifestV1 {
   return {
     version: 1,
     userId,
     createdAt: new Date().toISOString(),
     products,
+    ...(extras?.systemSettings ? { systemSettings: true } : {}),
   };
 }
 

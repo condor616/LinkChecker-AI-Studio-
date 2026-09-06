@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireApprovedUser();
     const contentType = request.headers.get('content-type') || '';
+    const includeSystemSettings = session.role === 'ADMIN';
     
     if (contentType.includes('multipart/form-data')) {
       try {
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
           await fs.writeFile(tempPath, buffer);
 
           try {
-            await restoreBackup(targetUserId, tempPath);
+            await restoreBackup(targetUserId, tempPath, { includeSystemSettings });
             return NextResponse.json({ message: 'Backup uploaded and restored successfully' });
           } catch (e: any) {
             console.error('Upload-restore failed:', e);
@@ -103,7 +104,9 @@ export async function POST(request: NextRequest) {
 
     if (action === 'create') {
       try {
-        const result = await createBackup(targetUserId, targetUsername, customFilename);
+        const result = await createBackup(targetUserId, targetUsername, customFilename, {
+          includeSystemSettings,
+        });
         return NextResponse.json({ message: 'Backup created successfully', backup: result });
       } catch (e: any) {
         console.error('Create backup caught error:', e);
@@ -126,7 +129,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Backup file not found' }, { status: 404 });
       }
 
-      await restoreBackup(targetUserId, zipPath);
+      await restoreBackup(targetUserId, zipPath, { includeSystemSettings });
       return NextResponse.json({ message: 'Restore completed successfully' });
     }
 

@@ -39,7 +39,7 @@
    ```
 
    Edit `.env` and set at minimum:
-   - `JWT_SECRET` — at least 32 characters (`openssl rand -hex 32`)
+   - `JWT_SECRET` — at least 32 characters (`openssl rand -hex 32`). Also used to encrypt SMTP passwords inside backup archives; restore decrypts with the same secret.
    - `POSTGRES_PASSWORD` — a secure database password
 
    Optional:

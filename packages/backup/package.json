@@ -9,7 +9,9 @@
     "./db-command": "./src/db-command.ts",
     "./manifest": "./src/manifest.ts",
     "./paths": "./src/paths.ts",
-    "./backup": "./src/backup.ts"
+    "./backup": "./src/backup.ts",
+    "./secrets": "./src/secrets.ts",
+    "./system-settings": "./src/system-settings.ts"
   },
   "dependencies": {
     "@lynx/db": "*",

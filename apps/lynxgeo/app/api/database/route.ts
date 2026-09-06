@@ -65,7 +65,10 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireBackupAccess();
     const contentType = request.headers.get('content-type') || '';
-    const backupOptions = { cwd: process.cwd() };
+    const backupOptions = {
+      cwd: process.cwd(),
+      includeSystemSettings: session.role === 'ADMIN',
+    };
 
     if (contentType.includes('multipart/form-data')) {
       try {

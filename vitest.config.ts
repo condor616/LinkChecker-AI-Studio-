@@ -15,6 +15,8 @@ export default defineConfig({
       '@lynx/backup/db-command': path.resolve(__dirname, './packages/backup/src/db-command.ts'),
       '@lynx/backup/manifest': path.resolve(__dirname, './packages/backup/src/manifest.ts'),
       '@lynx/backup/paths': path.resolve(__dirname, './packages/backup/src/paths.ts'),
+      '@lynx/backup/secrets': path.resolve(__dirname, './packages/backup/src/secrets.ts'),
+      '@lynx/backup/system-settings': path.resolve(__dirname, './packages/backup/src/system-settings.ts'),
       '@lynx/backup': path.resolve(__dirname, './packages/backup/src/index.ts'),
     },
   },

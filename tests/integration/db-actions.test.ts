@@ -20,6 +20,38 @@ vi.mock('pg', () => {
 
 import yauzl from 'yauzl';
 
+function readZipEntryText(zipPath: string, name: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+      if (err || !zipfile) return reject(err ?? new Error('Failed to open zip'));
+      let settled = false;
+      const finish = (value: string) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      zipfile.on('entry', (entry) => {
+        if (entry.fileName !== name) {
+          zipfile.readEntry();
+          return;
+        }
+        zipfile.openReadStream(entry, (streamErr, stream) => {
+          if (streamErr || !stream) return reject(streamErr ?? new Error(`Failed to read ${name}`));
+          const chunks: Buffer[] = [];
+          stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+          stream.on('end', () => finish(Buffer.concat(chunks).toString('utf-8')));
+          stream.on('error', reject);
+        });
+      });
+      zipfile.on('end', () => {
+        if (!settled) reject(new Error(`Zip entry not found: ${name}`));
+      });
+      zipfile.on('error', reject);
+      zipfile.readEntry();
+    });
+  });
+}
+
 function readZipEntryNames(zipPath: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
     yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
@@ -84,6 +116,7 @@ describe('Database Backup and Restore', () => {
     const paths = await readZipEntryNames(result.path);
     expect(paths).toContain('manifest.json');
     expect(paths).toContain('lynxscan.sql');
+    expect(paths).toContain('system-settings.json');
     expect(paths).not.toContain('database.sql');
   });
 
@@ -114,8 +147,58 @@ describe('Database Backup and Restore', () => {
       archive.finalize();
     });
 
-    const { scope, restored } = await restoreBackup(userId, legacyZip, { runCommand });
+    const { scope, restored, restoredSystemSettings } = await restoreBackup(userId, legacyZip, { runCommand });
     expect(scope).toBe('legacy-scan-only');
     expect(restored).toEqual(['lynxscan']);
+    expect(restoredSystemSettings).toBe(false);
+  });
+
+  it('encrypts SMTP credentials in the archive and decrypts them on restore', async () => {
+    const smtpPass = 'smtp-test-pass-9f3a2c1b-not-real';
+    const backupSecret = 'test-jwt-secret-for-backup-enc-32ch';
+    const saved: Array<{ key: string; value: string }> = [];
+
+    const result = await createBackup(userId, username, 'smtp-settings', {
+      runCommand,
+      backupSecret,
+      loadSystemSettings: async () => [
+        {
+          key: 'smtp',
+          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+          value: JSON.stringify({
+            host: 'smtp.test.local',
+            port: 26,
+            encryption: 'none',
+            user: 'relay',
+            pass: smtpPass,
+            from: 'lynx@test.local',
+            adminEmail: 'admin@test.local',
+          }),
+        },
+      ],
+    });
+
+    const settingsJson = await readZipEntryText(result.path, 'system-settings.json');
+    const manifestJson = await readZipEntryText(result.path, 'manifest.json');
+    expect(settingsJson).not.toContain(smtpPass);
+    expect(manifestJson).not.toContain(smtpPass);
+    expect(manifestJson).toContain('"systemSettings": true');
+    expect(settingsJson).toContain('$enc');
+    expect(settingsJson).toContain('smtp.test.local');
+
+    const { restored, restoredSystemSettings } = await restoreBackup(userId, result.path, {
+      runCommand,
+      backupSecret,
+      saveSystemSettings: async (rows) => {
+        saved.push(...rows);
+      },
+    });
+
+    expect(restored).toContain('lynxscan');
+    expect(restoredSystemSettings).toBe(true);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].key).toBe('smtp');
+    expect(JSON.parse(saved[0].value).pass).toBe(smtpPass);
+    expect(JSON.stringify(saved[0])).not.toMatch(/\$enc/);
   });
 });
