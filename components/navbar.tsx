@@ -65,71 +65,76 @@ export function Navbar({ user }: NavbarProps) {
   };
 
   const navLinks = user ? [
-    { href: '/', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
-    { href: '/templates', label: 'Templates', icon: <LayoutTemplate className="h-4 w-4" /> },
-    { href: '/scans/history', label: 'History', icon: <History className="h-4 w-4" /> },
-    { href: '/scans/new', label: 'New audit', icon: <PlusCircle className="h-4 w-4" /> },
+    { href: '/', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
+    { href: '/templates', label: 'Templates', icon: <LayoutTemplate className="h-4 w-4 shrink-0" /> },
+    { href: '/scans/history', label: 'History', icon: <History className="h-4 w-4 shrink-0" /> },
+    { href: '/scans/new', label: 'New audit', icon: <PlusCircle className="h-4 w-4 shrink-0" /> },
   ] : [];
+
+  const navItemClass = (active: boolean) => cn(
+    "flex items-center gap-2 shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium transition-all rounded-md border",
+    active
+      ? "text-primary bg-primary/10 border-primary/30"
+      : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
+  );
 
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-border shadow-card bg-card">
-        <div className="max-w-[1600px] flex h-16 items-center justify-between px-4 sm:px-6 mx-auto min-w-0 w-full gap-2">
-          <div className="flex items-center gap-8 min-w-0">
-            <Link href="/" className="flex items-center gap-2 group min-w-0">
-              <div className="relative group overflow-hidden rounded-lg border border-border transition-all duration-300 shrink-0">
-                <img 
-                  src="/logo.png" 
-                  alt="Lynx Scan" 
-                  className="h-10 w-10 object-cover"
-                />
-              </div>
-              <span className="hidden min-[400px]:inline text-lg font-bold tracking-tight text-foreground truncate">
-                Lynx <span className="text-primary font-black">Scan</span>
-              </span>
-            </Link>
+        <div className="max-w-[1600px] flex h-16 items-center px-3 sm:px-4 lg:px-6 mx-auto w-full gap-3">
+          <Link href="/" className="flex items-center gap-2 group shrink-0 whitespace-nowrap">
+            <div className="relative overflow-hidden rounded-lg border border-border transition-all duration-300 shrink-0">
+              <img 
+                src="/logo.png" 
+                alt="" 
+                className="h-10 w-10 object-cover"
+              />
+            </div>
+            <span className="text-base sm:text-lg font-bold tracking-tight text-foreground whitespace-nowrap">
+              Lynx <span className="text-primary font-black">Scan</span>
+            </span>
+          </Link>
 
-            <nav className="hidden md:flex items-center gap-1">
-              {navLinks.map((link) => {
-                if (link.label === 'New audit') {
-                  return (
-                    <button
-                      key={link.href}
-                      onClick={() => openModal()}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all rounded-md text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent"
-                    >
-                      {link.icon}
-                      <span>{link.label}</span>
-                    </button>
-                  );
-                }
+          <nav className="hidden lg:flex items-center gap-1">
+            {navLinks.map((link) => {
+              const isActive =
+                pathname === link.href ||
+                (link.href === '/scans/history' && pathname.startsWith('/scans'));
+
+              if (link.label === 'New audit') {
                 return (
-                  <Link
+                  <button
                     key={link.href}
-                    href={link.href}
-                    className={cn(
-                      "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all rounded-md border",
-                      (pathname === link.href || (link.href === '/scans/history' && pathname.startsWith('/scans')))
-                        ? "text-primary bg-primary/10 border-primary/30" 
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
-                    )}
+                    type="button"
+                    onClick={() => openModal()}
+                    className={navItemClass(false)}
                   >
                     {link.icon}
-                    <span>{link.label}</span>
-                  </Link>
+                    <span className="whitespace-nowrap">{link.label}</span>
+                  </button>
                 );
-              })}
-            </nav>
-          </div>
+              }
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={navItemClass(isActive)}
+                >
+                  {link.icon}
+                  <span className="whitespace-nowrap">{link.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
 
-          <div className="flex items-center gap-1 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
             {user ? (
               <>
                 {(user.role?.toUpperCase() === 'ADMIN' || user.role?.toUpperCase() === 'USER') && (
                   <button
                     onClick={() => router.push('/settings')}
                     className={cn(
-                      "flex items-center justify-center p-2 rounded-md border transition-all text-muted-foreground hover:text-foreground hover:bg-muted",
+                      "flex items-center justify-center p-1.5 sm:p-2 rounded-md border transition-all text-muted-foreground hover:text-foreground hover:bg-muted",
                       pathname === '/settings' && "text-primary border-primary/50 bg-primary/10"
                     )}
                     title="System Settings"
@@ -140,7 +145,7 @@ export function Navbar({ user }: NavbarProps) {
 
                 <button
                   onClick={handleThemeToggle}
-                  className="flex items-center justify-center p-2 rounded-md border transition-all text-muted-foreground hover:text-foreground hover:bg-muted"
+                  className="flex items-center justify-center p-1.5 sm:p-2 rounded-md border transition-all text-muted-foreground hover:text-foreground hover:bg-muted"
                   title="Toggle Dark/Light Mode"
                 >
                   {theme === 'light' ? (
@@ -239,7 +244,7 @@ export function Navbar({ user }: NavbarProps) {
 
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="md:hidden p-2 text-muted-foreground hover:text-foreground transition-all hover:bg-muted rounded-md active:scale-95"
+              className="lg:hidden p-1.5 sm:p-2 text-muted-foreground hover:text-foreground transition-all hover:bg-muted rounded-md active:scale-95 shrink-0"
               title={isMenuOpen ? "Close Menu" : "Open Menu"}
             >
               {isMenuOpen ? <X className="h-6 w-6 text-primary" /> : <Menu className="h-6 w-6" />}
@@ -259,14 +264,14 @@ export function Navbar({ user }: NavbarProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMenuOpen(false)}
-              className="fixed inset-0 top-16 z-40 md:hidden bg-black/50 backdrop-blur-sm"
+              className="fixed inset-0 top-16 z-40 lg:hidden bg-black/50 backdrop-blur-sm"
             />
             <motion.div
               key="mobile-nav-sheet"
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="fixed inset-x-0 top-16 z-50 md:hidden bg-card shadow-card border-b border-border p-6"
+              className="fixed inset-x-0 top-16 z-50 lg:hidden bg-card shadow-card border-b border-border p-6"
             >
               <nav className="flex flex-col gap-4">
                 {navLinks.map((link) => (
