@@ -94,13 +94,13 @@ export function Navbar({
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-border shadow-card bg-card">
-        <div className="max-w-[1600px] flex h-16 items-center justify-between px-6 mx-auto">
+        <div className="max-w-[1600px] flex h-16 items-center justify-between px-4 sm:px-6 mx-auto min-w-0 w-full gap-2">
           <div className="flex items-center gap-8 min-w-0">
-            <Link href="/" className="flex items-center gap-2 group shrink-0">
-              <div className="relative overflow-hidden rounded-lg border border-border transition-all duration-300">
+            <Link href="/" className="flex items-center gap-2 group min-w-0">
+              <div className="relative overflow-hidden rounded-lg border border-border transition-all duration-300 shrink-0">
                 <img src="/logo.png" alt="Lynx GEO" className="h-10 w-10 object-cover" />
               </div>
-              <span className="text-lg font-bold tracking-tight text-foreground">
+              <span className="hidden min-[400px]:inline text-lg font-bold tracking-tight text-foreground truncate">
                 Lynx <span className="text-primary font-black italic">GEO</span>
               </span>
             </Link>
@@ -125,7 +125,7 @@ export function Navbar({
             </nav>
           </div>
 
-          <div className="flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-4 shrink-0">
             {user ? (
               <>
                 <button

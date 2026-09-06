@@ -285,6 +285,47 @@ export function BackupRestorePanel({
 
   const formatSize = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 
+  function SnapshotActions({ filename, scope }: { filename: string; scope?: BackupScope }) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleRestore(filename, scope)}
+          disabled={!!backupOpLoading}
+          className="h-9 px-4 rounded-lg border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/40 font-bold"
+        >
+          {backupOpLoading === `restore-${filename}` ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-1.5" />
+          )}{' '}
+          Restore
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleDeleteBackup(filename)}
+          className="h-9 w-9 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  const snapshotEmpty = (
+    <div className="px-4 py-16 text-center text-muted-foreground/50">
+      <History className="h-16 w-16 mx-auto opacity-5 mb-4" /> No snapshots available for this user.
+    </div>
+  );
+
+  const snapshotLoading = (
+    <div className="px-4 py-16 text-center">
+      <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary opacity-50" />
+    </div>
+  );
+
   return (
     <>
       <input
@@ -295,27 +336,27 @@ export function BackupRestorePanel({
         className="hidden"
       />
 
-      <Card className="border-white/10 bg-card/50 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl">
-        <CardHeader className="bg-white/[0.03] border-b border-white/10 p-8">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="space-y-4">
+      <Card className="border-white/10 bg-card/50 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl min-w-0">
+        <CardHeader className="bg-white/[0.03] border-b border-white/10 p-4 sm:p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 min-w-0">
+            <div className="space-y-4 min-w-0 w-full lg:w-auto">
               <div>
-                <CardTitle className="text-2xl font-black text-foreground">App Snapshots</CardTitle>
-                <CardDescription className="text-muted-foreground/80 text-base">
+                <CardTitle className="text-xl sm:text-2xl font-black text-foreground">App Snapshots</CardTitle>
+                <CardDescription className="text-muted-foreground/80 text-sm sm:text-base">
                   Create and restore LynxScan + LynxGEO snapshots.
                 </CardDescription>
               </div>
 
               {isAdmin && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 min-w-0 w-full">
                   <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground px-1">
                     Selected User Account
                   </Label>
-                  <div className="relative group min-w-[300px]">
+                  <div className="relative group w-full min-w-0 max-w-full sm:max-w-md">
                     <select
                       value={targetUserId}
                       onChange={(e) => setTargetUserId(e.target.value)}
-                      className="w-full h-10 pl-4 pr-10 bg-input border border-border rounded-xl text-foreground font-semibold appearance-none focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all cursor-pointer group-hover:bg-muted"
+                      className="w-full min-w-0 h-10 pl-4 pr-12 bg-input border border-border rounded-xl text-foreground text-sm font-semibold appearance-none focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all cursor-pointer group-hover:bg-muted"
                     >
                       {users.map((u) => (
                         <option key={u.id} value={u.id} className="bg-card text-foreground">
@@ -330,12 +371,12 @@ export function BackupRestorePanel({
               )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 w-full lg:w-auto">
               <Button
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!!backupOpLoading}
-                className="h-12 px-6 rounded-xl border-border bg-muted hover:bg-muted/80 text-foreground font-bold transition-all"
+                className="h-11 sm:h-12 px-4 sm:px-6 w-full sm:w-auto justify-center rounded-xl border-border bg-muted hover:bg-muted/80 text-foreground font-bold transition-all"
               >
                 {backupOpLoading === 'upload' ? (
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -347,7 +388,7 @@ export function BackupRestorePanel({
               <Button
                 onClick={() => setShowNamingModal(true)}
                 disabled={!!backupOpLoading}
-                className="h-12 px-6 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-card hover:shadow-hover transition-all"
+                className="h-11 sm:h-12 px-4 sm:px-6 w-full sm:w-auto justify-center rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-card hover:shadow-hover transition-all"
               >
                 {backupOpLoading === 'create' ? (
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -363,7 +404,7 @@ export function BackupRestorePanel({
           {backupStatus && (
             <div
               className={cn(
-                'm-8 p-4 rounded-xl flex items-center gap-3 text-sm font-semibold border backdrop-blur-md animate-in fade-in slide-in-from-top-1',
+                'm-4 sm:m-8 p-4 rounded-xl flex items-start gap-3 text-sm font-semibold border backdrop-blur-md animate-in fade-in slide-in-from-top-1 min-w-0',
                 backupStatus.type === 'success'
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)]'
                   : 'bg-destructive/10 text-destructive border-destructive/20 shadow-[0_0_20px_rgba(var(--destructive),0.1)]',
@@ -374,13 +415,63 @@ export function BackupRestorePanel({
               ) : (
                 <AlertTriangle className="h-5 w-5 shrink-0" />
               )}
-              <span className="flex-1">{backupStatus.message}</span>
-              <button onClick={() => setBackupStatus(null)} className="opacity-50 hover:opacity-100 px-1">
+              <span className="flex-1 min-w-0 break-words">{backupStatus.message}</span>
+              <button onClick={() => setBackupStatus(null)} className="opacity-50 hover:opacity-100 px-1 shrink-0">
                 ✕
               </button>
             </div>
           )}
-          <div className="overflow-x-auto px-4 pb-4">
+
+          <div className="md:hidden p-4 space-y-3">
+            {backupsLoading
+              ? snapshotLoading
+              : backups.length === 0
+                ? snapshotEmpty
+                : backups.map((bc) => (
+                    <div
+                      key={bc.filename}
+                      className="rounded-xl border border-border bg-muted/20 p-4 space-y-3 min-w-0"
+                    >
+                      <a
+                        href={`${apiBasePath}/download/${bc.filename}?userId=${targetUserId}`}
+                        className="flex items-start gap-3 text-foreground hover:text-primary transition-colors min-w-0"
+                        title="Click to download"
+                      >
+                        <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                          <FileArchive className="h-5 w-5" />
+                        </div>
+                        <span className="font-semibold break-all">{bc.filename}</span>
+                      </a>
+                      <div className="space-y-2 text-sm min-w-0">
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                            Scope
+                          </span>
+                          <span className="inline-flex w-fit px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
+                            {scopeLabel(bc.scope)}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                            File size
+                          </span>
+                          <span className="text-muted-foreground tabular-nums font-mono">{formatSize(bc.size)}</span>
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                            Date created
+                          </span>
+                          <span className="text-muted-foreground/80 break-words">
+                            {new Date(bc.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      <SnapshotActions filename={bc.filename} scope={bc.scope} />
+                    </div>
+                  ))}
+          </div>
+
+          <div className="hidden md:block px-4 pb-4">
             <table className="w-full text-sm text-left border-collapse">
               <thead className="bg-muted/30 text-muted-foreground uppercase text-[11px] font-black tracking-[0.2em] border-b border-border">
                 <tr>
@@ -394,16 +485,11 @@ export function BackupRestorePanel({
               <tbody className="divide-y divide-border">
                 {backupsLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-16 text-center">
-                      <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary opacity-50" />
-                    </td>
+                    <td colSpan={5}>{snapshotLoading}</td>
                   </tr>
                 ) : backups.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-20 text-center text-muted-foreground/50">
-                      <History className="h-16 w-16 mx-auto opacity-5 mb-4" /> No snapshots available for this
-                      user.
-                    </td>
+                    <td colSpan={5}>{snapshotEmpty}</td>
                   </tr>
                 ) : (
                   backups.map((bc) => (
@@ -431,29 +517,10 @@ export function BackupRestorePanel({
                       <td className="px-6 py-5 text-muted-foreground/80">
                         {new Date(bc.createdAt).toLocaleString()}
                       </td>
-                      <td className="px-6 py-5 text-right space-x-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRestore(bc.filename, bc.scope)}
-                          disabled={!!backupOpLoading}
-                          className="h-9 px-4 rounded-lg border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/40 font-bold"
-                        >
-                          {backupOpLoading === `restore-${bc.filename}` ? (
-                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                          ) : (
-                            <RefreshCw className="h-4 w-4 mr-1.5" />
-                          )}{' '}
-                          Restore
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteBackup(bc.filename)}
-                          className="h-9 w-9 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      <td className="px-6 py-5 text-right">
+                        <div className="inline-flex justify-end">
+                          <SnapshotActions filename={bc.filename} scope={bc.scope} />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -478,7 +545,7 @@ export function BackupRestorePanel({
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-full max-w-md p-8 bg-card border border-white/10 shadow-[0_0_100px_rgba(0,0,0,1)] rounded-3xl"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-[calc(100%-2rem)] max-w-md p-4 sm:p-8 bg-card border border-white/10 shadow-[0_0_100px_rgba(0,0,0,1)] rounded-3xl min-w-0"
             >
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shadow-xl">
