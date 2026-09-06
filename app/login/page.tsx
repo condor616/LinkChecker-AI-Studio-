@@ -7,30 +7,30 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { ShieldAlert } from 'lucide-react';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isFirstUser, setIsFirstUser] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Check URL search params
     if (typeof window !== 'undefined' && window.location.search.includes('register=true')) {
       setIsLogin(false);
     }
 
-    // Check if this is the first user
-    fetch('/api/auth/register', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ checkOnly: true }) 
+    fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checkOnly: true }),
     })
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         if (data.exists === false) {
           setIsFirstUser(true);
         }
@@ -40,14 +40,26 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+
+    if (!isLogin) {
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+    }
+
+    setLoading(true);
 
     try {
       const res = await fetch(`/api/auth/${isLogin ? 'login' : 'register'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(isLogin ? { email, password } : { email, password, confirmPassword }),
       });
 
       const data = await res.json();
@@ -99,17 +111,42 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                minLength={isLogin ? undefined : 8}
                 required
               />
             </div>
+            {!isLogin && (
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={8}
+                  required
+                />
+              </div>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}
             </Button>
+            {isLogin && (
+              <div className="text-center text-sm">
+                <Link href="/forgot-password" className="text-muted-foreground hover:text-primary underline underline-offset-4">
+                  Forgot password?
+                </Link>
+              </div>
+            )}
             <div className="text-center text-sm">
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError('');
+                  setConfirmPassword('');
+                }}
                 className="text-muted-foreground hover:text-primary underline underline-offset-4"
               >
                 {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}

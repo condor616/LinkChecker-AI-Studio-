@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { parseProductAccess, stringifyProductAccess } from '@lynx/auth';
 import { provisionGeoDb, deleteGeoDb } from '@/lib/db/provisioning';
+import { notifyUserApproved } from '@/lib/email';
 
 const UpdateSchema = z.object({
   role: z.enum(['ADMIN', 'USER', 'PENDING', 'BLOCKED']).optional(),
@@ -20,16 +21,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const parsed = UpdateSchema.parse(await req.json());
     const { productAccess, ...rest } = parsed;
     const updates: Record<string, unknown> = { ...rest };
+    const current = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    const previous = current[0];
+    if (!previous) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
     if (productAccess) {
-      const current = await db.select().from(users).where(eq(users.id, id)).limit(1);
       updates.productAccess = stringifyProductAccess({
-        ...parseProductAccess(current[0]?.productAccess),
+        ...parseProductAccess(previous.productAccess),
         ...productAccess,
       });
     }
     await db.update(users).set(updates).where(eq(users.id, id));
-    if (productAccess?.lynxgeo || updates.role === 'ADMIN') {
+    if (productAccess?.lynxgeo || updates.role === 'ADMIN' || updates.role === 'USER') {
       provisionGeoDb(id).catch(() => {});
+    }
+    if (previous.role === 'PENDING' && (updates.role === 'USER' || updates.role === 'ADMIN')) {
+      void notifyUserApproved(previous.email).catch((err) => {
+        console.error('Failed to send approval email:', err);
+      });
     }
     return NextResponse.json({ success: true });
   } catch (error: any) {

@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { safeCallbackUrl } from '@/lib/auth-redirect';
 
 const lynxscanRegisterUrl = `${(process.env.NEXT_PUBLIC_LYNXSCAN_URL || 'http://localhost:3000').replace(/\/$/, '')}/login?register=true`;
+const lynxscanForgotUrl = `${(process.env.NEXT_PUBLIC_LYNXSCAN_URL || 'http://localhost:3000').replace(/\/$/, '')}/forgot-password`;
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -77,6 +78,11 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
+            <p className="text-sm text-muted-foreground text-center">
+              <a href={lynxscanForgotUrl} className="text-primary underline-offset-4 hover:underline">
+                Forgot password?
+              </a>
+            </p>
             <p className="text-sm text-muted-foreground text-center">
               Don&apos;t have an account?{' '}
               <a href={lynxscanRegisterUrl} className="text-primary underline-offset-4 hover:underline">

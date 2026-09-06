@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { deleteUserDb, provisionUserDb, provisionGeoDb } from '@/lib/db/provisioning';
 import { AdminUserUpdateSchema } from '@/lib/validation/schemas';
 import { parseProductAccess, stringifyProductAccess } from '@lynx/auth';
+import { notifyUserApproved } from '@/lib/email';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,11 +15,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const { productAccess, ...rest } = parsed;
     const updates: Record<string, unknown> = { ...rest };
-    let mergedAccess = parseProductAccess(null);
+    const current = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    const previous = current[0];
+    if (!previous) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
 
     if (productAccess) {
-      const current = await db.select().from(users).where(eq(users.id, id)).limit(1);
-      mergedAccess = { ...parseProductAccess(current[0]?.productAccess), ...productAccess };
+      const mergedAccess = { ...parseProductAccess(previous.productAccess), ...productAccess };
       updates.productAccess = stringifyProductAccess(mergedAccess);
     }
 
@@ -36,6 +40,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         provisionGeoDb(id).catch((err) => {
           console.error(`Deferred GEO provisioning failed for ${id}:`, err);
         });
+      });
+    }
+
+    if (
+      previous.role === 'PENDING' &&
+      (updates.role === 'USER' || updates.role === 'ADMIN')
+    ) {
+      void notifyUserApproved(previous.email).catch((err) => {
+        console.error('Failed to send approval email:', err);
       });
     }
 

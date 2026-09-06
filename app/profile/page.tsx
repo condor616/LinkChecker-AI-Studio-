@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 
 export default function ProfilePage() {
   const [user, setUser] = useState<{ email: string; role: string } | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,8 +34,8 @@ export default function ProfilePage() {
       setStatus({ type: 'error', message: 'Passwords do not match' });
       return;
     }
-    if (password.length < 6) {
-      setStatus({ type: 'error', message: 'Password must be at least 6 characters' });
+    if (password.length < 8) {
+      setStatus({ type: 'error', message: 'Password must be at least 8 characters' });
       return;
     }
 
@@ -45,11 +46,12 @@ export default function ProfilePage() {
       const res = await fetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ currentPassword, password, confirmPassword }),
       });
 
       if (res.ok) {
         setStatus({ type: 'success', message: 'Password updated successfully' });
+        setCurrentPassword('');
         setPassword('');
         setConfirmPassword('');
       } else {
@@ -132,13 +134,25 @@ export default function ProfilePage() {
           <form onSubmit={handleUpdatePassword}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="current-password">Current Password</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Your current password"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="password">New Password</Label>
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
+                  placeholder="At least 8 characters"
+                  minLength={8}
                   required
                 />
               </div>

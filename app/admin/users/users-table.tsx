@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Ban, CheckCircle2, Trash2, AlertTriangle, Loader2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CreateUserDialog } from './create-user-dialog';
 
 function RoleSelect({
   user,
@@ -416,6 +417,7 @@ export function UsersTable({ initialUsers }: { initialUsers: any[] }) {
 
   return (
     <>
+      <CreateUserDialog onCreated={(user) => setUsers((current) => [user, ...current])} />
       {/* Mobile: compact admin cards */}
       <div className="md:hidden space-y-2.5">
         {users.map((user) => {

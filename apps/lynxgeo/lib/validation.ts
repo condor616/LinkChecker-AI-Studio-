@@ -51,3 +51,23 @@ export const AuditTemplateSaveSchema = z.object({
 export const AuditControlSchema = z.object({
   status: z.enum(['PAUSED', 'RUNNING', 'CANCELLED']),
 });
+
+export const AdminUserCreateSchema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(8).max(128),
+    confirmPassword: z.string().min(8).max(128),
+    role: z.enum(['ADMIN', 'USER', 'PENDING', 'BLOCKED']).default('USER'),
+    maxJobs: z.number().int().min(1).max(100).default(1),
+    productAccess: z
+      .object({
+        lynxscan: z.boolean().optional(),
+        lynxgeo: z.boolean().optional(),
+      })
+      .optional(),
+    sendWelcomeEmail: z.boolean().optional().default(false),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });

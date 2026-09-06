@@ -1,12 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { getDb } from '../../lib/db';
-import { users, scans, links, templates } from '../../lib/db/schema';
+import { users, scans, links, templates, passwordResetTokens } from '../../lib/db/schema';
 
 test.beforeAll(async () => {
   const db = getDb();
   await db.delete(links);
   await db.delete(scans);
   await db.delete(templates);
+  await db.delete(passwordResetTokens);
   await db.delete(users);
 });
 
@@ -45,6 +46,7 @@ test.describe('Authentication Flow', () => {
     // 6. Register the FIRST user
     await page.fill('#email', 'first-admin@example.com');
     await page.fill('#password', 'password123');
+    await page.fill('#confirm-password', 'password123');
     await page.click('button[type="submit"]');
 
     // 7. Should be redirected to dashboard
@@ -65,6 +67,7 @@ test.describe('Authentication Flow', () => {
     // 11. Register the SECOND user
     await page.fill('#email', 'second-user@example.com');
     await page.fill('#password', 'password123');
+    await page.fill('#confirm-password', 'password123');
     await page.click('button[type="submit"]');
 
     // 12. Should be redirected to dashboard but show pending status
@@ -80,12 +83,23 @@ test.describe('Authentication Flow', () => {
     expect(secondUserDb?.role).toBe('PENDING');
   });
 
+  test('shows an error when signup passwords do not match', async ({ page }) => {
+    await page.goto('/login?register=true');
+    await page.fill('#email', 'mismatch@example.com');
+    await page.fill('#password', 'password123');
+    await page.fill('#confirm-password', 'password456');
+    await page.click('button[type="submit"]');
+    await expect(page.locator('p.text-destructive')).toContainText('Passwords do not match');
+    await expect(page).toHaveURL(/.*\/login/);
+  });
+
   test('should show error for existing user', async ({ page }) => {
     // Register someone first
     await page.goto('/login');
     await page.click('button:has-text("Don\'t have an account? Sign up")');
     await page.fill('#email', 'duplicate@example.com');
     await page.fill('#password', 'password123');
+    await page.fill('#confirm-password', 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL('/');
 
@@ -98,6 +112,7 @@ test.describe('Authentication Flow', () => {
     await page.click('button:has-text("Don\'t have an account? Sign up")');
     await page.fill('#email', 'duplicate@example.com');
     await page.fill('#password', 'password123');
+    await page.fill('#confirm-password', 'password123');
     await page.click('button[type="submit"]');
 
     // Should show error message

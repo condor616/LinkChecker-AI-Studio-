@@ -50,6 +50,7 @@ describe('Auth Registration', () => {
       body: JSON.stringify({
         email: 'admin@example.com',
         password: 'password123',
+        confirmPassword: 'password123',
       }),
     });
 
@@ -83,6 +84,7 @@ describe('Auth Registration', () => {
       body: JSON.stringify({
         email: 'user@example.com',
         password: 'password123',
+        confirmPassword: 'password123',
       }),
     });
 
@@ -99,5 +101,19 @@ describe('Auth Registration', () => {
 
     const dbUser = await db.select().from(users).where(eq(users.email, 'user@example.com')).then(res => res[0]);
     expect(dbUser?.role).toBe('PENDING');
+  });
+
+  it('rejects registration when passwords do not match', async () => {
+    const req = new Request('http://localhost/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: 'mismatch@example.com',
+        password: 'password123',
+        confirmPassword: 'password456',
+      }),
+    });
+
+    const response = await POST(req);
+    expect(response.status).toBe(400);
   });
 });

@@ -18,7 +18,7 @@ export default async function AdminUsersPage() {
     <div className="w-full max-w-[1600px] mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 space-y-6 sm:space-y-8">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">User Management</h1>
-        <p className="text-muted-foreground mt-1">Approve pending users and manage resource limits.</p>
+        <p className="text-muted-foreground mt-1">Create accounts, approve pending users, and manage resource limits.</p>
       </div>
 
       <Card>

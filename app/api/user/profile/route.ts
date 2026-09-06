@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
-import { hashPassword } from '@/lib/security/password';
+import { hashPassword, verifyPassword } from '@/lib/security/password';
 import { ProfilePasswordUpdateSchema } from '@/lib/validation/schemas';
 
 export async function PATCH(req: Request) {
@@ -13,13 +13,24 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { password } = ProfilePasswordUpdateSchema.parse(await req.json());
-    const passwordHash = await hashPassword(password);
+    const { currentPassword, password } = ProfilePasswordUpdateSchema.parse(await req.json());
+    const current = await db.select().from(users).where(eq(users.id, session.id)).limit(1);
+    const user = current[0];
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    await db.update(users)
-      .set({ passwordHash })
-      .where(eq(users.id, session.id))
-      ;
+    let currentValid = await verifyPassword(currentPassword, user.passwordHash);
+    if (!currentValid) {
+      const legacyHash = Buffer.from(currentPassword).toString('base64');
+      currentValid = legacyHash === user.passwordHash;
+    }
+    if (!currentValid) {
+      return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 });
+    }
+
+    const passwordHash = await hashPassword(password);
+    await db.update(users).set({ passwordHash }).where(eq(users.id, session.id));
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

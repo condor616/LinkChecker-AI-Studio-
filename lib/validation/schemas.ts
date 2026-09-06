@@ -4,6 +4,7 @@ export const RegisterRequestSchema = z
   .object({
     email: z.string().email().optional(),
     password: z.string().min(8).max(128).optional(),
+    confirmPassword: z.string().optional(),
     checkOnly: z.boolean().optional().default(false),
   })
   .superRefine((value, ctx) => {
@@ -24,6 +25,14 @@ export const RegisterRequestSchema = z
         code: z.ZodIssueCode.custom,
         message: 'Password is required',
         path: ['password'],
+      });
+    }
+
+    if (value.password && value.password !== value.confirmPassword) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Passwords do not match',
+        path: ['confirmPassword'],
       });
     }
   });
@@ -74,8 +83,65 @@ export const AdminUserUpdateSchema = z
     message: 'At least one valid field must be provided',
   });
 
-export const ProfilePasswordUpdateSchema = z.object({
-  password: z.string().min(8).max(128),
+export const AdminUserCreateSchema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(8).max(128),
+    confirmPassword: z.string().min(8).max(128),
+    role: z.enum(['ADMIN', 'USER', 'PENDING', 'BLOCKED']).default('USER'),
+    maxJobs: z.number().int().min(1).max(100).default(1),
+    productAccess: z
+      .object({
+        lynxscan: z.boolean().optional(),
+        lynxgeo: z.boolean().optional(),
+      })
+      .optional(),
+    sendWelcomeEmail: z.boolean().optional().default(false),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export const ProfilePasswordUpdateSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(128),
+    password: z.string().min(8).max(128),
+    confirmPassword: z.string().min(8).max(128),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const ResetPasswordSchema = z
+  .object({
+    token: z.string().min(16).max(128),
+    password: z.string().min(8).max(128),
+    confirmPassword: z.string().min(8).max(128),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export const SmtpSettingsUpdateSchema = z.object({
+  host: z.string().min(1).max(255),
+  port: z.number().int().min(1).max(65535),
+  encryption: z.enum(['none', 'starttls', 'tls']),
+  user: z.string().max(255).optional().default(''),
+  pass: z.string().max(512).optional(),
+  from: z.string().email(),
+  adminEmail: z.union([z.string().email(), z.literal('')]).optional().default(''),
+});
+
+export const TestEmailSchema = z.object({
+  to: z.string().email(),
+  config: SmtpSettingsUpdateSchema.optional(),
 });
 
 export const ScanAuthValidationSchema = z.object({

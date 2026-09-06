@@ -9,6 +9,7 @@ import { hashPassword } from '@/lib/security/password';
 import { enforceRateLimit, getClientIp } from '@/lib/security/rate-limit';
 import { stringifyProductAccess, ADMIN_PRODUCT_ACCESS, DEFAULT_PRODUCT_ACCESS } from '@lynx/auth';
 import { RegisterRequestSchema } from '@/lib/validation/schemas';
+import { notifyAdminsOfPendingSignup } from '@/lib/email';
 
 export async function POST(req: Request) {
   try {
@@ -82,6 +83,12 @@ export async function POST(req: Request) {
     const token = await createToken({ id, role, email });
     const cookieStore = await cookies();
     cookieStore.set('session', token, sessionCookieOptions());
+
+    if (role === 'PENDING') {
+      void notifyAdminsOfPendingSignup(email).catch((err) => {
+        console.error('Failed to notify admins of pending signup:', err);
+      });
+    }
 
     return NextResponse.json({ user: { id, email, role } });
   } catch (error: any) {

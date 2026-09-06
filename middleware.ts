@@ -8,10 +8,12 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public paths
-  const isPublicPath = 
-    pathname === '/' || 
-    pathname.startsWith('/login') || 
-    pathname.startsWith('/api/auth') || 
+  const isPublicPath =
+    pathname === '/' ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/forgot-password') ||
+    pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/api/auth') ||
     pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|webp)$/);
 
   if (isPublicPath) {
