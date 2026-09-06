@@ -298,9 +298,9 @@ export function ScanDashboard({
 
   const stickyHeader = (
     <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-sm border-b border-border px-4 sm:px-6 md:px-8 py-4 sm:py-5">
-      <div className="flex items-center justify-between gap-2 sm:gap-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-          <h1 className="truncate text-xl font-black tracking-tight text-foreground sm:text-3xl md:text-4xl">{scanName}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <h1 className="min-w-0 w-full break-words text-xl font-black tracking-tight text-foreground sm:w-auto sm:flex-1 sm:truncate sm:text-3xl md:text-4xl">{scanName}</h1>
+        <div className="flex w-full min-w-0 shrink-0 items-center justify-between gap-2 sm:w-auto sm:justify-end sm:gap-3">
           <span className={cn(
              "shrink-0 px-2.5 sm:px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
              status === 'RUNNING' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
@@ -310,44 +310,44 @@ export function ScanDashboard({
           )}>
             {status}
           </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-          {!isTargetedScan && (
-            <ExportButton scanId={scanId} scanName={scanName} />
-          )}
-          {status !== 'COMPLETED' && (
-            <>
-              <Button
-                onClick={toggleStatus}
-                variant="outline"
-                className={cn("h-10 w-auto min-w-0 px-2.5 sm:min-w-[7.5rem] sm:px-3", headerOutlineChrome)}
-                title={status === 'RUNNING' ? 'Pause' : 'Resume'}
-              >
-                {status === 'RUNNING' ? (
-                  <><Pause className="h-4 w-4 text-primary" /> <span className="hidden sm:inline">Pause</span></>
-                ) : (
-                  <><Play className="h-4 w-4 text-primary" /> <span className="hidden sm:inline">Resume</span></>
-                )}
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+            {!isTargetedScan && (
+              <ExportButton scanId={scanId} scanName={scanName} />
+            )}
+            {status !== 'COMPLETED' && (
+              <>
+                <Button
+                  onClick={toggleStatus}
+                  variant="outline"
+                  className={cn("h-10 w-auto min-w-0 px-2.5 sm:min-w-[7.5rem] sm:px-3", headerOutlineChrome)}
+                  title={status === 'RUNNING' ? 'Pause' : 'Resume'}
+                >
+                  {status === 'RUNNING' ? (
+                    <><Pause className="h-4 w-4 text-primary" /> <span className="hidden sm:inline">Pause</span></>
+                  ) : (
+                    <><Play className="h-4 w-4 text-primary" /> <span className="hidden sm:inline">Resume</span></>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => setShowStopConfirm(true)}
+                  variant="outline"
+                  className={headerStopChrome}
+                  title="Stop and Delete Scan"
+                >
+                  <Square className="h-4 w-4 fill-destructive/20 group-hover:fill-destructive transition-all" />
+                </Button>
+              </>
+            )}
+            {!isTargetedScan && (
+              <Button asChild variant="outline" className={cn("h-10 px-2.5 sm:px-4", headerOutlineChrome)}>
+                <Link href={`/scans/${scanId}/dashboard`}>
+                  <LayoutDashboard className="h-4 w-4 text-primary" />
+                  <span className="sm:hidden">Dashboard</span>
+                  <span className="hidden sm:inline">Visual Dashboard</span>
+                </Link>
               </Button>
-              <Button
-                onClick={() => setShowStopConfirm(true)}
-                variant="outline"
-                className={headerStopChrome}
-                title="Stop and Delete Scan"
-              >
-                <Square className="h-4 w-4 fill-destructive/20 group-hover:fill-destructive transition-all" />
-              </Button>
-            </>
-          )}
-          {!isTargetedScan && (
-            <Button asChild variant="outline" className={cn("h-10 px-2.5 sm:px-4", headerOutlineChrome)}>
-              <Link href={`/scans/${scanId}/dashboard`}>
-                <LayoutDashboard className="h-4 w-4 text-primary" />
-                <span className="sm:hidden">Dashboard</span>
-                <span className="hidden sm:inline">Visual Dashboard</span>
-              </Link>
-            </Button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -685,7 +685,7 @@ export function ScanDashboard({
 
                                 {/* Desktop: Full Tabs */}
                                 <div className="hidden md:block w-full overflow-x-auto -mx-6 px-6 scrollbar-hide pt-3 pb-2">
-                                    <TabsList className="w-full justify-start inline-flex">
+                                    <TabsList className="w-full justify-start inline-flex flex-nowrap">
                                         <TabsTrigger value="broken" className="text-destructive data-[state=active]:border-b-destructive flex-shrink-0">
                                             Broken <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">{currentBrokenGroups.length}</span>
                                         </TabsTrigger>
