@@ -98,12 +98,11 @@ export function groupLinks(links: ScanLink[]): LinkGroup[] {
     grouped[normalizedUrl].push(link);
   });
   return Object.entries(grouped).map(([normalizedKey, instances]) => {
-    const displayUrl = instances.find((inst) => inst.url.startsWith('https'))?.url || instances[0].url;
     return {
-      url: displayUrl,
+      ...instances[0],
+      url: instances[0].url,
       normalizedKey,
       instances,
-      ...instances[0],
       count: instances.length,
     };
   });
