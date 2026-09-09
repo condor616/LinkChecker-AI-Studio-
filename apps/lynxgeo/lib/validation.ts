@@ -32,6 +32,10 @@ export const AuditStartSchema = z
       .optional(),
     isTargeted: z.boolean().optional(),
     targetUrls: z.array(z.string().url()).max(10000).optional(),
+    /** When true (default if FlareSolverr is configured), solve Cloudflare challenges. */
+    bypassCloudflare: z.boolean().optional(),
+    /** Optional manual Cookie header seed (e.g. cf_clearance from a browser). Prefer matching customUserAgent. */
+    cookieHeader: z.string().max(16_000).optional(),
   })
   .passthrough()
   .transform((data) => ({

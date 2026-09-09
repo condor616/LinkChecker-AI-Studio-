@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AI_SEARCH_BOTS, TRAINING_BOTS, hasTdmRepSignal, llmsTxtStructureIssues } from '../lib/geo/probes';
+import {
+  AI_SEARCH_BOTS,
+  TRAINING_BOTS,
+  hasTdmRepSignal,
+  llmsTxtStructureIssues,
+  looksLikeSitemap,
+  parseRobotsSitemapUrls,
+} from '../lib/geo/probes';
 
 test('AI search and training bot lists include 2026 crawlers', () => {
   for (const bot of ['Bingbot', 'Meta-ExternalAgent', 'Amazonbot', 'YouBot']) {
@@ -66,4 +73,47 @@ test('TDMRep signal: well-known, header-only, or neither', () => {
   assert.equal(hasTdmRepSignal(false, ''), false);
   assert.equal(hasTdmRepSignal(false, undefined), false);
   assert.equal(hasTdmRepSignal(false, null), false);
+});
+
+test('parseRobotsSitemapUrls keeps same-origin Sitemap: entries in order', () => {
+  const robots = `User-agent: *
+Disallow: /drafts/
+Sitemap: https://www.lilly.com/sitemap-index.xml
+Sitemap: https://other.example/sitemap.xml
+Sitemap: https://www.lilly.com/jp/sitemap.xml
+Sitemap: https://www.lilly.com/sitemap-index.xml
+`;
+  assert.deepEqual(parseRobotsSitemapUrls(robots, 'https://www.lilly.com'), [
+    'https://www.lilly.com/sitemap-index.xml',
+    'https://www.lilly.com/jp/sitemap.xml',
+  ]);
+});
+
+test('looksLikeSitemap accepts XML content-type or urlset/sitemapindex body', () => {
+  assert.equal(
+    looksLikeSitemap({
+      ok: true,
+      contentType: 'application/xml; charset=utf-8',
+      bodyText: '',
+    }),
+    true,
+  );
+  assert.equal(
+    looksLikeSitemap({
+      ok: true,
+      contentType: 'text/plain',
+      bodyText:
+        '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></sitemapindex>',
+    }),
+    true,
+  );
+  assert.equal(
+    looksLikeSitemap({
+      ok: true,
+      contentType: 'text/html',
+      bodyText: '<html><div class="neterror"><div class="error-code">HTTP ERROR 404</div></div></html>',
+    }),
+    false,
+  );
+  assert.equal(looksLikeSitemap({ ok: false, contentType: 'application/xml', bodyText: '<urlset/>' }), false);
 });

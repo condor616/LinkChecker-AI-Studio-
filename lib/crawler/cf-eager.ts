@@ -1,4 +1,9 @@
-import { fetchResource, isCloudflareChallenge, type FetchedResource } from '@lynx/crawler-core';
+import {
+  fetchResource,
+  isCloudflareChallenge,
+  parseChromiumNetErrorStatus,
+  type FetchedResource,
+} from '@lynx/crawler-core';
 import { cookiesToHeader, isFlareSolverrConfigured, solveWithFlareSolverr } from './flaresolverr';
 import {
   fetchConfigWithSession,
@@ -115,23 +120,38 @@ export async function tryEagerCloudflareUnlock(opts: {
   const retryConfig = fetchConfigWithSession(liveConfig, url);
   let retry = await fetchResource(url, retryConfig, retryHeaders);
 
-  if (
-    (retry.challenged || !retry.ok) &&
-    bundle.flareHtml &&
-    (bundle.flareStatus == null || bundle.flareStatus < 400) &&
-    !isCloudflareChallenge(bundle.flareStatus ?? 200, {}, bundle.flareHtml)
-  ) {
-    console.log(`[Cloudflare] Trusting FlareSolverr HTML for ${url} (Node re-fetch looked challenged)`);
-    retry = {
-      ...retry,
-      ok: true,
-      challenged: false,
-      authGated: false,
-      statusCode: bundle.flareStatus ?? 200,
-      contentType: retry.contentType || 'text/html',
-      bodyText: bundle.flareHtml,
-      error: null,
-    };
+  if ((retry.challenged || !retry.ok) && bundle.flareHtml) {
+    const chromeStatus = parseChromiumNetErrorStatus(bundle.flareHtml);
+    if (chromeStatus != null) {
+      console.log(
+        `[Cloudflare] FlareSolverr returned HTTP ${chromeStatus} for ${url} (Chromium error page)`,
+      );
+      retry = {
+        ...retry,
+        ok: false,
+        challenged: false,
+        authGated: false,
+        statusCode: chromeStatus,
+        contentType: retry.contentType || 'text/html',
+        bodyText: bundle.flareHtml,
+        error: `[Status] HTTP ${chromeStatus}`,
+      };
+    } else if (
+      (bundle.flareStatus == null || bundle.flareStatus < 400) &&
+      !isCloudflareChallenge(bundle.flareStatus ?? 200, {}, bundle.flareHtml)
+    ) {
+      console.log(`[Cloudflare] Trusting FlareSolverr HTML for ${url} (Node re-fetch looked challenged)`);
+      retry = {
+        ...retry,
+        ok: true,
+        challenged: false,
+        authGated: false,
+        statusCode: bundle.flareStatus ?? 200,
+        contentType: retry.contentType || 'text/html',
+        bodyText: bundle.flareHtml,
+        error: null,
+      };
+    }
   }
 
   if (!retry.challenged && retry.ok) {

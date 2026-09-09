@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   FAILED_CLOUDFLARE_CHALLENGE,
   formatChallengeError,
+  isChromiumNetErrorPage,
   isCloudflareChallenge,
+  parseChromiumNetErrorStatus,
 } from '../../packages/crawler-core/src/challenge';
 
 describe('isCloudflareChallenge', () => {
@@ -76,5 +78,42 @@ describe('isCloudflareChallenge', () => {
       bodyPreview: '<HTML><TITLE>Access Denied</TITLE><H1>Access Denied</H1>edgesuite.net</HTML>',
     });
     expect(msg).toContain('WAF: Akamai');
+  });
+});
+
+describe('parseChromiumNetErrorStatus', () => {
+  const chrome404 = `<!DOCTYPE html>
+<html><head><title>www.lilly.com</title>
+<style>${'x'.repeat(5000)}</style>
+</head>
+<body>
+  <div class="icon icon-generic"></div>
+  <div class="neterror">
+    <div class="error-code">HTTP ERROR 404</div>
+    <p>This www.lilly.com page can’t be found</p>
+  </div>
+  <script>function getMainFrameErrorIconCssClass(){}</script>
+</body></html>`;
+
+  it('extracts HTTP ERROR status from Chromium net-error pages past the first 4KB', () => {
+    expect(parseChromiumNetErrorStatus(chrome404)).toBe(404);
+    expect(isChromiumNetErrorPage(chrome404)).toBe(true);
+  });
+
+  it('does not treat a marketing page that mentions HTTP ERROR as a net-error', () => {
+    const html = '<html><body><p>We documented HTTP ERROR 404 handling in our guide.</p></body></html>';
+    expect(parseChromiumNetErrorStatus(html)).toBeNull();
+    expect(isChromiumNetErrorPage(html)).toBe(false);
+  });
+
+  it('does not flag a real sitemap XML body', () => {
+    const xml =
+      '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://example.com/a.xml</loc></sitemap></sitemapindex>';
+    expect(parseChromiumNetErrorStatus(xml)).toBeNull();
+  });
+
+  it('returns null for empty or unrelated HTML', () => {
+    expect(parseChromiumNetErrorStatus('')).toBeNull();
+    expect(parseChromiumNetErrorStatus('<html><body>ok</body></html>')).toBeNull();
   });
 });

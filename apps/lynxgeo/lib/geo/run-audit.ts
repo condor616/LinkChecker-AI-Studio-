@@ -1,10 +1,12 @@
 import { randomUUID } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { discoverLinks, fetchResource, getSkipReason, isTargetedScanConfig, parseScanConfig, type CrawlConfig } from '@lynx/crawler-core';
+import { discoverLinks, getSkipReason, isTargetedScanConfig, parseScanConfig, type CrawlConfig } from '@lynx/crawler-core';
 import { getLynxGeoDbName } from '@lynx/db';
 import { getGeoDb, postgresTarget } from '../db';
 import { auditPages, auditSnapshots, audits } from '../db/schema';
 import { analyzePage } from './analyze';
+import { fetchGeoResource, withGeoCloudflareDefaults, type GeoCfConfig } from './cf-unlock';
+import { isFlareSolverrConfigured } from './flaresolverr';
 import {
   AuditControlSignal,
   AUDIT_FRONTIER_ALTER_SQL,
@@ -162,7 +164,9 @@ export async function runAudit(
   };
 
   try {
-    const config = forceGeoSkipExternal(parseScanConfig(audit.config) as CrawlConfig);
+    let config: GeoCfConfig = withGeoCloudflareDefaults(
+      forceGeoSkipExternal(parseScanConfig(audit.config) as CrawlConfig),
+    );
     const isTargeted = isTargetedScanConfig(config);
     const origin = new URL(config.startUrl).origin;
     const pathPrefix = geoStartPathPrefix(config.startUrl);
@@ -174,7 +178,7 @@ export async function runAudit(
     const rateLimit = typeof config.rateLimit === 'number' && config.rateLimit > 0 ? config.rateLimit : 0;
     const ua = (config.customUserAgent || config.userAgent || 'default').slice(0, 80);
     log(
-      `audit ${auditId} startUrl=${config.startUrl} origin=${origin} pathPrefix=${pathPrefix} maxDepth=${depthNote} maxPages=${capNote} skipExternal=true stayInStartPath=true rateLimit=${rateLimit || 'off'} ua=${ua} targeted=${isTargeted}`,
+      `audit ${auditId} startUrl=${config.startUrl} origin=${origin} pathPrefix=${pathPrefix} maxDepth=${depthNote} maxPages=${capNote} skipExternal=true stayInStartPath=true rateLimit=${rateLimit || 'off'} ua=${ua} targeted=${isTargeted} bypassCloudflare=${Boolean(config.bypassCloudflare)} flaresolverr=${isFlareSolverrConfigured()}`,
     );
 
     if (!saved?.queue?.length) {
@@ -217,6 +221,10 @@ export async function runAudit(
           log,
           (phase, url) => persistProgress(phase, url),
           assertStillRunning,
+          auditId,
+          (next) => {
+            config = next;
+          },
         )),
       ];
       findings.push(...probeFindings);
@@ -290,7 +298,9 @@ export async function runAudit(
         await new Promise((resolve) => setTimeout(resolve, Math.ceil(60_000 / rateLimit)));
         await assertStillRunning();
       }
-      const resource = await fetchResource(item.url, config);
+      const unlocked = await fetchGeoResource(item.url, config, auditId, log);
+      config = unlocked.config;
+      const resource = unlocked.resource;
       const html = resource.bodyText && (resource.contentType || '').includes('html') ? resource.bodyText : null;
       if (!isGeoHtmlPage(resource, html)) {
         log(`page ${pageLogLabel(seen.size, pageCap)} SKIPPED document ${item.url}`);

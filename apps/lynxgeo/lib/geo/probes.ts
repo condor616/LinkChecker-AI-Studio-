@@ -1,5 +1,5 @@
 import type { CrawlConfig } from '@lynx/crawler-core';
-import { fetchResource } from '@lynx/crawler-core';
+import { fetchGeoResource, type GeoCfConfig } from './cf-unlock';
 import { geoStartPathPrefix } from './origin-scope';
 import type { Finding } from './score';
 
@@ -79,19 +79,66 @@ function probeObserved(resource: { statusCode: number | null; contentType?: stri
   return `HTTP ${status}, Content-Type: ${type}${err}`;
 }
 
+/** Same-origin Sitemap: URLs from robots.txt (deduped, declaration order). */
+export function parseRobotsSitemapUrls(robotsTxt: string, origin: string): string[] {
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const line of robotsTxt.split(/\r?\n/)) {
+    const match = line.match(/^\s*Sitemap:\s*(\S+)/i);
+    if (!match?.[1]) continue;
+    try {
+      const candidate = new URL(match[1]);
+      if (candidate.origin !== originUrl.origin) continue;
+      const href = candidate.toString();
+      if (seen.has(href)) continue;
+      seen.add(href);
+      out.push(href);
+    } catch {
+      // ignore invalid Sitemap: values
+    }
+  }
+  return out;
+}
+
+/** True when a probe response looks like a real sitemap / sitemap index (not HTML error pages). */
+export function looksLikeSitemap(resource: {
+  ok: boolean;
+  contentType?: string;
+  bodyText?: string | null;
+}): boolean {
+  if (!resource.ok) return false;
+  const ct = (resource.contentType || '').toLowerCase();
+  if (ct.includes('xml')) return true;
+  const body = (resource.bodyText || '').trim();
+  if (!body) return false;
+  return /^<\?xml/i.test(body) || /<(urlset|sitemapindex)\b/i.test(body);
+}
+
 export async function runSiteProbes(
   origin: string,
   config: CrawlConfig,
   log: (line: string) => void = () => {},
   onPhase?: (phase: 'robots.txt' | 'sitemap', url: string) => void | Promise<void>,
   shouldContinue?: () => Promise<void>,
+  auditId = 'probes',
+  onConfigUpdate?: (next: GeoCfConfig) => void,
 ): Promise<Finding[]> {
   const findings: Finding[] = [];
+  let liveConfig: GeoCfConfig = { ...(config as GeoCfConfig), startUrl: origin, skipExternal: true };
   const probe = async (path: string, extra?: Record<string, string>) => {
     await shouldContinue?.();
     const url = new URL(path, origin).toString();
     log(`probe GET ${url}`);
-    return fetchResource(url, { ...config, startUrl: origin, skipExternal: true }, extra);
+    const unlocked = await fetchGeoResource(url, liveConfig, auditId, log, extra);
+    liveConfig = unlocked.config;
+    onConfigUpdate?.(liveConfig);
+    return unlocked.resource;
   };
 
   const robotsUrl = new URL('/robots.txt', origin).toString();
@@ -167,16 +214,39 @@ export async function runSiteProbes(
 
   const sitemapUrl = new URL('/sitemap.xml', origin).toString();
   await onPhase?.('sitemap', sitemapUrl);
-  const sitemap = await probe('/sitemap.xml');
+  let sitemap = await probe('/sitemap.xml');
+  let resolvedSitemapUrl = sitemapUrl;
+
+  if (!looksLikeSitemap(sitemap) && robots.ok && robotsBody.trim()) {
+    const candidates = parseRobotsSitemapUrls(robotsBody, origin)
+      .filter((url) => url !== sitemapUrl)
+      .slice(0, 3);
+    for (const candidate of candidates) {
+      await onPhase?.('sitemap', candidate);
+      log(`probe GET ${candidate} (robots.txt Sitemap:)`);
+      const unlocked = await fetchGeoResource(candidate, liveConfig, auditId, log);
+      liveConfig = unlocked.config;
+      onConfigUpdate?.(liveConfig);
+      if (looksLikeSitemap(unlocked.resource)) {
+        sitemap = unlocked.resource;
+        resolvedSitemapUrl = candidate;
+        break;
+      }
+    }
+  }
+
+  const sitemapOk = looksLikeSitemap(sitemap);
   findings.push({
     id: 'sitemap',
     category: 'crawlAccess',
-    title: sitemap.ok ? 'sitemap.xml found' : 'sitemap.xml missing',
-    detail: `${probeObserved(sitemap)} for ${sitemapUrl}.`,
-    severity: sitemap.ok ? 'pass' : 'warn',
+    title: sitemapOk ? 'sitemap.xml found' : 'sitemap.xml missing',
+    detail: `${probeObserved(sitemap)} for ${resolvedSitemapUrl}.`,
+    severity: sitemapOk ? 'pass' : 'warn',
     standard: 'established',
-    suggestion: sitemap.ok ? '' : `Publish sitemap.xml (or a sitemap index) at ${sitemapUrl} so agents and search engines can discover URLs.`,
-    url: sitemapUrl,
+    suggestion: sitemapOk
+      ? ''
+      : `Publish sitemap.xml (or a sitemap index) at ${sitemapUrl} so agents and search engines can discover URLs.`,
+    url: resolvedSitemapUrl,
   });
 
   const llmsUrl = new URL('/llms.txt', origin).toString();
@@ -302,7 +372,10 @@ export async function runSiteProbes(
       await shouldContinue?.();
       const url = new URL(`${pathPrefix}${file}`, origin).toString();
       log(`probe GET ${url} (start-path, report only if present)`);
-      const resource = await fetchResource(url, { ...config, startUrl: origin, skipExternal: true });
+      const unlocked = await fetchGeoResource(url, liveConfig, auditId, log);
+      liveConfig = unlocked.config;
+      onConfigUpdate?.(liveConfig);
+      const resource = unlocked.resource;
       if (!resource.ok || !(resource.bodyText || '').trim()) return;
       findings.push({
         id,

@@ -25,6 +25,9 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-lynx_scan}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-localpass}
       - POSTGRES_DB=${POSTGRES_DB:-lynx_scan}
+      # Always use the Compose service name inside the Docker network (do not inherit
+      # host .env FLARESOLVERR_URL=http://localhost:8191 which is unreachable here).
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
     networks:
       - default
       - lynxscan-dev

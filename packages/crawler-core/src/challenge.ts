@@ -5,6 +5,33 @@ const STRONG_CHALLENGE_RE =
   /just a moment|checking your browser|cf-challenge|cf-browser-verification|challenge-platform|cf-turnstile|__cf_chl|cdn-cgi\/challenge|enable javascript and cookies|why have i been blocked|ddos protection by|please wait while we verify|attention required/i;
 
 /**
+ * FlareSolverr / Chromium often reports HTTP 200 for built-in net-error pages
+ * (e.g. "HTTP ERROR 404") while the origin actually returned 4xx/5xx.
+ * Scan the full body — the error code is often far past the first few KB of CSS/JS.
+ */
+const CHROMIUM_HTTP_ERROR_RE = /HTTP ERROR\s+(\d{3})/i;
+const CHROMIUM_NETERROR_RE =
+  /class=["']?neterror\b|icon-generic|getMainFrameErrorIconCssClass|error-code/i;
+
+/**
+ * If `html` looks like Chromium's built-in network error interstitial, return the
+ * embedded HTTP status (4xx/5xx). Otherwise null.
+ */
+export function parseChromiumNetErrorStatus(html: string | null | undefined): number | null {
+  if (!html) return null;
+  const match = html.match(CHROMIUM_HTTP_ERROR_RE);
+  if (!match) return null;
+  if (!CHROMIUM_NETERROR_RE.test(html)) return null;
+  const code = Number(match[1]);
+  if (!Number.isFinite(code) || code < 400 || code > 599) return null;
+  return code;
+}
+
+export function isChromiumNetErrorPage(html: string | null | undefined): boolean {
+  return parseChromiumNetErrorStatus(html) != null;
+}
+
+/**
  * Detect Cloudflare / WAF bot challenges from status, headers, and a short body preview.
  * Must run before auth-gated heuristics so challenge pages are not mislabeled as login walls.
  *

@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils';
 import { DEFAULT_USER_AGENT, USER_AGENTS } from '@/lib/crawler/agents';
 import { GEO_TEMPLATE_STORAGE_KEY } from '@/lib/geo/template-storage';
-import { Check, ChevronDown, Code, Copy, Filter, Globe, Key, LayoutTemplate, Play, Plus, Save, Shield, X } from 'lucide-react';
+import { Check, ChevronDown, CircleHelp, Code, Copy, Filter, Globe, Key, LayoutTemplate, Play, Plus, Save, Shield, X } from 'lucide-react';
 
 type SavedTemplate = {
   id: string;
@@ -37,6 +37,8 @@ type AuditConfig = {
   excludeSubdomains: boolean;
   doNotTraverseBackward: boolean;
   saveSkippedLinks: boolean;
+  bypassCloudflare: boolean;
+  cookieHeader: string;
   [key: string]: unknown;
 };
 
@@ -58,6 +60,8 @@ const DEFAULT_CONFIG: AuditConfig = {
   excludeSubdomains: true,
   doNotTraverseBackward: true,
   saveSkippedLinks: true,
+  bypassCloudflare: true,
+  cookieHeader: '',
 };
 
 const COMMON_SELECTORS = [
@@ -88,6 +92,7 @@ function payloadFromConfig(config: AuditConfig) {
     ...rest,
     skipExternal: true,
     doNotTraverseBackward: true,
+    bypassCloudflare: config.bypassCloudflare !== false,
   };
   const username = config.auth?.username?.trim() || '';
   const password = config.auth?.password?.trim() || '';
@@ -95,6 +100,12 @@ function payloadFromConfig(config: AuditConfig) {
     payload.auth = { username, password };
   } else {
     delete payload.auth;
+  }
+  const cookieHeader = config.cookieHeader?.trim() || '';
+  if (cookieHeader) {
+    payload.cookieHeader = cookieHeader;
+  } else {
+    delete payload.cookieHeader;
   }
   return payload;
 }
@@ -112,6 +123,7 @@ export default function NewAuditPage() {
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [showCookieHelp, setShowCookieHelp] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [templateMessage, setTemplateMessage] = useState('');
   const isUpdatingFromJson = useRef(false);
@@ -535,7 +547,7 @@ export default function NewAuditPage() {
                 </div>
                 <div>
                   <CardTitle>Identity</CardTitle>
-                  <CardDescription>User-Agent and request delay passed to crawler-core fetch.</CardDescription>
+                  <CardDescription>User-Agent, Cloudflare bypass, and request delay.</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -567,6 +579,47 @@ export default function NewAuditPage() {
                     value={config.customUserAgent}
                     onChange={(e) => setConfig({ ...config, customUserAgent: e.target.value })}
                   />
+                </div>
+                <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={config.bypassCloudflare !== false}
+                    onChange={(e) => setConfig({ ...config, bypassCloudflare: e.target.checked })}
+                  />
+                  <span className="space-y-1">
+                    <span className="block text-sm font-medium">Bypass Cloudflare (FlareSolverr)</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      Recommended. FlareSolverr runs a headless Chrome in Docker, solves the challenge there, and Lynx
+                      GEO uses that page HTML when plain fetches are blocked. You do not need a browser on the worker
+                      machine.
+                    </span>
+                  </span>
+                </label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="cookieHeader">Optional Cookie header seed</Label>
+                    <button
+                      type="button"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                      aria-label="How to copy cookies"
+                      title="How to copy cookies"
+                      onClick={() => setShowCookieHelp(true)}
+                    >
+                      <CircleHelp className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <Textarea
+                    id="cookieHeader"
+                    className="font-mono text-xs min-h-[72px]"
+                    placeholder="cf_clearance=...; __cf_bm=..."
+                    value={config.cookieHeader}
+                    onChange={(e) => setConfig({ ...config, cookieHeader: e.target.value })}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Rare escape hatch only. Prefer FlareSolverr above — click the help icon for when cookies can help
+                    and how to copy them.
+                  </p>
                 </div>
               </div>
               <div className="space-y-2">
@@ -717,6 +770,93 @@ export default function NewAuditPage() {
           </p>
         </div>
       </form>
+
+      {showCookieHelp && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cookie-help-title"
+          onClick={() => setShowCookieHelp(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-xl shadow-2xl max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 text-primary">
+                  <div className="p-2 bg-primary/10 rounded-full">
+                    <CircleHelp className="h-6 w-6" />
+                  </div>
+                  <h3 id="cookie-help-title" className="text-xl font-bold text-foreground">
+                    How to copy cookies
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+                  aria-label="Close"
+                  onClick={() => setShowCookieHelp(false)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground space-y-2">
+                <p className="font-medium text-foreground">You usually do not need this field</p>
+                <p>
+                  With <strong className="text-foreground font-medium">Bypass Cloudflare</strong> enabled, FlareSolverr
+                  (a Chrome browser in Docker) solves the challenge on the server. You do not need a browser on the
+                  worker machine, and you do not need to paste cookies for normal audits.
+                </p>
+                <p>
+                  Cloudflare clearance cookies are tied to the <em>public IP</em> that received them. Cookies from your
+                  Mac browser will not unlock fetches from the Docker worker (different outbound IP). Paste cookies only
+                  when the crawl process shares that same public IP (for example a host-run worker on the same Mac as
+                  your browser).
+                </p>
+              </div>
+
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">If you still want to seed cookies (same-IP setups)</p>
+                <ol className="list-decimal pl-5 space-y-2">
+                  <li>
+                    Open the site in Chrome or Edge and wait until the real page loads (past “Just a moment…”).
+                  </li>
+                  <li>
+                    Press <kbd className="px-1.5 py-0.5 rounded border border-border bg-background text-[11px]">F12</kbd>{' '}
+                    → <strong className="text-foreground font-medium">Application</strong> →{' '}
+                    <strong className="text-foreground font-medium">Cookies</strong> → select the site origin.
+                  </li>
+                  <li>
+                    Copy <code className="text-xs text-foreground">cf_clearance</code> (and{' '}
+                    <code className="text-xs text-foreground">__cf_bm</code> if present).
+                  </li>
+                  <li>
+                    Paste as one header line:{' '}
+                    <code className="text-xs text-foreground">cf_clearance=VALUE; __cf_bm=VALUE</code>
+                  </li>
+                  <li>
+                    Set <strong className="text-foreground font-medium">Custom User-Agent</strong> to the same browser UA
+                    (DevTools Console → <code className="text-xs text-foreground">navigator.userAgent</code>).
+                  </li>
+                </ol>
+                <p>
+                  Firefox: Storage → Cookies → same cookie names. Cookies expire quickly; re-copy if the audit starts
+                  failing again.
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <Button type="button" onClick={() => setShowCookieHelp(false)}>
+                  Got it
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSavePrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

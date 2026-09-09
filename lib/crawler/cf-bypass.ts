@@ -8,6 +8,7 @@ import {
   fetchResource,
   getUrlWithoutHash,
   isCloudflareChallenge,
+  parseChromiumNetErrorStatus,
 } from '@lynx/crawler-core';
 import { getDb } from '../db';
 import { links, scans } from '../db/schema';
@@ -123,9 +124,10 @@ export async function processCloudflareBypassJob(opts: {
           })) || config;
         session = getHostSession(config, current.url);
         if (solved.responseHtml && (solved.status == null || solved.status < 400)) {
+          const chromeStatus = parseChromiumNetErrorStatus(solved.responseHtml);
           flarePage = {
             url: current.url,
-            status: solved.status ?? 200,
+            status: chromeStatus ?? solved.status ?? 200,
             html: solved.responseHtml,
           };
         }
@@ -143,23 +145,41 @@ export async function processCloudflareBypassJob(opts: {
         (resource.challenged || !resource.ok) &&
         flarePage &&
         flarePage.url === current.url &&
-        flarePage.html &&
-        !isCloudflareChallenge(flarePage.status, {}, flarePage.html)
+        flarePage.html
       ) {
-        console.log(`[Cloudflare bypass] Trusting FlareSolverr HTML for ${current.url} (Node re-fetch looked challenged)`);
-        resource = {
-          ...resource,
-          ok: true,
-          challenged: false,
-          authGated: false,
-          statusCode: flarePage.status,
-          contentType: resource.contentType || 'text/html',
-          bodyText: flarePage.html,
-          error: null,
-        };
+        const chromeStatus = parseChromiumNetErrorStatus(flarePage.html);
+        if (chromeStatus != null) {
+          console.log(
+            `[Cloudflare bypass] FlareSolverr returned HTTP ${chromeStatus} for ${current.url} (Chromium error page)`,
+          );
+          resource = {
+            ...resource,
+            ok: false,
+            challenged: false,
+            authGated: false,
+            statusCode: chromeStatus,
+            contentType: resource.contentType || 'text/html',
+            bodyText: flarePage.html,
+            error: `[Status] HTTP ${chromeStatus}`,
+          };
+        } else if (!isCloudflareChallenge(flarePage.status, {}, flarePage.html)) {
+          console.log(
+            `[Cloudflare bypass] Trusting FlareSolverr HTML for ${current.url} (Node re-fetch looked challenged)`,
+          );
+          resource = {
+            ...resource,
+            ok: true,
+            challenged: false,
+            authGated: false,
+            statusCode: flarePage.status,
+            contentType: resource.contentType || 'text/html',
+            bodyText: flarePage.html,
+            error: null,
+          };
+        }
       }
 
-      if (resource.challenged || !resource.ok) {
+      if (resource.challenged) {
         await userDb
           .update(links)
           .set({
@@ -170,12 +190,27 @@ export async function processCloudflareBypassJob(opts: {
               statusCode: resource.statusCode,
               headers: resource.headers,
               bodyPreview: resource.bodyText,
-              note: resource.challenged
-                ? 'Still challenged after FlareSolverr cookies'
-                : 'Node fetch failed after FlareSolverr unlock',
+              note: 'Still challenged after FlareSolverr cookies',
             }),
             cloudflareChallenge: true,
             bypassAttempted: true,
+            checkedAt: new Date(),
+          })
+          .where(eq(links.id, current.id));
+        continue;
+      }
+
+      if (!resource.ok) {
+        await userDb
+          .update(links)
+          .set({
+            status: 'BROKEN',
+            statusCode: resource.statusCode,
+            type: resource.contentType || null,
+            error: resource.error || `[Status] HTTP ${resource.statusCode ?? 'unknown'}`,
+            cloudflareChallenge: false,
+            bypassAttempted: true,
+            isRechecked: true,
             checkedAt: new Date(),
           })
           .where(eq(links.id, current.id));

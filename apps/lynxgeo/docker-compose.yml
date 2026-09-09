@@ -40,6 +40,7 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
       - POSTGRES_HOST=db
       - BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY:-2}
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
