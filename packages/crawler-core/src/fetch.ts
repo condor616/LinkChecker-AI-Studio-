@@ -2,6 +2,7 @@ import type { CrawlConfig, FetchedResource } from './types';
 import { getFetchUrl, isSameOrSubdomain, normalizeHostname } from './url';
 import { isSafeHostname } from './ssrf';
 import { getTraversalSkipReason } from './exclude';
+import { formatChallengeError, isCloudflareChallenge } from './challenge';
 
 function looksLikeAuthPath(url: string): boolean {
   const lower = url.toLowerCase();
@@ -29,7 +30,48 @@ export function isAuthGatedResponse(response: Response, requestUrl: string, body
   }
 
   const body = bodyPreview.toLowerCase();
-  return /(unauthorized|forbidden|access denied|authentication required|please log in|please login|log in to continue|sign in to continue|single sign-on|\bsso\b|invalid credentials|bad credentials)/.test(body);
+  // Require login-oriented copy. Do NOT match bare "access denied" / "forbidden" —
+  // Akamai and other WAFs use those phrases for bot blocks, which are broken links,
+  // not auth walls.
+  return /(authentication required|please log in|please login|log in to continue|sign in to continue|single sign-on|\bsso\b|invalid credentials|bad credentials)/.test(
+    body,
+  );
+}
+
+function mergeCookieHeader(
+  existing: string | undefined,
+  setCookieHeaders: string[],
+): string | undefined {
+  const jar = new Map<string, string>();
+  if (existing) {
+    for (const part of existing.split(';')) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0) continue;
+      jar.set(trimmed.slice(0, eq), trimmed.slice(eq + 1));
+    }
+  }
+  for (const raw of setCookieHeaders) {
+    const first = raw.split(';')[0]?.trim();
+    if (!first) continue;
+    const eq = first.indexOf('=');
+    if (eq <= 0) continue;
+    jar.set(first.slice(0, eq), first.slice(eq + 1));
+  }
+  if (jar.size === 0) return existing;
+  return Array.from(jar.entries())
+    .map(([k, v]) => `${k}=${v}`)
+    .join('; ');
+}
+
+function getSetCookieHeaders(response: Response): string[] {
+  const headersAny = response.headers as Headers & { getSetCookie?: () => string[] };
+  if (typeof headersAny.getSetCookie === 'function') {
+    return headersAny.getSetCookie();
+  }
+  const single = response.headers.get('set-cookie');
+  return single ? [single] : [];
 }
 
 export async function fetchWithRedirects(
@@ -39,13 +81,22 @@ export async function fetchWithRedirects(
   maxRedirects = 5,
 ): Promise<Response> {
   let currentUrl = inputUrl;
+  const hopHeaders = { ...headers };
 
   for (let i = 0; i <= maxRedirects; i++) {
     const response = await fetch(currentUrl, {
       signal,
-      headers,
+      headers: hopHeaders,
       redirect: 'manual',
     });
+
+    const setCookies = getSetCookieHeaders(response);
+    if (setCookies.length > 0) {
+      const merged = mergeCookieHeader(hopHeaders.Cookie || hopHeaders.cookie, setCookies);
+      if (merged) {
+        hopHeaders.Cookie = merged;
+      }
+    }
 
     if (response.status < 300 || response.status >= 400) {
       return response;
@@ -84,6 +135,36 @@ export function buildBrowserHeaders(config: CrawlConfig): Record<string, string>
   return headers;
 }
 
+async function peekBodyPreview(response: Response): Promise<{ bodyText: string | null; preview: string }> {
+  const contentType = (response.headers.get('content-type') || '').split(';')[0];
+  const isTextual =
+    contentType.includes('text') ||
+    contentType.includes('json') ||
+    contentType.includes('xml') ||
+    contentType.includes('html') ||
+    contentType.includes('markdown') ||
+    !contentType;
+
+  if (!isTextual) {
+    return { bodyText: null, preview: '' };
+  }
+
+  try {
+    const bodyText = await response.text();
+    return { bodyText, preview: bodyText.slice(0, 4000) };
+  } catch {
+    return { bodyText: null, preview: '' };
+  }
+}
+
+function headersToMap(response: Response): Record<string, string> {
+  const headerMap: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    headerMap[key.toLowerCase()] = value;
+  });
+  return headerMap;
+}
+
 export async function fetchResource(url: string, config: CrawlConfig, extraHeaders?: Record<string, string>): Promise<FetchedResource> {
   const fetchUrl = getFetchUrl(url);
   const empty: FetchedResource = {
@@ -96,6 +177,7 @@ export async function fetchResource(url: string, config: CrawlConfig, extraHeade
     bodyText: null,
     blockedBySsrf: false,
     authGated: false,
+    challenged: false,
     skipReason: null,
     error: null,
   };
@@ -120,43 +202,83 @@ export async function fetchResource(url: string, config: CrawlConfig, extraHeade
 
   try {
     let response = await fetchWithRedirects(fetchUrl, headers, controller.signal);
+    let headerMap = headersToMap(response);
+    let { bodyText, preview } = await peekBodyPreview(response);
 
+    // Detect challenges before auth-gated heuristics and before the smart retry.
+    if (isCloudflareChallenge(response.status, headerMap, preview)) {
+      const skipReason = getTraversalSkipReason(url, config, 'BROKEN');
+      return {
+        url,
+        fetchUrl,
+        ok: false,
+        statusCode: response.status,
+        contentType: (response.headers.get('content-type') || '').split(';')[0],
+        headers: headerMap,
+        bodyText,
+        blockedBySsrf: false,
+        authGated: false,
+        challenged: true,
+        skipReason,
+        error: formatChallengeError({
+          statusCode: response.status,
+          headers: headerMap,
+          bodyPreview: preview || bodyText,
+        }),
+      };
+    }
+
+    // Smart retry: keep the scan User-Agent; only strip browser-like extras.
     if (!response.ok && (response.status === 403 || response.status === 400 || response.status === 429)) {
+      const userAgent = headers['User-Agent'] || headers['user-agent'] || buildBrowserHeaders(config)['User-Agent'];
       const fallbackHeaders: Record<string, string> = {
-        'User-Agent': 'curl/8.17.0',
+        'User-Agent': userAgent,
         Accept: '*/*',
-        'sec-fetch-mode': 'navigate',
       };
       if (headers.Authorization) fallbackHeaders.Authorization = headers.Authorization;
+      if (headers.Cookie) fallbackHeaders.Cookie = headers.Cookie;
+
       const retryResponse = await fetchWithRedirects(fetchUrl, fallbackHeaders, controller.signal);
+      const retryHeaders = headersToMap(retryResponse);
+      const retryPeek = await peekBodyPreview(retryResponse);
+
+      if (isCloudflareChallenge(retryResponse.status, retryHeaders, retryPeek.preview)) {
+        const skipReason = getTraversalSkipReason(url, config, 'BROKEN');
+        return {
+          url,
+          fetchUrl,
+          ok: false,
+          statusCode: retryResponse.status,
+          contentType: (retryResponse.headers.get('content-type') || '').split(';')[0],
+          headers: retryHeaders,
+          bodyText: retryPeek.bodyText,
+          blockedBySsrf: false,
+          authGated: false,
+          challenged: true,
+          skipReason,
+          error: formatChallengeError({
+            statusCode: retryResponse.status,
+            headers: retryHeaders,
+            bodyPreview: retryPeek.preview || retryPeek.bodyText,
+            note: 'After smart-retry with minimal headers',
+          }),
+        };
+      }
+
       if (retryResponse.ok || (retryResponse.status !== 403 && retryResponse.status !== 400)) {
         response = retryResponse;
+        headerMap = retryHeaders;
+        bodyText = retryPeek.bodyText;
+        preview = retryPeek.preview;
       }
     }
 
     const contentType = (response.headers.get('content-type') || '').split(';')[0];
-    const headerMap: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headerMap[key.toLowerCase()] = value;
-    });
-
-    let bodyText: string | null = null;
-    const isTextual =
-      contentType.includes('text') ||
-      contentType.includes('json') ||
-      contentType.includes('xml') ||
-      contentType.includes('html') ||
-      contentType.includes('markdown');
-    if (isTextual) {
-      try {
-        bodyText = await response.text();
-      } catch {
-        bodyText = null;
-      }
-    }
-
     const skipReason = getTraversalSkipReason(url, config, response.ok ? 'SUCCESS' : 'BROKEN');
-    const authGated = !response.ok && isAuthGatedResponse(response, url, bodyText?.slice(0, 1000) || '');
+    const authGated =
+      !response.ok &&
+      !isCloudflareChallenge(response.status, headerMap, preview) &&
+      isAuthGatedResponse(response, url, preview.slice(0, 1000) || '');
 
     return {
       url,
@@ -168,8 +290,15 @@ export async function fetchResource(url: string, config: CrawlConfig, extraHeade
       bodyText,
       blockedBySsrf: false,
       authGated,
+      challenged: false,
       skipReason,
-      error: response.ok ? skipReason : `[Status] ${response.statusText || 'Error'}`,
+      error: response.ok
+        ? skipReason
+        : authGated
+          ? `Auth-gated resource (${response.status}) - not treated as broken`
+          : bodyText
+            ? `[Response] ${bodyText.slice(0, 500)}`
+            : `[Status] ${response.statusText || 'Error'}`,
     };
   } catch (error: any) {
     const errorMsg = error.name === 'AbortError' ? 'Timeout (15s limit)' : error.message;

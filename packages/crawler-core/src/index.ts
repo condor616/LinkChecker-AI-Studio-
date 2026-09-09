@@ -15,4 +15,5 @@ export {
 export { isPrivateIpAddress, isSafeHostname } from './ssrf';
 export { shouldExclude, getSkipReason, getTraversalSkipReason } from './exclude';
 export { isAuthGatedResponse, fetchWithRedirects, buildBrowserHeaders, fetchResource } from './fetch';
+export { FAILED_CLOUDFLARE_CHALLENGE, formatChallengeError, isCloudflareChallenge } from './challenge';
 export { applySkipSelectors, extractGetFormFilterUrls, discoverLinks } from './discover';

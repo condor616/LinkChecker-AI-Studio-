@@ -20,6 +20,18 @@ export type CrawlConfig = {
   excludeRegex?: string;
   auth?: CrawlAuth;
   isTargeted?: boolean;
+  /**
+   * When true: mid-crawl eager FlareSolverr unlock (host cookies) + end-of-scan
+   * safety net for remaining CHALLENGED URLs (once per crawl wave).
+   */
+  bypassCloudflare?: boolean;
+  /** Runtime phase persisted on scan config: crawling | cloudflare */
+  phase?: 'crawling' | 'cloudflare';
+  /**
+   * After an end-of-scan FlareSolverr pass finishes with no new discoveries,
+   * set so we do not re-enqueue forever for permanently blocked hosts.
+   */
+  cloudflareBypassPassDone?: boolean;
   [key: string]: unknown;
 };
 
@@ -40,6 +52,8 @@ export type FetchedResource = {
   bodyText: string | null;
   blockedBySsrf: boolean;
   authGated: boolean;
+  /** Cloudflare / WAF challenge interstitial (including HTTP 200). */
+  challenged: boolean;
   skipReason: string | null;
   error: string | null;
 };

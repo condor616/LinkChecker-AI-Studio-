@@ -81,8 +81,17 @@ export async function provisionUserDb(userId: string) {
         "depth" integer DEFAULT 0 NOT NULL,
         "checked_at" timestamp,
         "is_rechecked" boolean DEFAULT false NOT NULL,
+        "cloudflare_challenge" boolean DEFAULT false NOT NULL,
+        "bypass_attempted" boolean DEFAULT false NOT NULL,
         CONSTRAINT "links_scan_id_scans_id_fk" FOREIGN KEY ("scan_id") REFERENCES "scans"("id") ON DELETE CASCADE
       );
+    `);
+
+    await db.execute(`
+      ALTER TABLE "links" ADD COLUMN IF NOT EXISTS "cloudflare_challenge" boolean DEFAULT false NOT NULL;
+    `);
+    await db.execute(`
+      ALTER TABLE "links" ADD COLUMN IF NOT EXISTS "bypass_attempted" boolean DEFAULT false NOT NULL;
     `);
 
     await ensureLinksIndexes((sql) => db.execute(sql));

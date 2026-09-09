@@ -35,6 +35,8 @@ export const links = pgTable('links', {
   depth: integer('depth').notNull().default(0),
   checkedAt: timestamp('checked_at', { mode: 'date' }),
   isRechecked: boolean('is_rechecked').notNull().default(false),
+  cloudflareChallenge: boolean('cloudflare_challenge').notNull().default(false),
+  bypassAttempted: boolean('bypass_attempted').notNull().default(false),
 }, (table) => [
   index('links_scan_id_idx').on(table.scanId),
   index('links_scan_id_status_idx').on(table.scanId, table.status),
