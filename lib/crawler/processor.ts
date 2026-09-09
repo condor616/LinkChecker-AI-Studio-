@@ -4,7 +4,6 @@ import { eq, and, or, inArray, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import {
   canonicalizeScanUrl,
-  getFetchUrl,
   getUrlWithoutHash,
   isTargetUrlMatch,
   isSameOrSubdomain,
@@ -12,13 +11,26 @@ import {
   shouldExclude,
   getSkipReason,
   getTraversalSkipReason,
-  isAuthGatedResponse,
-  fetchWithRedirects,
   isSafeHostname,
   discoverLinks,
+  fetchResource,
+  FAILED_CLOUDFLARE_CHALLENGE,
+  formatChallengeError,
 } from '@lynx/crawler-core';
+import {
+  fetchConfigWithSession,
+  headersForHost,
+  reloadScanConfig,
+} from './cf-sessions';
+import { tryEagerCloudflareUnlock } from './cf-eager';
 
 const activeCrawls = new Map<string, Promise<void>>(); // Scan-scoped fetch cache
+
+const TERMINAL_STATUSES = ['SUCCESS', 'BROKEN', 'SKIPPED', 'CHALLENGED'] as const;
+
+function isTerminalStatus(status: string | null | undefined): boolean {
+  return !!status && (TERMINAL_STATUSES as readonly string[]).includes(status);
+}
 
 export async function processLink(userDb: any, link: any, scan: any, config: any) {
 
@@ -28,7 +40,6 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
   const isTargeted = !!config.isTargeted && (config.targetUrls?.length > 0);
   const documentUrl = getUrlWithoutHash(link.url);
-  const fetchUrl = getFetchUrl(link.url);
   const crawlKey = `${scan.id}:${documentUrl}`;
 
   // NEW: Wait if this URL is already being fetched in this scan
@@ -37,7 +48,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     const sibling = await userDb.select().from(links).where(and(
       eq(links.scanId, scan.id),
       or(eq(links.url, link.url), eq(links.url, documentUrl)),
-      or(eq(links.status, 'SUCCESS'), eq(links.status, 'BROKEN'), eq(links.status, 'SKIPPED'))
+      or(eq(links.status, 'SUCCESS'), eq(links.status, 'BROKEN'), eq(links.status, 'SKIPPED'), eq(links.status, 'CHALLENGED'))
     )).then((rows: any[]) => rows[0]);
     if (sibling) {
       await userDb.update(links).set({
@@ -45,6 +56,9 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         statusCode: sibling.statusCode,
         type: sibling.type,
         error: sibling.error,
+        cloudflareChallenge: sibling.cloudflareChallenge,
+        bypassAttempted: sibling.bypassAttempted,
+        isRechecked: sibling.isRechecked,
         checkedAt: new Date(),
       }).where(and(
         eq(links.scanId, scan.id),
@@ -98,33 +112,6 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
             return;
         }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-    
-    // HTTP Basic Auth
-    let userAgent = config.customUserAgent || config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    
-    // Implement Random Delay if configured
-    if (config.randomDelay && config.randomDelay > 0) {
-        const delay = Math.floor(Math.random() * config.randomDelay);
-        await new Promise(resolve => setTimeout(resolve, delay));
-    }
-
-    const headers: Record<string, string> = { 
-        'User-Agent': userAgent,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'none',
-        'sec-fetch-user': '?1',
-        'sec-fetch-dest': 'document',
-    };
-    if (config.auth && config.auth.username && config.auth.password) {
-        const auth = Buffer.from(`${config.auth.username}:${config.auth.password}`).toString('base64');
-        headers['Authorization'] = `Basic ${auth}`;
-    }
-
-
     // Single Crawl Guarantee: Handle PENDING or already checked results
     const existingRaw = await userDb.select().from(links)
       .where(and(
@@ -132,13 +119,16 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         or(eq(links.url, link.url), eq(links.url, documentUrl))
       ));
 
-    const checkComplete = existingRaw.find((l: any) => l.status === 'SUCCESS' || l.status === 'BROKEN' || l.status === 'SKIPPED');
+    const checkComplete = existingRaw.find((l: any) => isTerminalStatus(l.status));
     if (checkComplete) {
       await userDb.update(links).set({
         status: checkComplete.status,
         statusCode: checkComplete.statusCode,
         type: checkComplete.type,
         error: checkComplete.error,
+        cloudflareChallenge: checkComplete.cloudflareChallenge,
+        bypassAttempted: checkComplete.bypassAttempted,
+        isRechecked: checkComplete.isRechecked,
         checkedAt: new Date(),
         snippet: `[Reused Result] ` + (link.snippet || '')
       }).where(and(
@@ -149,70 +139,94 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
       return; 
     }
 
-        let response = await fetchWithRedirects(fetchUrl, headers, controller.signal);
+    // Reload config so host sessions written by other jobs are visible.
+    let liveConfig = (await reloadScanConfig(userDb, scan.id)) || config;
+    const sessionHeaders = headersForHost(liveConfig, link.url);
+    const fetchConfig = fetchConfigWithSession(liveConfig, link.url);
+    let resource = await fetchResource(
+      link.url,
+      fetchConfig,
+      Object.keys(sessionHeaders).length > 0 ? sessionHeaders : undefined,
+    );
+    let solvedViaBypass = false;
+    let bypassAttempted = !!link.bypassAttempted;
 
-    // Smart Retry: If blocked (403/400/429), try with Minimalist headers
-    if (!response.ok && (response.status === 403 || response.status === 400 || response.status === 429)) {
-        console.log(`[Smart Retry] Detected ${response.status} for ${link.url}. Retrying with minimalist headers...`);
-        const fallbackHeaders: Record<string, string> = {
-            'User-Agent': 'curl/8.17.0',
-            'Accept': '*/*',
-            'sec-fetch-mode': 'navigate'
-        };
-        // Preserve auth if present
-        if (headers['Authorization']) fallbackHeaders['Authorization'] = headers['Authorization'];
-        
-        const retryResponse = await fetchWithRedirects(fetchUrl, fallbackHeaders, controller.signal);
-        if (retryResponse.ok || (retryResponse.status !== 403 && retryResponse.status !== 400)) {
-            response = retryResponse;
-        }
+    if (resource.blockedBySsrf) {
+      await userDb.update(links).set({
+        status: 'SKIPPED',
+        statusCode: null,
+        type: null,
+        checkedAt: new Date(),
+        error: resource.error || 'Blocked by SSRF protection policy',
+      }).where(and(
+        eq(links.scanId, scan.id),
+        eq(links.url, link.url),
+        or(eq(links.status, 'PENDING'), eq(links.status, 'PROCESSING'))
+      ));
+      return;
     }
 
-    clearTimeout(timeoutId);
+    const unlocked = await tryEagerCloudflareUnlock({
+      userDb,
+      scanId: scan.id,
+      url: link.url,
+      liveConfig,
+      resource,
+      alreadyBypassAttempted: bypassAttempted,
+    });
+    resource = unlocked.resource;
+    liveConfig = unlocked.liveConfig;
+    solvedViaBypass = unlocked.solvedViaBypass;
+    bypassAttempted = unlocked.bypassAttempted;
 
-    const contentType = (response.headers.get('content-type') || '').split(';')[0];
-    let status = response.ok ? 'SUCCESS' : 'BROKEN';
-    const statusCode = response.status;
+    const contentType = resource.contentType || '';
+    let status: string;
+    let errorDetail: string | null = resource.error;
+    const statusCode = resource.statusCode;
 
+    if (resource.challenged) {
+      status = 'CHALLENGED';
+      // fetchResource already embeds HTTP diagnostics when possible.
+      errorDetail =
+        resource.error?.startsWith(FAILED_CLOUDFLARE_CHALLENGE)
+          ? resource.error
+          : formatChallengeError({
+              statusCode: resource.statusCode,
+              headers: resource.headers,
+              bodyPreview: resource.bodyText,
+            });
+      console.log(`[Cloudflare] ${link.url} — ${errorDetail.split('\n')[0]}`);
+    } else if (resource.authGated) {
+      status = 'SKIPPED';
+      errorDetail = resource.error || `Auth-gated resource (${statusCode}) - not treated as broken`;
+    } else if (resource.ok) {
+      status = 'SUCCESS';
+      errorDetail = resource.skipReason;
+    } else if (resource.statusCode == null && resource.error) {
+      status = 'BROKEN';
+      errorDetail = resource.error;
+    } else {
+      status = 'BROKEN';
+      errorDetail = resource.error;
+    }
 
-    let skipReason: string | null = getTraversalSkipReason(link.url, config, status);
+    let skipReason: string | null = resource.skipReason || getTraversalSkipReason(link.url, config, status === 'SUCCESS' ? 'SUCCESS' : 'BROKEN');
 
-    if (skipReason) {
-        // Verified links should retain their real HTTP outcome (SUCCESS/BROKEN).
-        // skipReason here only controls traversal, not triage status.
+    if (skipReason && status === 'SUCCESS') {
         console.log(`[Info] ${link.url} traversal disabled after verification: ${skipReason}`);
-    }
-
-    let errorDetail = skipReason;
-    let errorBodyPreview = '';
-    if (!response.ok) {
-        try {
-            if (contentType.includes('text') || contentType.includes('json') || contentType.includes('xml')) {
-                const text = await response.text();
-                errorBodyPreview = text.slice(0, 1000);
-                errorDetail = `[Response] ${text.slice(0, 500)}`;
-            } else {
-                errorDetail = `[Status] ${response.statusText || 'Error'}`;
-            }
-        } catch (e) {
-            errorDetail = `[Status] ${response.statusText || 'Error'}`;
-        }
-
-        if (isAuthGatedResponse(response, link.url, errorBodyPreview)) {
-            status = 'SKIPPED';
-            if (!skipReason) {
-                errorDetail = `Auth-gated resource (${response.status}) - not treated as broken`;
-            }
-        }
     }
 
     // Bulk update all pending instances of this URL in this scan
     const updateData: any = {
       status,
       statusCode,
-      type: contentType,
+      type: contentType || null,
       checkedAt: new Date(),
-      error: errorDetail
+      error: errorDetail,
+      cloudflareChallenge: resource.challenged || solvedViaBypass || !!link.cloudflareChallenge,
+      bypassAttempted,
+      // Only mark rechecked when CF was unlocked to a successful page (not 404/broken).
+      ...(solvedViaBypass && status === 'SUCCESS' ? { isRechecked: true } : {}),
     };
     
     if (status === 'SUCCESS' && !isTargeted) {
@@ -258,8 +272,15 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
     const maxDepth = (config.maxDepth !== undefined) ? config.maxDepth : 2;
     const currentDepth = link.depth || 0;
 
-    // 2. Traversal Rules (Check but don't traverse if skipReason is set)
-    let shouldTraverse = response.ok && !skipReason && contentType.includes('text/html') && (maxDepth === 0 || currentDepth < maxDepth);
+    // 2. Traversal Rules (Check but don't traverse if skipReason is set or challenged)
+    let shouldTraverse =
+      status === 'SUCCESS' &&
+      resource.ok &&
+      !resource.challenged &&
+      !skipReason &&
+      contentType.includes('text/html') &&
+      !!resource.bodyText &&
+      (maxDepth === 0 || currentDepth < maxDepth);
 
         let traversalSkipReason: string | null = skipReason;
     if (shouldTraverse) {
@@ -276,7 +297,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
         }
 
     if (shouldTraverse) {
-      const html = await response.text();
+      const html = resource.bodyText!;
       const discoveredLinks = discoverLinks(html, link.url, config, currentDepth);
             const allUrls = Array.from(new Set(discoveredLinks.flatMap((entry) => {
                 const canonical = canonicalizeScanUrl(entry.url);
@@ -395,8 +416,8 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
           };
 
           const documentOccurrences = latestByUrl.get(foundDocumentUrl) || [];
-          const definitive = occurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN' || o.status === 'SKIPPED')
-              || (storedIsFragment ? documentOccurrences.find(o => o.status === 'SUCCESS' || o.status === 'BROKEN' || o.status === 'SKIPPED') : undefined);
+          const definitive = occurrences.find(o => isTerminalStatus(o.status))
+              || (storedIsFragment ? documentOccurrences.find(o => isTerminalStatus(o.status)) : undefined);
 
           if (storedIsFragment && isTarget && foundDocumentUrl === documentUrl) {
               finalLink.status = status;
@@ -432,7 +453,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
             WHERE l1.id = ${finalLink.id}
               AND l2.scan_id = ${scan.id}
               AND l2.url = ${urlStr}
-              AND l2.status IN ('SUCCESS', 'BROKEN', 'SKIPPED')
+              AND l2.status IN ('SUCCESS', 'BROKEN', 'SKIPPED', 'CHALLENGED')
               AND l1.status = 'PENDING'
           `);
 
@@ -457,7 +478,7 @@ export async function processLink(userDb: any, link: any, scan: any, config: any
 
           if (storedIsFragment && isTarget && foundDocumentUrl !== documentUrl) {
               const docOcc = latestByUrl.get(foundDocumentUrl) || [];
-              const docAlreadyKnown = docOcc.some(o => o.status === 'SUCCESS' || o.status === 'PENDING' || o.status === 'PROCESSING' || o.status === 'BROKEN' || o.status === 'SKIPPED');
+              const docAlreadyKnown = docOcc.some(o => o.status === 'SUCCESS' || o.status === 'PENDING' || o.status === 'PROCESSING' || o.status === 'BROKEN' || o.status === 'SKIPPED' || o.status === 'CHALLENGED');
               if (!docAlreadyKnown) {
                   const docLink: any = {
                       id: crypto.randomUUID(),

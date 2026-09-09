@@ -6,6 +6,10 @@ export function scanLinkJobId(linkId: string): string {
   return `scan-link-${linkId}`;
 }
 
+export function scanCfBypassJobId(scanId: string): string {
+  return `scan-cf-bypass-${scanId}`;
+}
+
 export function parseScanConfig(config: unknown): any {
   if (typeof config === 'string') {
     try {

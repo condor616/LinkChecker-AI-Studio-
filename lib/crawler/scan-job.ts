@@ -6,8 +6,9 @@ import { getDb } from '../db';
 import { scans, links } from '../db/schema';
 import { maybeCompleteScan } from './scan-completion';
 import { createScanCompletionQueue, toBulkJobs } from './scan-queue';
+import { processCloudflareBypassJob } from './cf-bypass';
 
-export { createScanCompletionQueue, scanLinkJobId } from './scan-queue';
+export { createScanCompletionQueue, scanLinkJobId, scanCfBypassJobId } from './scan-queue';
 
 export async function processScanJob(job: Job<ScanJobData>): Promise<void> {
   if (!job?.data) {
@@ -15,7 +16,7 @@ export async function processScanJob(job: Job<ScanJobData>): Promise<void> {
     return;
   }
 
-  const { userId, scanId, url, config, linkId } = job.data;
+  const { userId, scanId, url, config, linkId, kind } = job.data;
   const userDb = getDb(userId);
   const queue = createScanCompletionQueue(userId);
   const completionOpts = {
@@ -25,6 +26,16 @@ export async function processScanJob(job: Job<ScanJobData>): Promise<void> {
   };
 
   try {
+    if (kind === 'cf-bypass') {
+      await processCloudflareBypassJob({
+        userId,
+        scanId,
+        queue,
+        currentJobId: completionOpts.currentJobId,
+      });
+      return;
+    }
+
     const linkResult = linkId
       ? await userDb.select().from(links).where(eq(links.id, linkId)).limit(1)
       : await userDb.select().from(links).where(and(eq(links.scanId, scanId), eq(links.url, url))).limit(1);
@@ -41,7 +52,7 @@ export async function processScanJob(job: Job<ScanJobData>): Promise<void> {
       return;
     }
 
-    if (link.status === 'SUCCESS' || link.status === 'BROKEN' || link.status === 'SKIPPED') {
+    if (link.status === 'SUCCESS' || link.status === 'BROKEN' || link.status === 'SKIPPED' || link.status === 'CHALLENGED') {
       return;
     }
 
@@ -68,6 +79,7 @@ export async function processScanJob(job: Job<ScanJobData>): Promise<void> {
       await scanQueue.addBulk(toBulkJobs(userId, scanId, config, newLinks));
     }
   } finally {
+    if (kind === 'cf-bypass') return;
     try {
       await maybeCompleteScan(userDb, scanId, completionOpts);
     } catch (err: any) {

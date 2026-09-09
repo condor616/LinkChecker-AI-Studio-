@@ -37,4 +37,6 @@ export interface ScanJobData {
   depth: number;
   config: any;
   linkId?: string; // Optional: if we already have the link record
+  /** End-of-scan Cloudflare bypass pass (one job per scan). */
+  kind?: 'link' | 'cf-bypass';
 }

@@ -1,10 +1,13 @@
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { getDb, db as centralDb } from '../db';
 import { scans, links, users } from '../db/schema';
+import { scanQueue } from '../bullmq';
+import { isFlareSolverrConfigured } from './flaresolverr';
+import { parseScanConfig, scanCfBypassJobId } from './scan-queue';
 
 export type ScanJobLike = {
   id?: string | number | null;
-  data?: { scanId?: string };
+  data?: { scanId?: string; kind?: string };
 };
 
 export type ScanCompletionQueue = {
@@ -23,11 +26,19 @@ function isThisScanJob(job: ScanJobLike | null | undefined, scanId: string, curr
   return true;
 }
 
+async function setScanPhase(userDb: any, scanId: string, config: any, phase: 'crawling' | 'cloudflare') {
+  const next = { ...config, phase };
+  await userDb
+    .update(scans)
+    .set({ config: JSON.stringify(next), updatedAt: new Date() })
+    .where(eq(scans.id, scanId));
+  return next;
+}
+
 /**
  * Mark a RUNNING scan COMPLETED when there is no remaining crawl work.
  * PENDING links mean work is still queued or about to be queued.
- * PROCESSING leftovers (races / crashed workers) do not block completion once this
- * scan has no other active/delayed jobs.
+ * Unsolved CHALLENGED links with bypass enabled enqueue one FlareSolverr pass first.
  */
 export async function maybeCompleteScan(
   userDb: any,
@@ -49,8 +60,6 @@ export async function maybeCompleteScan(
     .limit(1);
 
   const rawJobs = opts?.queue ? await opts.queue.getBlockingJobs() : [];
-  // Sparse/malformed active slots must block completion (a crawl may still be in flight)
-  // but must not block orphan requeue — that is how PENDING rows get back on the queue.
   const hasUnknownInFlight = rawJobs.some((job) => job == null || !job.data);
   const blockingJobs = rawJobs.filter((job) => isThisScanJob(job, scanId, opts?.currentJobId));
   const hasInFlightWork = blockingJobs.length > 0;
@@ -77,7 +86,6 @@ export async function maybeCompleteScan(
     .limit(1);
 
   if (processingLeft.length > 0) {
-    // Restore rows that were fetched then overwritten back to PROCESSING by a duplicate job.
     await userDb.update(links).set({ status: 'SUCCESS' }).where(and(
       eq(links.scanId, scanId),
       eq(links.status, 'PROCESSING'),
@@ -88,6 +96,72 @@ export async function maybeCompleteScan(
       error: 'Abandoned after worker exited before storing a result',
       checkedAt: new Date(),
     }).where(and(eq(links.scanId, scanId), eq(links.status, 'PROCESSING')));
+  }
+
+  const config = parseScanConfig(scan.config);
+  const bypassEnabled = !!config.bypassCloudflare && isFlareSolverrConfigured();
+
+  // Never complete while a Cloudflare bypass pass is in flight.
+  const cfJobId = scanCfBypassJobId(scanId);
+  const cfJob = await scanQueue.getJob(cfJobId);
+  if (cfJob) {
+    const cfState = await cfJob.getState();
+    if (
+      cfState === 'waiting' ||
+      cfState === 'active' ||
+      cfState === 'delayed' ||
+      cfState === 'waiting-children' ||
+      cfState === 'prioritized'
+    ) {
+      console.log(`Scan ${scanId} waiting on Cloudflare bypass job (${cfState}).`);
+      return false;
+    }
+  }
+
+  if (bypassEnabled && !config.cloudflareBypassPassDone) {
+    const unsolved = await userDb
+      .select({ id: links.id })
+      .from(links)
+      .where(and(eq(links.scanId, scanId), eq(links.status, 'CHALLENGED')))
+      .limit(1);
+
+    if (unsolved.length > 0) {
+      await setScanPhase(userDb, scanId, config, 'cloudflare');
+      const jobId = cfJobId;
+      const existing = await scanQueue.getJob(jobId);
+      if (existing) {
+        const state = await existing.getState();
+        if (state === 'waiting' || state === 'active' || state === 'delayed' || state === 'waiting-children' || state === 'prioritized') {
+          console.log(`Scan ${scanId} waiting on Cloudflare bypass job (${state}).`);
+          return false;
+        }
+        try {
+          await existing.remove();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      console.log(`Scan ${scanId}: enqueueing Cloudflare bypass pass for remaining challenged URLs.`);
+      await scanQueue.add(
+        jobId,
+        {
+          userId: scan.userId,
+          scanId,
+          url: '',
+          depth: 0,
+          config: { ...config, phase: 'cloudflare' },
+          kind: 'cf-bypass',
+        },
+        { jobId, priority: 20 },
+      );
+      return false;
+    }
+  }
+
+  // Clear cloudflare phase if present before completing.
+  if (config.phase === 'cloudflare') {
+    await setScanPhase(userDb, scanId, config, 'crawling');
   }
 
   console.log(`Scan ${scanId} completed (no PENDING links and no in-flight jobs).`);
