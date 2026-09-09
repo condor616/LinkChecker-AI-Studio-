@@ -86,7 +86,7 @@ try {
     // ignore
   }
 
-  console.log('🚀 Starting shared db/redis and the LynxScan worker...');
+  console.log('🚀 Starting shared db/redis/FlareSolverr and the LynxScan worker...');
   startLynxScanStack();
 
   console.log('🚀 Starting the Lynx GEO Docker worker...');

@@ -24,7 +24,7 @@ try {
     throw new Error(`Docker daemon is not responsive. Make sure Docker Desktop is running. (Error: ${dockerError.message})`);
   }
   
-  console.log('🚀 Starting backend services (PostgreSQL, Redis) using Docker Compose...');
+  console.log('🚀 Starting backend services (PostgreSQL, Redis, FlareSolverr) using Docker Compose...');
   // Ensure the production stack is down to avoid port conflicts
   try {
     console.log('🧹 Stopping any existing production containers...');
@@ -60,9 +60,10 @@ try {
 } catch (error: any) {
   console.error('\n' + '='.repeat(64));
   console.error(`❌ ERROR: ${error.message || 'Unknown error occurred during setup.'}`);
-  console.error('PostgreSQL and Redis services will not be brought up automatically.');
+  console.error('PostgreSQL, Redis, and FlareSolverr services will not be brought up automatically.');
   console.error('The Next.js application will continue booting, but database operations');
   console.error('will fail unless you have another instance running.');
+  console.error('Cloudflare bot protection also needs FlareSolverr (FLARESOLVERR_URL).');
   console.error('='.repeat(64) + '\n');
   process.exit(1);
 }

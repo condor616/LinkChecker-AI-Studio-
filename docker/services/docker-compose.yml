@@ -43,12 +43,26 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
+      # Always use the Compose service name inside the Docker network.
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      flaresolverr:
+        condition: service_started
     restart: always
+
+  # Cloudflare challenge solver (Chrome). Always started with local Docker services.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
+      - TZ=${TZ:-UTC}
+    ports:
+      - "${FLARESOLVERR_PORT:-8191}:8191"
+    restart: unless-stopped
 
   # pgAdmin for Multi-Database Management
   pgadmin:

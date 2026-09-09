@@ -5,6 +5,11 @@ import path from 'path';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
+// Empty `KEY=` lines become "" and would block Next from reading real values from .env.
+for (const key of Object.keys(process.env)) {
+  if (process.env[key] === '') delete process.env[key];
+}
+
 const prod = process.argv.includes('--prod');
 const children: ChildProcess[] = [];
 let shuttingDown = false;
