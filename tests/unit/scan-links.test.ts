@@ -92,4 +92,49 @@ describe('buildTriageGroups', () => {
     expect(groups.successLinks).toHaveLength(1);
     expect(groups.recheckedLinks).toHaveLength(1);
   });
+
+  it('keeps only unsolved Cloudflare URLs in the CloudFlare tab; solved go to Re-checked', () => {
+    const links = [
+      {
+        url: 'https://example.com/cf-fail',
+        parentUrl: null,
+        status: 'CHALLENGED',
+        cloudflareChallenge: true,
+        error: 'Failed Cloudflare Challenge',
+      },
+      {
+        url: 'https://example.com/cf-ok',
+        parentUrl: null,
+        status: 'SUCCESS',
+        cloudflareChallenge: true,
+        isRechecked: true,
+      },
+      {
+        url: 'https://example.com/broken',
+        parentUrl: null,
+        status: 'BROKEN',
+      },
+    ];
+    const groups = buildTriageGroups(links, regularConfig, 'url');
+    expect(groups.brokenLinks).toHaveLength(1);
+    expect(groups.cloudflareLinks).toHaveLength(1);
+    expect(groups.cloudflareLinks.map((g) => g.url)).toEqual(['https://example.com/cf-fail']);
+    expect(groups.recheckedLinks.map((g) => g.url)).toContain('https://example.com/cf-ok');
+    expect(groups.successLinks.map((g) => g.url)).not.toContain('https://example.com/cf-ok');
+  });
+
+  it('does not put still-challenged URLs into Re-checked even if isRechecked is set', () => {
+    const links = [
+      {
+        url: 'https://example.com/cf-pending',
+        parentUrl: null,
+        status: 'CHALLENGED',
+        cloudflareChallenge: true,
+        isRechecked: true,
+      },
+    ];
+    const groups = buildTriageGroups(links, regularConfig, 'url');
+    expect(groups.cloudflareLinks.map((g) => g.url)).toEqual(['https://example.com/cf-pending']);
+    expect(groups.recheckedLinks).toHaveLength(0);
+  });
 });

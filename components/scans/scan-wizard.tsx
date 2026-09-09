@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Globe, 
@@ -36,6 +36,7 @@ interface WizardData {
   skipExternal: boolean;
   excludeSubdomains: boolean;
   doNotTraverseBackward: boolean;
+  bypassCloudflare: boolean;
   maxDepth: number;
   rateLimit: number;
   randomDelay: number;
@@ -55,6 +56,7 @@ const INITIAL_DATA: WizardData = {
   skipExternal: true,
   excludeSubdomains: true,
   doNotTraverseBackward: true,
+  bypassCloudflare: false,
   maxDepth: 2,
   rateLimit: 60,
   randomDelay: 500,
@@ -75,6 +77,23 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
   const [loading, setLoading] = useState(false);
   const [isValidatingAuth, setIsValidatingAuth] = useState(false);
   const [authValidation, setAuthValidation] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [flareSolverrAvailable, setFlareSolverrAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/crawler/capabilities')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload?.flareSolverr) return;
+        setFlareSolverrAvailable(true);
+        // Opt users into Cloudflare bypass when the solver is available.
+        setData((prev) => (prev.bypassCloudflare ? prev : { ...prev, bypassCloudflare: true }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const totalSteps = 7;
 
@@ -375,6 +394,21 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     active={data.doNotTraverseBackward}
                     onClick={() => setData({...data, doNotTraverseBackward: !data.doNotTraverseBackward})}
                   />
+                  <SelectionToggle
+                    icon={<Shield className="h-4 w-4" />}
+                    title="Cloudflare bot protection"
+                    description={
+                      flareSolverrAvailable
+                        ? "Unlock Cloudflare challenges mid-crawl (cookies reused per host), then retry any remaining blocked URLs at the end via FlareSolverr."
+                        : "FlareSolverr is not configured. Set FLARESOLVERR_URL and restart Docker so this option can be enabled."
+                    }
+                    active={data.bypassCloudflare && flareSolverrAvailable}
+                    disabled={!flareSolverrAvailable}
+                    onClick={() => {
+                      if (!flareSolverrAvailable) return;
+                      setData({ ...data, bypassCloudflare: !data.bypassCloudflare });
+                    }}
+                  />
                 </div>
               </div>
             )}
@@ -558,6 +592,7 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
                     <SummaryItem label="Start URL" value={data.startUrl} icon={<Globe className="h-3.5 w-3.5" />} />
                     <SummaryItem label="Mode" value={data.isTargeted ? "Targeted Audit" : "Recursive Crawl"} icon={<Shield className="h-3.5 w-3.5" />} />
                     <SummaryItem label="Performance" value={`${data.rateLimit} req/min | Depth: ${data.maxDepth === 0 ? 'Infinite' : data.maxDepth}`} icon={<Zap className="h-3.5 w-3.5" />} />
+                    <SummaryItem label="Cloudflare" value={data.bypassCloudflare ? 'Bot protection on' : 'Detect only'} icon={<Shield className="h-3.5 w-3.5" />} />
                     <SummaryItem label="Restrictions" value={`${[data.skipExternal && 'No External', data.excludeSubdomains && 'No Subdomains'].filter(Boolean).join(', ') || 'None'}`} icon={<Settings2 className="h-3.5 w-3.5" />} />
                 </div>
 
@@ -631,25 +666,41 @@ export function ScanWizard({ onExit }: { onExit: () => void }) {
   );
 }
 
-function SelectionToggle({ icon, title, description, active, onClick }: { icon: React.ReactNode, title: string, description: string, active: boolean, onClick: () => void }) {
+function SelectionToggle({
+  icon,
+  title,
+  description,
+  active,
+  onClick,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
     <div 
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      aria-disabled={disabled}
       className={cn(
-        "p-4 rounded-xl border-2 cursor-pointer transition-all flex gap-4 group",
-        active ? "bg-primary/5 border-primary/40 shadow-inner" : "bg-white/5 border-white/5 hover:border-white/10"
+        "p-4 rounded-xl border-2 transition-all flex gap-4 group",
+        disabled ? "opacity-50 cursor-not-allowed bg-white/[0.03] border-white/5" : "cursor-pointer",
+        !disabled && active ? "bg-primary/5 border-primary/40 shadow-inner" : !disabled && "bg-white/5 border-white/5 hover:border-white/10"
       )}
     >
       <div className={cn(
         "h-10 w-10 shrink-0 rounded-lg flex items-center justify-center transition-all",
-        active ? "bg-primary text-primary-foreground shadow-xl" : "bg-muted text-muted-foreground group-hover:bg-muted/80"
+        active && !disabled ? "bg-primary text-primary-foreground shadow-xl" : "bg-muted text-muted-foreground group-hover:bg-muted/80"
       )}>
         {icon}
       </div>
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <h4 className="font-bold text-sm text-foreground">{title}</h4>
-          {active && <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
+          {active && !disabled && <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
         </div>
         <p className="text-[10px] text-muted-foreground leading-relaxed leading-snug">
           {description}

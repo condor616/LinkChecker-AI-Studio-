@@ -36,6 +36,7 @@ interface ScanConfig {
   excludeSubdomains?: boolean;
   doNotTraverseBackward?: boolean;
   saveSkippedLinks?: boolean;
+  bypassCloudflare?: boolean;
 }
 
 
@@ -58,6 +59,7 @@ const DEFAULT_CONFIG: ScanConfig = {
   excludeSubdomains: false,
   doNotTraverseBackward: false,
   saveSkippedLinks: false,
+  bypassCloudflare: false,
 };
 
 
@@ -88,9 +90,25 @@ export default function NewScanPage() {
     const [startError, setStartError] = useState('');
     const [isValidatingAuth, setIsValidatingAuth] = useState(false);
     const [authValidation, setAuthValidation] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [flareSolverrAvailable, setFlareSolverrAvailable] = useState(false);
 
   // Ref to track if the change is coming from the JSON editor to avoid circular updates that lose cursor focus
   const isUpdatingFromJson = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/crawler/capabilities')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload?.flareSolverr) return;
+        setFlareSolverrAvailable(true);
+        setConfig((prev) => (prev.bypassCloudflare ? prev : { ...prev, bypassCloudflare: true }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     fetchTemplates();
@@ -663,6 +681,41 @@ export default function NewScanPage() {
                                 {config.doNotTraverseBackward 
                                     ? "Only crawl deeper into the start URL path. Never go 'up' or 'sideways'." 
                                     : "Crawl the entire site starting from the root of the domain."}
+                            </p>
+                        </motion.div>
+
+                        <motion.div 
+                            whileHover={flareSolverrAvailable ? { scale: 1.01 } : undefined}
+                            whileTap={flareSolverrAvailable ? { scale: 0.99 } : undefined}
+                            className={cn(
+                                "relative overflow-hidden group p-4 border rounded-xl transition-all duration-300",
+                                !flareSolverrAvailable && "opacity-50 cursor-not-allowed",
+                                flareSolverrAvailable && "cursor-pointer",
+                                config.bypassCloudflare && flareSolverrAvailable
+                                    ? "bg-sky-500/10 border-sky-500/50 shadow-[0_0_20px_rgba(14,165,233,0.2)]" 
+                                    : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
+                            )}
+                            onClick={() => {
+                              if (!flareSolverrAvailable) return;
+                              setConfig(prev => ({ ...prev, bypassCloudflare: !prev.bypassCloudflare }));
+                            }}
+                        >
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className={cn(
+                                    "w-2 h-2 rounded-full transition-all duration-500", 
+                                    config.bypassCloudflare && flareSolverrAvailable ? "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.8)]" : "bg-muted-foreground/30"
+                                )} />
+                                <span className={cn(
+                                    "text-[11px] font-black uppercase tracking-wider transition-colors",
+                                    config.bypassCloudflare && flareSolverrAvailable ? "text-sky-400" : "text-muted-foreground"
+                                )}>Cloudflare bot protection</span>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                                {flareSolverrAvailable
+                                    ? (config.bypassCloudflare
+                                        ? "Detect Cloudflare challenges, then retry blocked URLs at the end via FlareSolverr."
+                                        : "Detect Cloudflare challenges only (no FlareSolverr bypass pass).")
+                                    : "FlareSolverr is not available. Set FLARESOLVERR_URL and restart Docker."}
                             </p>
                         </motion.div>
 

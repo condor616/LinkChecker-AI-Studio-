@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { isTargetUrlMatch } from '@/lib/utils/url';
 import { buildTriageGroups, matchesScanTarget, parseScanConfigJson } from '@/lib/utils/scan-links';
-import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle, LayoutDashboard } from 'lucide-react';
+import { Pause, Play, Square, Trash2, RefreshCw, ExternalLink, ChevronDown, ChevronRight, ChevronLeft, AlertCircle, CheckCircle2, Link2, Ghost, Globe, Search, Loader2, AlertTriangle, LayoutDashboard, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -126,7 +126,8 @@ export function ScanDashboard({
   const [successPage, setSuccessPage] = useState(1);
   const [skippedPage, setSkippedPage] = useState(1);
   const [recheckedPage, setRecheckedPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'broken' | 'rechecked' | 'success' | 'skipped'>('broken');
+  const [cloudflarePage, setCloudflarePage] = useState(1);
+  const [activeTab, setActiveTab] = useState<'broken' | 'rechecked' | 'success' | 'skipped' | 'cloudflare'>('broken');
   
   const initialSearch = searchParams.get('search') || '';
   const [searchQuery, setSearchQuery] = useState(initialSearch);
@@ -136,6 +137,7 @@ export function ScanDashboard({
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isRecheckingAll, setIsRecheckingAll] = useState(false);
+  const [isRetryingCf, setIsRetryingCf] = useState(false);
   const [expandedTriageKeys, setExpandedTriageKeys] = useState<Set<string>>(() => new Set());
   const pageSize = 30;
 
@@ -194,6 +196,7 @@ export function ScanDashboard({
     setSuccessPage(1);
     setSkippedPage(1);
     setRecheckedPage(1);
+    setCloudflarePage(1);
     fetchData(searchToUse, controller.signal).finally(() => {
       if (!controller.signal.aborted) setIsSearching(false);
     });
@@ -221,7 +224,7 @@ export function ScanDashboard({
     if (triageContentRef.current) {
         triageContentRef.current.scrollTop = 0;
     }
-  }, [brokenPage, successPage, skippedPage, recheckedPage]);
+  }, [brokenPage, successPage, skippedPage, recheckedPage, cloudflarePage]);
 
   const toggleStatus = async () => {
     const newStatus = status === 'RUNNING' ? 'PAUSED' : 'RUNNING';
@@ -271,6 +274,56 @@ export function ScanDashboard({
     }
   };
 
+  const handleRetryCloudflare = async (linkId?: string) => {
+    if (isRetryingCf) return;
+    setIsRetryingCf(true);
+    try {
+      const res = await fetch(
+        linkId ? `/api/links/${linkId}/cf-bypass` : `/api/scans/${scanId}/cf-bypass`,
+        { method: 'POST' },
+      );
+      if (res.ok) {
+        setActiveTab('cloudflare');
+        await fetchData();
+      } else {
+        const payload = await res.json().catch(() => ({}));
+        console.error(payload.error || 'Cloudflare bypass failed');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRetryingCf(false);
+    }
+  };
+
+  const links = data?.links ?? [];
+  const scan = data?.scan ?? { config: '{}', name: scanName };
+  const config = useMemo(() => parseScanConfigJson(scan.config), [scan.config]);
+  const isTargeted = !!config.isTargeted && (config.targetUrls?.length || 0) > 0;
+  const targetUrls = config.targetUrls || [];
+  const matchesTarget = (url: string) => matchesScanTarget(url, config);
+  const scanPhase = config.phase === 'cloudflare' ? 'cloudflare' : 'crawling';
+
+  const triage = useMemo(
+    () => buildTriageGroups(links, config, viewMode),
+    [links, config, viewMode],
+  );
+  const {
+    filteredLinks,
+    uniqueFilteredLinks,
+    brokenLinks,
+    successLinks,
+    skippedLinks,
+    cloudflareLinks,
+    recheckedLinks,
+    currentBrokenGroups,
+    currentSuccessGroups,
+    currentSkippedGroups,
+    currentCloudflareGroups,
+    currentRecheckedGroups,
+    targetedGroups,
+  } = triage;
+
   const downloadBacklinkCSV = () => {
     const headers = ['Target URL', 'Source Page (Parent)', 'Status', 'Code', 'Snippet'];
     const rows = [headers.join(',')];
@@ -308,7 +361,9 @@ export function ScanDashboard({
              status === 'FAILED' ? "bg-destructive/10 text-destructive border-destructive/20" :
              "bg-slate-500/10 text-slate-400 border-slate-500/20"
           )}>
-            {status}
+            {status === 'RUNNING' && scanPhase === 'cloudflare'
+              ? 'Checking Cloudflare'
+              : status}
           </span>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             {!isTargetedScan && (
@@ -409,38 +464,24 @@ export function ScanDashboard({
     </AnimatePresence>
   );
 
-  const links = data?.links ?? [];
-  const scan = data?.scan ?? { config: '{}', name: scanName };
-  const config = useMemo(() => parseScanConfigJson(scan.config), [scan.config]);
-  const isTargeted = !!config.isTargeted && (config.targetUrls?.length || 0) > 0;
-  const targetUrls = config.targetUrls || [];
-  const matchesTarget = (url: string) => matchesScanTarget(url, config);
-
-  const triage = useMemo(
-    () => buildTriageGroups(links, config, viewMode),
-    [links, config, viewMode],
-  );
-  const {
-    filteredLinks,
-    uniqueFilteredLinks,
-    brokenLinks,
-    successLinks,
-    skippedLinks,
-    recheckedLinks,
-    currentBrokenGroups,
-    currentSuccessGroups,
-    currentSkippedGroups,
-    currentRecheckedGroups,
-    targetedGroups,
-  } = triage;
-
   const total = uniqueFilteredLinks.length;
   const pending = filteredLinks.filter((l) => l.status === 'PENDING').length;
-  const progress = links.length > 0 ? ((links.length - links.filter((l: any) => l.status === 'PENDING').length) / links.length) * 100 : 0;
+  const inProgressCount = links.filter((l: any) => {
+    if (l.status === 'PENDING' || l.status === 'PROCESSING') return true;
+    if (config.bypassCloudflare && l.status === 'CHALLENGED' && !l.bypassAttempted) return true;
+    return false;
+  }).length;
+  const progress = links.length > 0
+    ? ((links.length - inProgressCount) / links.length) * 100
+    : 0;
+  const unsolvedCfCount = links.filter((l: any) => l.status === 'CHALLENGED').length;
+  const totalCfCount = links.filter((l: any) => l.status === 'CHALLENGED' || l.cloudflareChallenge).length;
+  const solvedCfCount = Math.max(0, totalCfCount - unsolvedCfCount);
 
   const brokenCount = brokenLinks.length;
   const successCount = successLinks.length;
   const skippedCount = skippedLinks.length;
+  const cloudflareCount = cloudflareLinks.length;
   const recheckedCount = recheckedLinks.length;
 
   const listResetToken = `${scanId}:${debouncedSearch}:${viewMode}`;
@@ -448,12 +489,14 @@ export function ScanDashboard({
   const stableBrokenGroups = useStableGroupOrder(currentBrokenGroups, triageListFrozen && activeTab === 'broken', listResetToken);
   const stableSuccessGroups = useStableGroupOrder(currentSuccessGroups, triageListFrozen && activeTab === 'success', listResetToken);
   const stableSkippedGroups = useStableGroupOrder(currentSkippedGroups, triageListFrozen && activeTab === 'skipped', listResetToken);
+  const stableCloudflareGroups = useStableGroupOrder(currentCloudflareGroups || [], triageListFrozen && activeTab === 'cloudflare', listResetToken);
   const stableRecheckedGroups = useStableGroupOrder(currentRecheckedGroups, triageListFrozen && activeTab === 'rechecked', listResetToken);
   const stableTargetedGroups = useStableGroupOrder(targetedGroups, triageListFrozen && isTargeted, `${listResetToken}:targeted`);
 
   const paginatedBroken = stableBrokenGroups.slice((brokenPage - 1) * pageSize, brokenPage * pageSize);
   const paginatedSuccess = stableSuccessGroups.slice((successPage - 1) * pageSize, successPage * pageSize);
   const paginatedSkipped = stableSkippedGroups.slice((skippedPage - 1) * pageSize, skippedPage * pageSize);
+  const paginatedCloudflare = stableCloudflareGroups.slice((cloudflarePage - 1) * pageSize, cloudflarePage * pageSize);
   const paginatedRechecked = stableRecheckedGroups.slice((recheckedPage - 1) * pageSize, recheckedPage * pageSize);
 
   // Discovery: unique target URLs seen so far (any status). Orphans are only reported after the crawl finishes.
@@ -491,7 +534,13 @@ export function ScanDashboard({
     <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto min-w-0">
       <div className="space-y-2">
             <div className="flex justify-between text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <span>{isTargeted ? 'Crawl Progress' : 'Overall Progress'}</span>
+                <span>
+                  {status === 'RUNNING' && scanPhase === 'cloudflare'
+                    ? `Checking Cloudflare blocked URLs${totalCfCount > 0 ? ` (${solvedCfCount} of ${totalCfCount})` : ''}`
+                    : isTargeted
+                      ? 'Crawl Progress'
+                      : 'Overall Progress'}
+                </span>
                 <span>{Math.round(progress)}%</span>
             </div>
             <div className="h-3 bg-muted rounded-full overflow-hidden border">
@@ -548,7 +597,7 @@ export function ScanDashboard({
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           <StatCard title="Total Found" value={total} icon={<Link2 className="h-4 w-4" />} />
           <StatCard
             title="Checking"
@@ -558,6 +607,7 @@ export function ScanDashboard({
           />
           <StatCard title="Healthy" value={successCount} icon={<CheckCircle2 className="h-4 w-4" />} color="text-green-500" />
           <StatCard title="Broken" value={brokenCount} icon={<AlertCircle className="h-4 w-4" />} color="text-destructive" highlight={brokenCount > 0} />
+          <StatCard title="CloudFlare protected" value={cloudflareCount} icon={<Shield className="h-4 w-4" />} color="text-orange-500" highlight={cloudflareCount > 0} />
           <StatCard title="Skipped" value={skippedCount} icon={<Ghost className="h-4 w-4" />} color="text-slate-500" />
         </div>
       )}
@@ -592,7 +642,13 @@ export function ScanDashboard({
                 <Tabs
                     value={activeTab}
                     onValueChange={(value) => {
-                        if (value === 'broken' || value === 'rechecked' || value === 'success' || value === 'skipped') {
+                        if (
+                          value === 'broken' ||
+                          value === 'rechecked' ||
+                          value === 'success' ||
+                          value === 'skipped' ||
+                          value === 'cloudflare'
+                        ) {
                             setActiveTab(value);
                         }
                     }}
@@ -681,6 +737,15 @@ export function ScanDashboard({
                                         <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{currentSkippedGroups.length}</span>
                                         Skip
                                     </Button>
+                                    <Button
+                                        variant={activeTab === 'cloudflare' ? 'default' : 'outline'}
+                                        size="sm"
+                                        className="h-8 px-2 text-[10px] font-bold uppercase tracking-tight justify-center col-span-2"
+                                        onClick={() => setActiveTab('cloudflare')}
+                                    >
+                                        <span className="font-black px-1 py-0 rounded bg-current/20 text-current inline-block mr-1">{(currentCloudflareGroups || []).length}</span>
+                                        CloudFlare
+                                    </Button>
                                 </div>
 
                                 {/* Desktop: Full Tabs */}
@@ -694,6 +759,9 @@ export function ScanDashboard({
                                         </TabsTrigger>
                                         <TabsTrigger value="success" className="flex-shrink-0">
                                             Success <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-green-500/10 text-green-600">{currentSuccessGroups.length}</span>
+                                        </TabsTrigger>
+                                        <TabsTrigger value="cloudflare" className="text-orange-500 data-[state=active]:border-b-orange-500 flex-shrink-0">
+                                            CloudFlare protected <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500">{(currentCloudflareGroups || []).length}</span>
                                         </TabsTrigger>
                                         <TabsTrigger value="skipped" className="flex-shrink-0">
                                             Skipped <span className="ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{currentSkippedGroups.length}</span>
@@ -861,6 +929,68 @@ export function ScanDashboard({
                                     totalItems={stableSkippedGroups.length} 
                                     pageSize={pageSize} 
                                     onPageChange={setSkippedPage} 
+                                    position="bottom"
+                                />
+                             )}
+                        </TabsContent>
+                        <TabsContent value="cloudflare" className="m-0 flex-1 flex flex-col">
+                             {(currentCloudflareGroups || []).length === 0 ? (
+                                <div className="p-12 text-center text-sm italic text-muted-foreground">
+                                    No URLs still behind Cloudflare protection.
+                                </div>
+                             ) : (
+                             <div className="divide-y text-xs text-muted-foreground/60 flex-1">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 bg-orange-500/5 border-b border-orange-500/10">
+                                    <div className="flex items-center gap-2">
+                                        <Shield className="h-4 w-4 text-orange-500" />
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">
+                                            Still challenged ({(currentCloudflareGroups || []).length})
+                                        </span>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest border-orange-500/20 hover:bg-orange-500/10 hover:text-orange-500 hover:border-orange-500 transition-all shadow-sm w-full sm:w-auto"
+                                        onClick={() => handleRetryCloudflare()}
+                                        disabled={isRetryingCf || unsolvedCfCount === 0 || status === 'RUNNING'}
+                                        title={status === 'RUNNING' ? 'Wait for the scan to finish before retrying' : undefined}
+                                    >
+                                        {isRetryingCf ? (
+                                            <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Solving...</>
+                                        ) : (
+                                            <><RefreshCw className="mr-2 h-3 w-3" /> Retry FlareSolverr</>
+                                        )}
+                                    </Button>
+                                </div>
+                                {(currentCloudflareGroups || []).length > pageSize && (
+                                    <PaginationControls
+                                        currentPage={cloudflarePage}
+                                        totalItems={stableCloudflareGroups.length}
+                                        pageSize={pageSize}
+                                        onPageChange={setCloudflarePage}
+                                        position="top"
+                                    />
+                                )}
+                                {paginatedCloudflare.map((group: any) => (
+                                    viewMode === 'url' ? (
+                                        <TriageItemCloudflare
+                                          key={triageGroupKey(group)}
+                                          group={group}
+                                          onRetryCf={handleRetryCloudflare}
+                                          retryDisabled={isRetryingCf || status === 'RUNNING'}
+                                        />
+                                    ) : (
+                                        <TriageItemSource key={triageGroupKey(group)} group={group} onRecheck={handleRecheck} />
+                                    )
+                                ))}
+                             </div>
+                             )}
+                             {(currentCloudflareGroups || []).length > pageSize && (
+                                <PaginationControls
+                                    currentPage={cloudflarePage}
+                                    totalItems={stableCloudflareGroups.length}
+                                    pageSize={pageSize}
+                                    onPageChange={setCloudflarePage}
                                     position="bottom"
                                 />
                              )}
@@ -1068,7 +1198,7 @@ function FoundOnTable({
     return (
         <div className="min-w-0 max-w-full overflow-hidden">
             {groupError && (
-                <div className="px-4 py-2 text-[11px] font-mono text-red-600/90 dark:text-red-400/80 border-b border-red-500/10 bg-red-500/5 break-all leading-relaxed">
+                <div className="px-4 py-2 text-[11px] font-mono text-red-600/90 dark:text-red-400/80 border-b border-red-500/10 bg-red-500/5 break-words whitespace-pre-wrap leading-relaxed">
                     {groupError}
                 </div>
             )}
@@ -1176,6 +1306,7 @@ function TriageItemGeneral({ group, onRecheck }: any) {
     const link = group;
     const isBroken = link.status === 'BROKEN';
     const isSuccess = link.status === 'SUCCESS';
+    const isChallenged = link.status === 'CHALLENGED' || (!!link.cloudflareChallenge && link.status !== 'SUCCESS');
     const isPending = link.status === 'PENDING' || link.status === 'PROCESSING';
 
     return (
@@ -1185,6 +1316,7 @@ function TriageItemGeneral({ group, onRecheck }: any) {
             className={cn(
                 "border-l-4 transition-colors overflow-hidden",
                 isBroken ? "border-l-destructive hover:bg-destructive/5" :
+                isChallenged ? "border-l-orange-500 hover:bg-orange-500/5" :
                 isSuccess ? "border-l-green-500 hover:bg-green-500/5" :
                 "border-l-blue-500 hover:bg-blue-500/5"
             )}
@@ -1200,16 +1332,22 @@ function TriageItemGeneral({ group, onRecheck }: any) {
                     </span>
                 ) : undefined}
                 url={link.url}
-                urlClassName={isBroken ? "text-destructive" : isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-500"}
+                urlClassName={
+                  isBroken ? "text-destructive" :
+                  isChallenged ? "text-orange-600 dark:text-orange-400" :
+                  isSuccess ? "text-green-600 dark:text-green-400" :
+                  "text-blue-500"
+                }
                 actions={
                     <>
                         <span className={cn(
                             "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter",
                             isPending ? "bg-blue-500 text-white flex items-center gap-1" :
+                            isChallenged ? "bg-orange-500/10 text-orange-500" :
                             getStatusBadgeClass(link.statusCode, isBroken, isPending)
                         )}>
                             {isPending && <RefreshCw className="h-3 w-3 animate-spin" />}
-                            {isPending ? 'CHECKING' : link.statusCode ? `${link.statusCode}${isSuccess ? ' OK' : ''}` : (isBroken ? 'FAIL' : '—')}
+                            {isPending ? 'CHECKING' : isChallenged ? 'CF Protected' : link.statusCode ? `${link.statusCode}${isSuccess ? ' OK' : ''}` : (isBroken ? 'FAIL' : '—')}
                         </span>
                         {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
                     </>
@@ -1394,6 +1532,98 @@ function TriageItemSkipped({ group }: any) {
                             groupCount={group.count}
                             showAll={showAll}
                             onShowAll={() => setShowAll(true)}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
+function TriageItemCloudflare({ group, onRetryCf, retryDisabled }: any) {
+    const [expanded, setExpanded] = useState(false);
+    const [showAll, setShowAll] = useState(false);
+    useReportTriageExpand(triageGroupKey(group), expanded);
+    const link = group;
+    const solved = link.status === 'SUCCESS';
+    const canRetry = !solved && link.status === 'CHALLENGED';
+    const statusLabel = solved
+      ? (link.isRechecked ? 'Solved (retried)' : 'Solved')
+      : (link.bypassAttempted ? 'Failed bypass' : 'CF Protected');
+
+    return (
+        <div className={cn(
+            "hover:bg-muted/10 transition-colors border-l-4 overflow-hidden",
+            solved ? "border-l-green-500" : "border-l-orange-500"
+        )}>
+            <TriageRowHeader
+                onClick={() => setExpanded(!expanded)}
+                countBadge={group.count > 1 ? (
+                    <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        {group.count}
+                    </span>
+                ) : undefined}
+                url={link.url}
+                urlClassName={solved ? "text-green-600 dark:text-green-400" : "text-orange-600 dark:text-orange-400"}
+                actions={
+                    <>
+                        <span className={cn(
+                            "px-1.5 py-0.5 rounded-sm text-[10px] uppercase font-bold tracking-tighter",
+                            solved
+                              ? "bg-green-500/10 text-green-600"
+                              : "bg-orange-500/10 text-orange-500"
+                        )}>
+                            {statusLabel}
+                        </span>
+                        {canRetry && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-orange-500 hover:border-orange-500/50 transition-all"
+                            onClick={(e) => { e.stopPropagation(); onRetryCf?.(link.id); }}
+                            disabled={retryDisabled}
+                            title="Retry FlareSolverr for this URL"
+                            aria-label="Retry FlareSolverr for this URL"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {expanded ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                    </>
+                }
+            />
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-muted/20 border-t"
+                    >
+                        <div className={cn(
+                            "px-4 py-2 text-[11px] font-mono whitespace-pre-wrap break-words",
+                            solved ? "text-green-600/80" : "text-orange-500/90"
+                        )}>
+                            {solved
+                              ? 'Solved after Cloudflare bypass — stays on this tab (also listed under Re-checked if you used Retry FlareSolverr).'
+                              : (
+                                <>
+                                  {link.bypassAttempted && (
+                                    <div className="mb-1 text-orange-500/70">
+                                      FlareSolverr ran but could not unlock this URL. Use Retry FlareSolverr to try again.
+                                    </div>
+                                  )}
+                                  <span>{link.error || 'Failed Cloudflare Challenge'}</span>
+                                </>
+                              )}
+                        </div>
+                        <FoundOnTable
+                            instances={group.instances}
+                            groupUrl={link.url}
+                            groupCount={group.count}
+                            showAll={showAll}
+                            onShowAll={() => setShowAll(true)}
+                            groupError={null}
                         />
                     </motion.div>
                 )}
