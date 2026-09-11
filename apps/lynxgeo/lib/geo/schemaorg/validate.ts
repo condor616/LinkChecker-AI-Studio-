@@ -4,6 +4,7 @@ import {
   isKnownType,
   loadVocabIndex,
   propertyAllowedOnType,
+  propertyRanges,
   type VocabIndex,
 } from './vocab';
 
@@ -145,7 +146,7 @@ function validateNode(node: JsonLdNode, index: VocabIndex, issues: SchemaIssue[]
       }
     }
 
-    const ranges = index.properties[prop]?.ranges || [];
+    const ranges = propertyRanges(prop, index);
     if (!valueMatchesRange(value, ranges)) {
       issues.push({
         code: 'range_mismatch',

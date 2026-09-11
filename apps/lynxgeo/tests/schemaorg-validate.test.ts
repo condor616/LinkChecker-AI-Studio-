@@ -163,3 +163,68 @@ test('Google rich gaps for incomplete JobPosting', () => {
   assert.ok(gaps.some((g) => g.type === 'JobPosting' && g.missing.includes('description')));
   assert.ok(gaps.some((g) => g.type === 'JobPosting' && g.missing.includes('datePosted')));
 });
+
+test('SearchAction query-input string form passes', () => {
+  const block = parseJsonLdDocument(
+    JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'Example',
+      url: 'https://example.com/',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: 'https://example.com/search?q={search_term_string}',
+        'query-input': 'required name=search_term_string',
+      },
+    }),
+  );
+  const issues = validateParsedBlocks([block]);
+  assert.equal(
+    issues.filter((i) => i.message.includes('query-input')).length,
+    0,
+  );
+  assert.equal(worstSeverity(issues), 'pass');
+});
+
+test('SearchAction query-input PropertyValueSpecification form passes', () => {
+  const block = parseJsonLdDocument(
+    JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: 'https://example.com/search?q={search_term_string}',
+        },
+        'query-input': {
+          '@type': 'PropertyValueSpecification',
+          valueRequired: true,
+          valueName: 'search_term_string',
+        },
+      },
+    }),
+  );
+  const issues = validateParsedBlocks([block]);
+  assert.equal(
+    issues.filter((i) => i.message.includes('query-input')).length,
+    0,
+  );
+  assert.equal(worstSeverity(issues), 'pass');
+});
+
+test('bogus action annotation still fails as unknown property', () => {
+  const block = parseJsonLdDocument(
+    JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'SearchAction',
+      'notARealProp-input': 'required name=x',
+    }),
+  );
+  const issues = validateParsedBlocks([block]);
+  assert.ok(
+    issues.some(
+      (i) => i.code === 'unknown_property' && i.message.includes('notARealProp-input'),
+    ),
+  );
+});

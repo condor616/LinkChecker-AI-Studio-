@@ -43,8 +43,22 @@ export function isKnownType(name: string, index: VocabIndex = loadVocabIndex()):
   return Boolean(index.types[name]);
 }
 
+/** Schema.org Actions use `{property}-input` / `{property}-output` annotations. */
+const ACTION_ANNOTATION_RE = /^(.+)-(input|output)$/;
+
+export function actionAnnotationBase(
+  name: string,
+  index: VocabIndex = loadVocabIndex(),
+): string | null {
+  const match = name.match(ACTION_ANNOTATION_RE);
+  if (!match) return null;
+  const base = match[1];
+  return index.properties[base] ? base : null;
+}
+
 export function isKnownProperty(name: string, index: VocabIndex = loadVocabIndex()): boolean {
-  return Boolean(index.properties[name]);
+  if (index.properties[name]) return true;
+  return actionAnnotationBase(name, index) != null;
 }
 
 export function propertyAllowedOnType(
@@ -52,9 +66,21 @@ export function propertyAllowedOnType(
   typeName: string,
   index: VocabIndex = loadVocabIndex(),
 ): boolean {
-  const prop = index.properties[property];
+  const lookup = actionAnnotationBase(property, index) ?? property;
+  const prop = index.properties[lookup];
   if (!prop) return false;
   if (prop.domains.length === 0) return true;
   const ancestors = typeAncestors(typeName, index);
   return prop.domains.some((domain) => ancestors.has(domain));
+}
+
+/** Expected ranges for a property, including Action -input/-output annotations. */
+export function propertyRanges(
+  property: string,
+  index: VocabIndex = loadVocabIndex(),
+): string[] {
+  if (actionAnnotationBase(property, index)) {
+    return ['PropertyValueSpecification', 'Text'];
+  }
+  return index.properties[property]?.ranges || [];
 }
