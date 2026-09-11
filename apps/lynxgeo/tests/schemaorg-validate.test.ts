@@ -164,6 +164,40 @@ test('Google rich gaps for incomplete JobPosting', () => {
   assert.ok(gaps.some((g) => g.type === 'JobPosting' && g.missing.includes('datePosted')));
 });
 
+test('capitalized URL property is treated as schema.org url', () => {
+  const block = parseJsonLdDocument(
+    JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Home',
+      URL: 'https://example.com/',
+    }),
+  );
+  const issues = validateParsedBlocks([block]);
+  assert.equal(
+    issues.filter((i) => i.message.includes('"URL"')).length,
+    0,
+  );
+  assert.equal(worstSeverity(issues), 'pass');
+});
+
+test('BMS-style WebSite SearchAction with URL and query-input passes', () => {
+  const block = parseJsonLdDocument(
+    JSON.stringify({
+      '@context': 'http://schema.org',
+      '@type': 'WebSite',
+      URL: 'https://www.bms.com/',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: '/search-results.html?q={q}',
+        'query-input': 'required name=q',
+      },
+    }),
+  );
+  const issues = validateParsedBlocks([block]);
+  assert.equal(worstSeverity(issues), 'pass');
+});
+
 test('SearchAction query-input string form passes', () => {
   const block = parseJsonLdDocument(
     JSON.stringify({

@@ -9,6 +9,7 @@ export type VocabIndex = {
 
 let cached: VocabIndex | null = null;
 const ancestorCache = new Map<string, Set<string>>();
+let propertyByLower: Map<string, string> | null = null;
 
 export function loadVocabIndex(): VocabIndex {
   if (cached) return cached;
@@ -16,10 +17,20 @@ export function loadVocabIndex(): VocabIndex {
   return cached;
 }
 
+function propertyLowerMap(index: VocabIndex): Map<string, string> {
+  if (propertyByLower) return propertyByLower;
+  propertyByLower = new Map();
+  for (const key of Object.keys(index.properties)) {
+    propertyByLower.set(key.toLowerCase(), key);
+  }
+  return propertyByLower;
+}
+
 /** Test helper: replace the cached index. */
 export function setVocabIndexForTests(index: VocabIndex | null): void {
   cached = index;
   ancestorCache.clear();
+  propertyByLower = null;
 }
 
 export function typeAncestors(typeName: string, index: VocabIndex = loadVocabIndex()): Set<string> {
@@ -56,9 +67,18 @@ export function actionAnnotationBase(
   return index.properties[base] ? base : null;
 }
 
+/** Canonical schema.org property name, including common CMS casing like URL → url. */
+export function canonicalPropertyName(
+  name: string,
+  index: VocabIndex = loadVocabIndex(),
+): string | null {
+  if (index.properties[name]) return name;
+  if (actionAnnotationBase(name, index)) return name;
+  return propertyLowerMap(index).get(name.toLowerCase()) ?? null;
+}
+
 export function isKnownProperty(name: string, index: VocabIndex = loadVocabIndex()): boolean {
-  if (index.properties[name]) return true;
-  return actionAnnotationBase(name, index) != null;
+  return canonicalPropertyName(name, index) != null;
 }
 
 export function propertyAllowedOnType(
@@ -66,7 +86,7 @@ export function propertyAllowedOnType(
   typeName: string,
   index: VocabIndex = loadVocabIndex(),
 ): boolean {
-  const lookup = actionAnnotationBase(property, index) ?? property;
+  const lookup = actionAnnotationBase(property, index) ?? canonicalPropertyName(property, index) ?? property;
   const prop = index.properties[lookup];
   if (!prop) return false;
   if (prop.domains.length === 0) return true;
@@ -82,5 +102,6 @@ export function propertyRanges(
   if (actionAnnotationBase(property, index)) {
     return ['PropertyValueSpecification', 'Text'];
   }
-  return index.properties[property]?.ranges || [];
+  const canonical = canonicalPropertyName(property, index);
+  return (canonical && index.properties[canonical]?.ranges) || [];
 }

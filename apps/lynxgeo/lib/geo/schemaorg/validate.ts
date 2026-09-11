@@ -1,6 +1,6 @@
 import type { JsonLdNode, ParsedJsonLdBlock } from './parse-jsonld';
 import {
-  isKnownProperty,
+  canonicalPropertyName,
   isKnownType,
   loadVocabIndex,
   propertyAllowedOnType,
@@ -124,7 +124,7 @@ function validateNode(node: JsonLdNode, index: VocabIndex, issues: SchemaIssue[]
   const knownTypes = node.types.filter((t) => isKnownType(t, index));
 
   for (const [prop, value] of Object.entries(node.properties)) {
-    if (!isKnownProperty(prop, index)) {
+    if (!canonicalPropertyName(prop, index)) {
       issues.push({
         code: 'unknown_property',
         severity: 'fail',
