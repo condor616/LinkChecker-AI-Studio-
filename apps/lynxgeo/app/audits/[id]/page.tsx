@@ -3,18 +3,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { collectAuditFindings, groupCriteria } from '@/lib/geo/score';
+import { needsNewsListingPrompt, parseCategoryScoresBlob } from '@/lib/geo/news-listing-prompt';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import {
   isRerun,
   resolveBaselineAuditId,
-  resolveSeriesId,
   runLabelForIndex,
 } from '@/lib/geo/series';
 import { AuditChecks } from './audit-checks';
 import { AuditLiveProgress } from './audit-progress';
+import { NewsListingDatePrompt } from './news-listing-date-prompt';
 
 function runLabel(run: { id: string; baselineAuditId?: string | null }, index: number): string {
   return runLabelForIndex(run, index);
@@ -24,7 +31,6 @@ export default function AuditReportPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [data, setData] = useState<any>(null);
-  const [compareId, setCompareId] = useState('');
   const [controlBusy, setControlBusy] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
   const [controlError, setControlError] = useState('');
@@ -56,14 +62,6 @@ export default function AuditReportPage() {
     if (!data?.audit) return false;
     return isRerun(data.audit);
   }, [data?.audit]);
-
-  const comparableHistory = useMemo(() => {
-    if (!data?.audit) return [];
-    const seriesId = resolveSeriesId(data.audit);
-    return seriesRuns.filter(
-      (a: any) => a.id !== id && a.status === 'COMPLETED' && resolveSeriesId(a) === seriesId,
-    );
-  }, [data?.audit, seriesRuns, id]);
 
   const seriesIndex = useMemo(() => {
     const idx = seriesRuns.findIndex((a: any) => a.id === id);
@@ -110,12 +108,12 @@ export default function AuditReportPage() {
   };
 
   const categories = useMemo(() => {
-    try {
-      return JSON.parse(data?.audit?.categoryScores || '{}');
-    } catch {
-      return {};
-    }
+    return parseCategoryScoresBlob(data?.audit?.categoryScores);
   }, [data?.audit?.categoryScores]);
+
+  const showNewsListingPrompt = useMemo(() => {
+    return Boolean(data?.audit?.status === 'COMPLETED' && needsNewsListingPrompt(categories));
+  }, [data?.audit?.status, categories]);
 
   const criteria = useMemo(() => {
     const findings = collectAuditFindings({
@@ -189,40 +187,82 @@ export default function AuditReportPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {seriesRuns.length > 1 && (
-              <p className="text-xs text-muted-foreground">
-                All runs on the same pinned pages, ordered oldest to newest. Re-runs are created from
-                the discovery scan or any prior run in this series.
+            {seriesRuns.length > 1 ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  All runs on the same pinned pages, ordered oldest to newest. Open the menu to view another run or
+                  compare it with this report.
+                </p>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-auto min-h-9 max-w-full justify-between gap-2 px-3 py-2 text-left font-normal"
+                    >
+                      <span className="min-w-0 truncate">
+                        {seriesIndex != null
+                          ? `${runLabel(audit, seriesIndex - 1)}: ${audit.score ?? '—'} · ${formatAppDateTime(audit.createdAt)}`
+                          : 'Select a run'}
+                        <span className="text-muted-foreground">
+                          {' '}
+                          ({seriesIndex != null ? seriesIndex : '—'} of {seriesRuns.length})
+                        </span>
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-[min(100vw-2rem,40rem)] p-1">
+                    {seriesRuns.map((run: any, index: number) => {
+                      const isCurrent = run.id === id;
+                      const canCompare = !isCurrent && run.status === 'COMPLETED' && completed;
+                      const label = `${runLabel(run, index)}: ${run.score ?? '—'} · ${formatAppDateTime(run.createdAt)}`;
+                      return (
+                        <div
+                          key={run.id}
+                          className={`flex items-center gap-2 rounded-sm px-2 py-1.5 ${
+                            isCurrent ? 'bg-primary/10' : ''
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-sm truncate ${isCurrent ? 'text-primary font-medium' : ''}`}>
+                              {label}
+                            </p>
+                            {isCurrent && (
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Current</p>
+                            )}
+                          </div>
+                          {isCurrent ? (
+                            <Button type="button" size="sm" variant="secondary" disabled className="shrink-0">
+                              View
+                            </Button>
+                          ) : (
+                            <Button type="button" size="sm" variant="outline" className="shrink-0" asChild>
+                              <Link href={`/audits/${run.id}`}>View</Link>
+                            </Button>
+                          )}
+                          {canCompare ? (
+                            <Button type="button" size="sm" variant="outline" className="shrink-0" asChild>
+                              <Link href={`/audits/${id}/compare?from=${run.id}`}>Compare</Link>
+                            </Button>
+                          ) : (
+                            <Button type="button" size="sm" variant="outline" disabled className="shrink-0">
+                              Compare
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {runLabel(seriesRuns[0], 0)}: {seriesRuns[0].score ?? '—'} ·{' '}
+                {formatAppDateTime(seriesRuns[0].createdAt)}
               </p>
             )}
-            <div className="flex flex-wrap gap-2">
-              {seriesRuns.map((run: any, index: number) => {
-                const isCurrent = run.id === id;
-                const canCompare = !isCurrent && run.status === 'COMPLETED' && completed;
-                return (
-                  <span key={run.id} className="inline-flex items-center gap-1">
-                    <Link
-                      href={`/audits/${run.id}`}
-                      className={`text-xs rounded-md border px-2 py-1 ${
-                        isCurrent
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border hover:border-primary/40'
-                      }`}
-                    >
-                      {runLabel(run, index)}: {run.score ?? '—'} · {new Date(run.createdAt).toLocaleString()}
-                    </Link>
-                    {canCompare && (
-                      <Link
-                        href={`/audits/${id}/compare?from=${run.id}`}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Compare
-                      </Link>
-                    )}
-                  </span>
-                );
-              })}
-            </div>
           </CardContent>
         </Card>
       )}
@@ -306,48 +346,16 @@ export default function AuditReportPage() {
         })}
       </div>
 
-      <AuditChecks criteria={criteria} startUrl={audit.startUrl} />
-
-      {completed && comparableHistory.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Compare with a previous run</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2 items-center">
-              <select
-                className="flex-1 min-w-[200px] h-9 rounded-md border border-input bg-background px-3 text-sm"
-                value={compareId}
-                onChange={(e) => setCompareId(e.target.value)}
-              >
-                <option value="">Select earlier run…</option>
-                {comparableHistory.map((a: any) => {
-                  const idx = seriesRuns.findIndex((r: any) => r.id === a.id);
-                  return (
-                    <option key={a.id} value={a.id}>
-                      {runLabel(a, idx)} — {new Date(a.createdAt).toLocaleString()} — {a.score ?? '—'}
-                    </option>
-                  );
-                })}
-              </select>
-              <Button
-                type="button"
-                size="sm"
-                disabled={!compareId}
-                onClick={() => router.push(`/audits/${id}/compare?from=${compareId}`)}
-              >
-                Compare
-              </Button>
-              <Link
-                href={`/audits/${id}/compare`}
-                className="text-xs text-primary hover:underline"
-              >
-                Open compare page
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+      {showNewsListingPrompt && (
+        <NewsListingDatePrompt
+          auditId={id}
+          startUrl={audit.startUrl}
+          onDismissed={() => load()}
+          onChecked={() => load()}
+        />
       )}
+
+      <AuditChecks auditId={id} criteria={criteria} startUrl={audit.startUrl} />
 
       <Link href="/audits/history" className="text-sm text-primary">
         Back to history
