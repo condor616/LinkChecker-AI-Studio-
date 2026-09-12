@@ -74,6 +74,12 @@ export function isGeoOutOfScopeUrl(url: string, config: CrawlConfig): boolean {
   return !isWithinStartPathScope(config.startUrl, url);
 }
 
+/** True when url is an explicit single-article date-check target (may be off-origin). */
+export function isDateCheckPinnedTarget(url: string, targetUrls: string[]): boolean {
+  const key = geoPageUrlKey(url);
+  return targetUrls.some((t) => geoPageUrlKey(t) === key);
+}
+
 export function filterGeoEnqueueableLinks(
   discovered: DiscoveredLink[],
   config: CrawlConfig,

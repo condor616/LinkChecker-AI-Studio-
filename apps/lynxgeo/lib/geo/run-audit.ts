@@ -22,11 +22,14 @@ import {
   forceGeoSkipExternal,
   geoPageUrlKey,
   geoStartPathPrefix,
+  isDateCheckPinnedTarget,
   isGeoHtmlPage,
   isGeoNonHtmlTarget,
   isGeoExternalUrl,
   isGeoOutOfScopeUrl,
 } from './origin-scope';
+import { DEFAULT_MAX_DATE_CHECK_URLS, articleSectionPrefix, extractNewsListingLinks } from './news-listing';
+import { withNewsListingPending } from './news-listing-prompt';
 import { runSiteProbes } from './probes';
 import {
   AUDIT_PROGRESS_ALTER_SQL,
@@ -168,6 +171,26 @@ export async function runAudit(
       forceGeoSkipExternal(parseScanConfig(audit.config) as CrawlConfig),
     );
     const isTargeted = isTargetedScanConfig(config);
+    const dateCheckFromListing = Boolean((config as Record<string, unknown>).dateCheckFromListing);
+    const dateCheckSingleArticle = Boolean((config as Record<string, unknown>).dateCheckSingleArticle);
+    const dateCheckListingUrl = String((config as Record<string, unknown>).dateCheckListingUrl || '');
+    const dateCheckArticleUrl = String(
+      (config as Record<string, unknown>).dateCheckArticleUrl ||
+        (dateCheckSingleArticle ? (config.targetUrls || [])[0] || '' : ''),
+    );
+    const maxDateCheckUrls = Math.min(
+      DEFAULT_MAX_DATE_CHECK_URLS,
+      Math.max(
+        1,
+        Number((config as Record<string, unknown>).maxDateCheckUrls) || DEFAULT_MAX_DATE_CHECK_URLS,
+      ),
+    );
+    let listingExpanded = false;
+    const pinnedDateCheckTargets = dateCheckSingleArticle
+      ? (config.targetUrls || []).map((url) => geoPageUrlKey(url))
+      : dateCheckArticleUrl
+        ? [geoPageUrlKey(dateCheckArticleUrl)]
+        : [];
     const origin = new URL(config.startUrl).origin;
     const pathPrefix = geoStartPathPrefix(config.startUrl);
     const startPageUrl = geoPageUrlKey(config.startUrl);
@@ -178,11 +201,18 @@ export async function runAudit(
     const rateLimit = typeof config.rateLimit === 'number' && config.rateLimit > 0 ? config.rateLimit : 0;
     const ua = (config.customUserAgent || config.userAgent || 'default').slice(0, 80);
     log(
-      `audit ${auditId} startUrl=${config.startUrl} origin=${origin} pathPrefix=${pathPrefix} maxDepth=${depthNote} maxPages=${capNote} skipExternal=true stayInStartPath=true rateLimit=${rateLimit || 'off'} ua=${ua} targeted=${isTargeted} bypassCloudflare=${Boolean(config.bypassCloudflare)} flaresolverr=${isFlareSolverrConfigured()}`,
+      `audit ${auditId} startUrl=${config.startUrl} origin=${origin} pathPrefix=${pathPrefix} maxDepth=${depthNote} maxPages=${capNote} skipExternal=true stayInStartPath=true rateLimit=${rateLimit || 'off'} ua=${ua} targeted=${isTargeted} dateCheckFromListing=${dateCheckFromListing} dateCheckSingleArticle=${dateCheckSingleArticle} bypassCloudflare=${Boolean(config.bypassCloudflare)} flaresolverr=${isFlareSolverrConfigured()}`,
     );
 
     if (!saved?.queue?.length) {
-      if (isTargeted) {
+      if (dateCheckSingleArticle && dateCheckArticleUrl) {
+        queue = [{ url: geoPageUrlKey(dateCheckArticleUrl), depth: 0, parentUrl: null }];
+        pageCap = 1;
+      } else if (dateCheckFromListing && dateCheckListingUrl) {
+        queue = [{ url: geoPageUrlKey(dateCheckListingUrl), depth: 0, parentUrl: null }];
+        pageCap = 1;
+        listingExpanded = false;
+      } else if (isTargeted) {
         const targetUrls = (config.targetUrls || []).map((url) => geoPageUrlKey(url));
         queue = targetUrls.map((url) => ({ url, depth: 0, parentUrl: null }));
         pageCap = targetUrls.length;
@@ -212,6 +242,7 @@ export async function runAudit(
           // ignore malformed stored findings
         }
       }
+      listingExpanded = dateCheckFromListing && findings.some((f) => f.id === 'date-check-listing');
     } else {
       log(`site probes starting for ${origin} (first fetch ${new URL('/robots.txt', origin).toString()})`);
       probeFindings = [
@@ -239,6 +270,12 @@ export async function runAudit(
       pageRows.push({ url: page.url, status: page.status, statusCode: page.statusCode });
     }
 
+    let htmlPagesAnalyzed = 0;
+    let articleLikePages = 0;
+    for (const f of findings) {
+      if (typeof f?.id === 'string' && f.id.startsWith('date-')) articleLikePages += 1;
+    }
+
     pagesFetched = seen.size || pageRows.length;
     await persistProgress('crawl', queue[0]?.url ?? startPageUrl);
 
@@ -247,7 +284,9 @@ export async function runAudit(
       const item = queue.shift()!;
       const pageUrl = geoPageUrlKey(item.url);
       if (seen.has(pageUrl)) continue;
-      if (isGeoOutOfScopeUrl(pageUrl, config)) {
+      const pinnedDateTarget =
+        dateCheckSingleArticle && isDateCheckPinnedTarget(pageUrl, pinnedDateCheckTargets);
+      if (!pinnedDateTarget && isGeoOutOfScopeUrl(pageUrl, config)) {
         log(isGeoExternalUrl(pageUrl, config) ? `ignored off-origin ${pageUrl}` : `ignored off-path ${pageUrl}`);
         continue;
       }
@@ -262,7 +301,7 @@ export async function runAudit(
         await persistProgress('crawl', item.url);
       }
 
-      const skip = getSkipReason(item.url, config);
+      const skip = pinnedDateTarget ? null : getSkipReason(item.url, config);
       if (skip) {
         log(`page ${pageLogLabel(seen.size, pageCap)} SKIPPED ${item.url} (${skip})`);
         if (isGeoExternalUrl(item.url, config)) {
@@ -308,12 +347,97 @@ export async function runAudit(
         await persistFrontier('crawl');
         continue;
       }
-      const pageFindings = analyzePage(resource, html);
+
+      const isListingSeed =
+        dateCheckFromListing &&
+        !listingExpanded &&
+        geoPageUrlKey(item.url) === geoPageUrlKey(dateCheckListingUrl || item.url);
+
+      if (isListingSeed) {
+        const links = extractNewsListingLinks(html || '', item.url, {
+          maxUrls: maxDateCheckUrls,
+          articleUrl: dateCheckArticleUrl || undefined,
+        });
+        const sectionPrefix = dateCheckArticleUrl ? articleSectionPrefix(dateCheckArticleUrl) : null;
+        const listingFindings = analyzePage(resource, html);
+        findings.push(...listingFindings);
+        htmlPagesAnalyzed += 1;
+        if (listingFindings.some((f) => f.id.startsWith('date-'))) articleLikePages += 1;
+
+        const status = resource.blockedBySsrf ? 'SKIPPED' : resource.ok ? 'SUCCESS' : 'BROKEN';
+        log(
+          `page ${pageLogLabel(seen.size, pageCap)} ${status} HTTP ${resource.statusCode ?? 'n/a'} listing ${item.url} links=${links.length} article=${dateCheckArticleUrl || 'n/a'} prefix=${sectionPrefix || 'n/a'}`,
+        );
+        await geoDb.insert(auditPages).values({
+          id: randomUUID(),
+          auditId,
+          url: item.url,
+          parentUrl: item.parentUrl,
+          status,
+          statusCode: resource.statusCode,
+          depth: item.depth,
+          contentType: resource.contentType,
+          headers: JSON.stringify(resource.headers),
+          findings: JSON.stringify(listingFindings),
+          checkedAt: new Date(),
+        });
+        pageRows.push({ url: item.url, status, statusCode: resource.statusCode });
+
+        const onlySample =
+          links.length === 1 &&
+          dateCheckArticleUrl &&
+          geoPageUrlKey(links[0]) === geoPageUrlKey(dateCheckArticleUrl);
+        findings.push({
+          id: 'date-check-listing',
+          category: 'citeability',
+          title: links.length
+            ? 'Date check from news listing'
+            : 'News listing had no matching article links',
+          detail: links.length
+            ? `Listing ${item.url} + sample ${dateCheckArticleUrl || '(none)'}: queued ${links.length} page(s) under section ${sectionPrefix || '(n/a)'} for date markup checks (cap ${maxDateCheckUrls}; nav/header/footer excluded).`
+            : `Listing ${item.url} + sample ${dateCheckArticleUrl || '(none)'}: no same-origin links matched section ${sectionPrefix || '(n/a)'} after excluding site chrome.`,
+          severity: links.length ? 'pass' : 'warn',
+          standard: 'established',
+          suggestion: links.length
+            ? onlySample
+              ? `Only the sample article matched. Confirm other news items on ${item.url} share the path section ${sectionPrefix}.`
+              : ''
+            : `Confirm the sample article URL is a news item linked from ${item.url} (or in the same path section), then try again.`,
+          url: item.url,
+        });
+
+        queue = links.map((url) => ({ url, depth: 0, parentUrl: item.url }));
+        pageCap = seen.size + queue.length;
+        listingExpanded = true;
+        await persistFrontier('crawl');
+        continue;
+      }
+
+      const forceArticleLike =
+        (dateCheckFromListing && listingExpanded) || dateCheckSingleArticle;
+      const pageFindings = analyzePage(resource, html, { forceArticleLike });
       findings.push(...pageFindings);
+      htmlPagesAnalyzed += 1;
+      if (pageFindings.some((f) => f.id.startsWith('date-'))) articleLikePages += 1;
       const status = resource.blockedBySsrf ? 'SKIPPED' : resource.ok ? 'SUCCESS' : 'BROKEN';
       log(
-        `page ${pageLogLabel(seen.size, pageCap)} ${status} HTTP ${resource.statusCode ?? 'n/a'} ${item.url} findings=${pageFindings.length}`,
+        `page ${pageLogLabel(seen.size, pageCap)} ${status} HTTP ${resource.statusCode ?? 'n/a'} ${item.url} findings=${pageFindings.length}${forceArticleLike ? ' forceDate=1' : ''}`,
       );
+
+      if (dateCheckSingleArticle && pinnedDateTarget) {
+        findings.push({
+          id: 'date-check-listing',
+          category: 'citeability',
+          title: 'Date check of user-supplied article',
+          detail: dateCheckListingUrl
+            ? `Checked date markup on user-supplied article ${item.url} (listing context: ${dateCheckListingUrl}).`
+            : `Checked date markup on user-supplied article ${item.url}.`,
+          severity: 'pass',
+          standard: 'established',
+          suggestion: '',
+          url: item.url,
+        });
+      }
 
       await geoDb.insert(auditPages).values({
         id: randomUUID(),
@@ -330,7 +454,13 @@ export async function runAudit(
       });
       pageRows.push({ url: item.url, status, statusCode: resource.statusCode });
 
-      if (!isTargeted && html && (maxDepth === 0 || item.depth < maxDepth)) {
+      if (
+        !isTargeted &&
+        !dateCheckFromListing &&
+        !dateCheckSingleArticle &&
+        html &&
+        (maxDepth === 0 || item.depth < maxDepth)
+      ) {
         const discovered = discoverLinks(html, item.url, config, item.depth);
         const inScope = filterGeoEnqueueableLinks(discovered, config, seen);
         const droppedOffOrigin = discovered.filter((link) => isGeoExternalUrl(geoPageUrlKey(link.url), config)).length;
@@ -356,6 +486,24 @@ export async function runAudit(
 
     await assertStillRunning();
 
+    if (
+      !dateCheckFromListing &&
+      !dateCheckSingleArticle &&
+      htmlPagesAnalyzed > 0 &&
+      articleLikePages === 0
+    ) {
+      findings.push({
+        id: 'date-unidentified',
+        category: 'citeability',
+        title: 'Could not detect news pages for date metatags',
+        detail: `We could not detect news/article pages on this crawl (no og:type=article and no Schema.org Article/NewsArticle/BlogPosting/TechArticle among ${htmlPagesAnalyzed} HTML page(s)), so we could not determine whether date metatags are present.`,
+        severity: 'warn',
+        standard: 'established',
+        suggestion:
+          'Provide a sample news article URL on the audit report (Check), or Cancel to skip. Living pages still use sitemap lastmod and HTTP Last-Modified for freshness.',
+      });
+    }
+
     pagesFetched = pageRows.length;
     await persistProgress('scoring', null);
     const { overall, categories } = aggregateScore(findings);
@@ -368,6 +516,15 @@ export async function runAudit(
       playbook: suggestions,
       pages: pageRows,
     });
+
+    const needsNewsListing =
+      !dateCheckFromListing &&
+      !dateCheckSingleArticle &&
+      htmlPagesAnalyzed > 0 &&
+      articleLikePages === 0;
+    const categoryBlob = needsNewsListing
+      ? withNewsListingPending({ ...categories, playbook: suggestions })
+      : { ...categories, playbook: suggestions };
 
     const doneProgress = buildAuditProgress({
       phase: 'done',
@@ -382,7 +539,7 @@ export async function runAudit(
         status: 'COMPLETED',
         score: overall,
         scoreModelVersion: SCORE_MODEL_VERSION,
-        categoryScores: JSON.stringify({ ...categories, playbook: suggestions }),
+        categoryScores: JSON.stringify(categoryBlob),
         progress: JSON.stringify(doneProgress),
         frontier: null,
         updatedAt: new Date(),
@@ -405,7 +562,7 @@ export async function runAudit(
       queuedRemaining: 0,
     });
     log(
-      `audit ${auditId} COMPLETED score=${overall} pages=${pageRows.length} findings=${findings.length} suggestions=${suggestions.length}`,
+      `audit ${auditId} COMPLETED score=${overall} pages=${pageRows.length} findings=${findings.length} suggestions=${suggestions.length} needsNewsListing=${needsNewsListing}`,
     );
     return 'completed';
   } catch (error: any) {

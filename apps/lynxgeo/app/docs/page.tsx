@@ -92,8 +92,13 @@ export default function DocsPage() {
         <CardContent className="space-y-4 text-sm leading-relaxed">
           <ul className="list-disc pl-5 space-y-2">
             <li>
-              Each <strong>unique check</strong> (robots.txt, date markup, JSON-LD, …) gets one vote in its category —
-              not one vote per crawled URL.
+              Each <strong>unique check</strong> (robots.txt, date markup on article-like pages, JSON-LD, …) gets one
+              vote in its category — not one vote per crawled URL. Date markup runs only when{' '}
+              <code>og:type=article</code> or Article-family Schema.org JSON-LD is present; living pages rely on
+              site-level sitemap <code>lastmod</code> and HTTP <code>Last-Modified</code> instead. If a discovery
+              crawl finds no article-like pages, the report warns that date metatags could not be checked and offers
+              an optional in-report check: paste one sample news article URL (any host of the brand) so that page’s
+              date markup can be evaluated and merged into the same scan result (or Cancel to keep the warn).
             </li>
             <li>
               <strong>Page-level</strong> checks use the pass / warn / fail <strong>rate</strong> across pages. Sparse

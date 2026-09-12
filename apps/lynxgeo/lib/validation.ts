@@ -56,6 +56,10 @@ export const AuditControlSchema = z.object({
   status: z.enum(['PAUSED', 'RUNNING', 'CANCELLED']),
 });
 
+export const DateCheckStartSchema = z.object({
+  articleUrl: z.string().url(),
+});
+
 export const AdminUserCreateSchema = z
   .object({
     email: z.string().email(),
