@@ -18,7 +18,7 @@ import { loadVocabIndex } from '@/lib/geo/schemaorg/vocab';
 
 export const metadata = {
   title: 'Docs · Lynx GEO',
-  description: 'How Lynx GEO scores AI discoverability (geo-1.2 category weights, page rates, schema.org validation).',
+  description: 'How Lynx GEO scores AI discoverability (geo-1.4 GEO weights + Cloudflare-aligned Agent Readiness).',
 };
 
 const CATEGORY_ORDER: FindingCategory[] = [
@@ -27,6 +27,7 @@ const CATEGORY_ORDER: FindingCategory[] = [
   'negotiation',
   'discovery',
   'citeability',
+  'capabilities',
 ];
 
 function standardBadge(standard: FindingStandard) {
@@ -84,16 +85,19 @@ export default function DocsPage() {
         <CardHeader>
           <CardTitle>How {SCORE_MODEL_VERSION} scores a site</CardTitle>
           <CardDescription>
-            Category weights are unchanged from geo-1.0. {SCORE_MODEL_VERSION} adds schema.org vocabulary validation
-            on JSON-LD (plus optional Google Rich Results field warnings) on top of the geo-1.1.0 crawl and discovery
-            criteria, while keeping page-rate aggregation from geo-1.0.1.
+            {SCORE_MODEL_VERSION} reports two numbers. The primary <strong>GEO</strong> score weights crawl access,
+            extractability, negotiation, discovery, and citeability (discovery raised vs geo-1.3 so Link headers /
+            DNS-AID / llms matter more). A secondary <strong>Agent Readiness</strong> score is Cloudflare-aligned:
+            equal-weight binary pass across robots, sitemap, Link headers, DNS-AID, markdown negotiation, AI bot
+            rules, Content Signals, Web Bot Auth, and API/Auth/MCP checks. Capabilities stay informational for GEO
+            until the origin advertises a protocol; they always count in Agent Readiness.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm leading-relaxed">
           <ul className="list-disc pl-5 space-y-2">
             <li>
               Each <strong>unique check</strong> (robots.txt, date markup on article-like pages, JSON-LD, …) gets one
-              vote in its category — not one vote per crawled URL. Date markup runs only when{' '}
+              vote in its GEO category — not one vote per crawled URL. Date markup runs only when{' '}
               <code>og:type=article</code> or Article-family Schema.org JSON-LD is present; living pages rely on
               site-level sitemap <code>lastmod</code> and HTTP <code>Last-Modified</code> instead. If a discovery
               crawl finds no article-like pages, the report warns that date metatags could not be checked and offers
@@ -109,14 +113,19 @@ export default function DocsPage() {
               observation each. AI search bots share one rate so five bot rows cannot outweigh robots.txt.
             </li>
             <li>
-              Points per observation: pass {SEVERITY_POINTS.pass}, warn {SEVERITY_POINTS.warn}, fail{' '}
+              Points per GEO observation: pass {SEVERITY_POINTS.pass}, warn {SEVERITY_POINTS.warn}, fail{' '}
               {SEVERITY_POINTS.fail}. Fail, warn, and pass stay distinct.
             </li>
             <li>
-              Inside a category, established checks count at {Math.round(STANDARD_WEIGHT.established * 100)}%,
+              Inside a GEO category, established checks count at {Math.round(STANDARD_WEIGHT.established * 100)}%,
               convention at {Math.round(STANDARD_WEIGHT.convention * 100)}%, emerging at{' '}
               {Math.round(STANDARD_WEIGHT.emerging * 100)}%. Training-bot rows are informational and do not change the
-              number.
+              GEO number.
+            </li>
+            <li>
+              <strong>Agent Readiness</strong> is independent: each listed protocol check is pass = credit or
+              warn/fail/missing = no credit, averaged equally. A citeable publisher can score high on GEO and low on
+              Agent Readiness — that matches Cloudflare’s Agent Readiness story without collapsing the GEO score.
             </li>
             <li>
               JSON-LD <code>jsonld</code> is presence-only. Vocabulary correctness is a separate sparse{' '}
@@ -124,7 +133,7 @@ export default function DocsPage() {
             </li>
           </ul>
           <p className="text-muted-foreground">
-            Comparing two audits is only valid when <code>scoreModelVersion</code> matches. geo-1.0 / geo-1.1.0 vs{' '}
+            Comparing two audits is only valid when <code>scoreModelVersion</code> matches. geo-1.3.0 vs{' '}
             {SCORE_MODEL_VERSION} is a rubric change (<code>rubricChanged</code> on compare).
           </p>
         </CardContent>
@@ -207,23 +216,29 @@ export default function DocsPage() {
       <div className="space-y-3">
         <h2 className="text-2xl font-bold">Category weights</h2>
         <p className="text-sm text-muted-foreground">
-          Same geo-1.0 mix. Empty categories (no findings) score 80 so a missing bucket does not pretend to be
-          perfect.
+          geo-1.4.0 GEO mix for the five scored categories (sums to 100%). Empty scored categories (no findings) score
+          80. <strong>API / Auth / MCP</strong> is informational by default (0% of GEO overall) until any check in that
+          category passes, then it blends at 5%. Agent Readiness is a separate equal-weight protocol score.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {CATEGORY_ORDER.map((key) => {
             const meta = CATEGORY_META[key];
+            const pct =
+              key === 'capabilities'
+                ? '0%†'
+                : `${Math.round(CATEGORY_WEIGHTS[key] * 100)}%`;
             return (
               <Card key={key}>
                 <CardHeader className="p-4 space-y-2">
                   <CardTitle className="text-sm">{meta.label}</CardTitle>
-                  <div className="text-2xl font-black text-primary">{Math.round(CATEGORY_WEIGHTS[key] * 100)}%</div>
+                  <div className="text-2xl font-black text-primary">{pct}</div>
                   <CardDescription className="text-xs">{meta.summary}</CardDescription>
                 </CardHeader>
               </Card>
             );
           })}
         </div>
+        <p className="text-xs text-muted-foreground">† Promoted to 5% of GEO overall when any API/Auth/MCP check passes.</p>
       </div>
 
       {CATEGORY_ORDER.map((category) => {

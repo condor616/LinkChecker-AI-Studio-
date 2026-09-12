@@ -289,6 +289,14 @@ export function CheckDetailBody({
           <p className="mt-0.5">{criterion.suggestion}</p>
         </div>
       )}
+      {criterion.agentPrompt && criterion.severity !== 'pass' && (
+        <div>
+          <p className="font-medium">Agent prompt</p>
+          <pre className="mt-1 whitespace-pre-wrap rounded-md border border-border bg-muted/40 p-3 text-xs">
+            {criterion.agentPrompt}
+          </pre>
+        </div>
+      )}
       {docRef && (
         <div>
           <p className="font-medium">Standard</p>

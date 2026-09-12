@@ -11,7 +11,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { collectAuditFindings, groupCriteria } from '@/lib/geo/score';
+import { collectAuditFindings, groupCriteria, CATEGORY_META, type FindingCategory } from '@/lib/geo/score';
 import { needsNewsListingPrompt, parseCategoryScoresBlob } from '@/lib/geo/news-listing-prompt';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import {
@@ -174,8 +174,16 @@ export default function AuditReportPage() {
               ? 'cancelled — no snapshot'
               : paused
                 ? 'paused — resume to continue'
-                : audit.scoreModelVersion || 'scoring…'}
+                : `GEO · ${audit.scoreModelVersion || 'scoring…'}`}
           </div>
+          {typeof categories.agentReadiness === 'number' && !cancelled && (
+            <div className="mt-2 inline-flex flex-col items-start sm:items-end gap-0.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5">
+              <span className="text-lg font-bold tabular-nums leading-none">{categories.agentReadiness}</span>
+              <span className="text-[10px] text-muted-foreground leading-snug max-w-[11rem] sm:text-right">
+                Agent protocols (Cloudflare-aligned)
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -316,19 +324,33 @@ export default function AuditReportPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {['crawlAccess', 'extractability', 'negotiation', 'discovery', 'citeability'].map((key) => {
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {(
+          [
+            'crawlAccess',
+            'extractability',
+            'negotiation',
+            'discovery',
+            'citeability',
+            'capabilities',
+          ] as FindingCategory[]
+        ).map((key) => {
           const score = categories[key];
-          const tone =
-            typeof score !== 'number'
+          const meta = CATEGORY_META[key];
+          const informational =
+            key === 'capabilities' && (score === null || score === undefined || typeof score !== 'number');
+          const tone = informational
+            ? 'border-border bg-muted/30'
+            : typeof score !== 'number'
               ? 'border-border'
               : score >= 80
                 ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
                 : score >= 60
                   ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/35'
                   : 'border-red-400 bg-red-50 dark:bg-red-950/40';
-          const scoreClass =
-            typeof score !== 'number'
+          const scoreClass = informational
+            ? 'text-muted-foreground text-base'
+            : typeof score !== 'number'
               ? 'text-foreground'
               : score >= 80
                 ? 'text-emerald-700 dark:text-emerald-400'
@@ -338,8 +360,13 @@ export default function AuditReportPage() {
           return (
             <Card key={key} className={tone}>
               <CardHeader className="p-4">
-                <CardTitle className="text-xs uppercase text-muted-foreground">{key}</CardTitle>
-                <div className={`text-2xl font-bold ${scoreClass}`}>{score ?? '—'}</div>
+                <CardTitle className="text-xs uppercase text-muted-foreground">{meta?.label ?? key}</CardTitle>
+                <div className={`text-2xl font-bold ${scoreClass}`}>
+                  {informational ? 'Info' : (score ?? '—')}
+                </div>
+                {informational && (
+                  <p className="text-[10px] text-muted-foreground leading-snug">Not in overall until advertised</p>
+                )}
               </CardHeader>
             </Card>
           );
