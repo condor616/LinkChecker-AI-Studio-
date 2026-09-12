@@ -111,12 +111,26 @@ To stop only the Node processes while leaving Docker running, press **Ctrl+C** i
 
 ### Rebuild workers
 
-Use this after changing worker code or Dockerfiles.
+Worker containers **bake source into the image** at build time (no live bind-mount). After you change audit/crawl/worker code, rebuild the matching worker or new jobs still run the old logic.
+
+**Common mistake:** from the **repo root**, `npm run rebuild-worker:dev` rebuilds the **Lynx Scan** worker only. It does **not** update Lynx GEO. Use the GEO-specific script below.
 
 | Stack | Lynx Scan worker | Lynx GEO worker |
 | --- | --- | --- |
-| **Local dev** (`docker/services/…`) | `npm run rebuild-worker:dev` | `npm run rebuild-worker:lynxgeo:dev` |
-| **Root production compose** | `npm run rebuild-worker` | — |
+| **Local dev** (`docker/services/…`) — run from **repo root** | `npm run rebuild-worker:dev` | `npm run rebuild-worker:lynxgeo:dev` |
+| **Local DEV** — run from `apps/lynxgeo` | — | `npm run rebuild-worker:dev` |
+| **Root / app production compose** | `npm run rebuild-worker` | `npm run rebuild-worker:lynxgeo` |
+
+After a GEO rebuild, confirm the container is new (Created timestamp should be seconds ago, not hours/days ago):
+
+```bash
+docker ps --filter name=lynxgeo-dev-lynxgeo-worker --format '{{.Names}} {{.Status}} {{.ID}}'
+docker inspect lynxgeo-dev-lynxgeo-worker-1 --format 'Created={{.Created}}'
+# Optional: confirm new analyze logic is inside the image
+docker exec lynxgeo-dev-lynxgeo-worker-1 grep -n isArticleLike lib/geo/analyze.ts
+```
+
+Then start a **new** audit. Existing audit reports keep stored findings and will not change until you re-crawl.
 
 ### Port reference
 
