@@ -11,8 +11,7 @@ import {
 } from '@/lib/geo/progress';
 
 const PHASE_CHIPS: { id: AuditPhase; label: string }[] = [
-  { id: 'robots.txt', label: 'robots.txt' },
-  { id: 'sitemap', label: 'sitemap' },
+  { id: 'probes', label: 'probes' },
   { id: 'crawl', label: 'crawl' },
   { id: 'scoring', label: 'scoring' },
   { id: 'snapshot', label: 'snapshot' },

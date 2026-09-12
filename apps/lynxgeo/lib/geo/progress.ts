@@ -1,8 +1,17 @@
 /** Run on provision and at the start of each audit so existing GEO DBs pick up the column. */
 export const AUDIT_PROGRESS_ALTER_SQL = `ALTER TABLE "audits" ADD COLUMN IF NOT EXISTS "progress" text`;
 
-export const AUDIT_PHASES = ['robots.txt', 'sitemap', 'crawl', 'scoring', 'snapshot', 'done'] as const;
+export const AUDIT_PHASES = ['probes', 'crawl', 'scoring', 'snapshot', 'done'] as const;
 export type AuditPhase = (typeof AUDIT_PHASES)[number];
+
+/** Legacy progress phases from audits started before the probes chip. */
+const LEGACY_PROBE_PHASES = new Set(['robots.txt', 'sitemap']);
+
+export function normalizeAuditPhase(phase: string): AuditPhase | null {
+  if ((AUDIT_PHASES as readonly string[]).includes(phase)) return phase as AuditPhase;
+  if (LEGACY_PROBE_PHASES.has(phase)) return 'probes';
+  return null;
+}
 
 /** 0 / omitted = no page cap. */
 export function resolveAuditMaxPages(raw: unknown): number {
@@ -35,10 +44,8 @@ export function formatAuditProgressMessage(input: {
   const withUrl = url ? ` · ${url}` : '';
   const unlimited = isUnlimitedPages(input.maxPages);
   switch (input.phase) {
-    case 'robots.txt':
-      return `Checking robots.txt${withUrl}`;
-    case 'sitemap':
-      return `Checking sitemap${withUrl}`;
+    case 'probes':
+      return `Running site probes${withUrl}`;
     case 'crawl':
       return unlimited
         ? `Crawling ${input.pagesFetched} pages${withUrl}`
@@ -83,14 +90,16 @@ export function parseAuditProgress(raw: unknown): AuditProgress | null {
   try {
     const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (!obj || typeof obj !== 'object') return null;
-    const phase = (obj as { phase?: unknown }).phase;
-    if (typeof phase !== 'string' || !(AUDIT_PHASES as readonly string[]).includes(phase)) return null;
+    const phaseRaw = (obj as { phase?: unknown }).phase;
+    if (typeof phaseRaw !== 'string') return null;
+    const phase = normalizeAuditPhase(phaseRaw);
+    if (!phase) return null;
     const pagesFetched = Number((obj as { pagesFetched?: unknown }).pagesFetched);
     const queuedRaw = (obj as { queuedRemaining?: unknown }).queuedRemaining;
     const currentRaw = (obj as { currentUrl?: unknown }).currentUrl;
     const currentUrl = typeof currentRaw === 'string' && currentRaw ? currentRaw : null;
     return buildAuditProgress({
-      phase: phase as AuditPhase,
+      phase,
       pagesFetched: Number.isFinite(pagesFetched) ? pagesFetched : 0,
       maxPages: resolveAuditMaxPages((obj as { maxPages?: unknown }).maxPages),
       currentUrl,

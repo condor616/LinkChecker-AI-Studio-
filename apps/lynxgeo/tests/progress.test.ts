@@ -40,24 +40,24 @@ test('finite cap still shows fetched / max', () => {
   assert.equal(msg, 'Crawling 12 / 80 · https://example.com/care');
 });
 
-test('phase messages cover robots, sitemap, scoring, snapshot, done', () => {
+test('phase messages cover probes, scoring, snapshot, done', () => {
   assert.equal(
     formatAuditProgressMessage({
-      phase: 'robots.txt',
+      phase: 'probes',
       pagesFetched: 0,
       maxPages: 0,
       currentUrl: 'https://example.com/robots.txt',
     }),
-    'Checking robots.txt · https://example.com/robots.txt',
+    'Running site probes · https://example.com/robots.txt',
   );
   assert.equal(
     formatAuditProgressMessage({
-      phase: 'sitemap',
+      phase: 'probes',
       pagesFetched: 0,
       maxPages: 0,
-      currentUrl: 'https://example.com/sitemap.xml',
+      currentUrl: 'https://example.com/.well-known/api-catalog',
     }),
-    'Checking sitemap · https://example.com/sitemap.xml',
+    'Running site probes · https://example.com/.well-known/api-catalog',
   );
   assert.equal(
     formatAuditProgressMessage({ phase: 'scoring', pagesFetched: 12, maxPages: 0 }),
@@ -77,6 +77,28 @@ test('phase messages cover robots, sitemap, scoring, snapshot, done', () => {
   );
 });
 
+test('parseAuditProgress maps legacy robots.txt and sitemap phases to probes', () => {
+  const legacyRobots = parseAuditProgress(
+    JSON.stringify({
+      phase: 'robots.txt',
+      pagesFetched: 0,
+      maxPages: 50,
+      currentUrl: 'https://example.com/robots.txt',
+    }),
+  );
+  assert.equal(legacyRobots?.phase, 'probes');
+  assert.match(legacyRobots?.message || '', /Running site probes/);
+
+  const legacySitemap = parseAuditProgress(
+    JSON.stringify({
+      phase: 'sitemap',
+      pagesFetched: 0,
+      maxPages: 50,
+      currentUrl: 'https://example.com/sitemap.xml',
+    }),
+  );
+  assert.equal(legacySitemap?.phase, 'probes');
+});
 test('parseAuditProgress keeps 0 as unlimited, not 80', () => {
   const stored = buildAuditProgress({
     phase: 'crawl',
