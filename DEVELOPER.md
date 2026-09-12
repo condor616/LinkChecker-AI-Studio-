@@ -42,11 +42,9 @@ Bull **Waiting = 0** with **Active = 1** means a worker is processing; the queue
 - **Extraction**: `@lynx/crawler-core` (cheerio) plus LynxScan-specific persistence in `lib/crawler/processor.ts`.
 - **Monitoring**: Bull Board lists both queues. Local worker: `http://localhost:3001/admin/queues`. Docker `lynxscan-dev` stack maps that to `http://localhost:3002/admin/queues`.
 
-### Local Development
-```bash
-npm run dev
-```
-This starts Docker PostgreSQL/Redis/worker (via `predev`) and Next.js on port 3000. See the root README for GEO and dual-app commands.
+### Production deployment
+Use root [`docker-compose.prod.yml`](docker-compose.prod.yml) for Proxmox / reverse-proxy installs (Lynx Scan + Lynx GEO + both workers). See the root README for Nginx Proxy Manager, firewall, and env URL guidance. Keep local `docker/services` stacks for development only.
+
 
 ### Authentication Flow
 - JWT stored in an HTTP-only cookie.
