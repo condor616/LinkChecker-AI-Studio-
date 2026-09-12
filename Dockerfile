@@ -14,10 +14,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Next.js collects completely anonymous telemetry data about general usage.
-# Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line in case you want to disable telemetry during the build.
-# ENV NEXT_TELEMETRY_DISABLED 1
+# NEXT_PUBLIC_* values are inlined at build time. Pass production URLs as build args.
+ARG APP_URL=http://localhost:3000
+ARG NEXT_PUBLIC_GEO_URL=http://localhost:3010
+ARG NEXT_PUBLIC_LYNXSCAN_URL=http://localhost:3000
+ENV APP_URL=$APP_URL
+ENV NEXT_PUBLIC_GEO_URL=$NEXT_PUBLIC_GEO_URL
+ENV NEXT_PUBLIC_LYNXSCAN_URL=$NEXT_PUBLIC_LYNXSCAN_URL
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
@@ -26,8 +30,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-# Uncomment the following line in case you want to disable telemetry during runtime.
-# ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -51,7 +54,6 @@ USER nextjs
 EXPOSE 3000
 
 ENV PORT=3000
-# set hostname to localhost
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]

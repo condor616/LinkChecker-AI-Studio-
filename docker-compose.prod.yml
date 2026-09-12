@@ -1,0 +1,205 @@
+# Production stack for Proxmox / reverse-proxy deployments.
+# Publish only the two web apps. Database, Redis, FlareSolverr stay on the private network.
+#
+# Usage:
+#   cp .env.example .env   # then edit production values
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+#
+# Do not run this alongside local `npm run dev` on the same host ports.
+
+name: lynx-prod
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lynx_scan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-lynx_scan}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lynx_scan} -d ${POSTGRES_DB:-lynx_scan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    # Not published to the host. Stay on the private Compose network only.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - internal
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
+      - TZ=${TZ:-UTC}
+    restart: unless-stopped
+    networks:
+      - internal
+
+  app:
+    image: ${DOCKER_IMAGE_APP:-lynxscan-prod}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_URL: ${APP_URL:?APP_URL is required}
+        NEXT_PUBLIC_GEO_URL: ${NEXT_PUBLIC_GEO_URL:?NEXT_PUBLIC_GEO_URL is required}
+        NEXT_PUBLIC_LYNXSCAN_URL: ${NEXT_PUBLIC_LYNXSCAN_URL:?NEXT_PUBLIC_LYNXSCAN_URL is required}
+    ports:
+      - "${LYNXSCAN_HOST_PORT:-3001}:3000"
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+      - RUN_MIGRATIONS=true
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - APP_URL=${APP_URL}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-${APP_URL}}
+      - NEXT_PUBLIC_GEO_URL=${NEXT_PUBLIC_GEO_URL}
+      - NEXT_PUBLIC_LYNXSCAN_URL=${NEXT_PUBLIC_LYNXSCAN_URL}
+      - AUTH_COOKIE_DOMAIN=${AUTH_COOKIE_DOMAIN:-}
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-26}
+      - SMTP_SECURE=${SMTP_SECURE:-none}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - MAIL_ADMIN=${MAIL_ADMIN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      flaresolverr:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - internal
+
+  worker:
+    image: ${DOCKER_IMAGE_WORKER:-lynxscan-worker-prod}
+    build:
+      context: .
+      dockerfile: docker/services/worker.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY:-10}
+      - ENABLE_BULL_BOARD=${ENABLE_BULL_BOARD:-false}
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      flaresolverr:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - internal
+
+  lynxgeo:
+    image: ${DOCKER_IMAGE_GEO:-lynxgeo-prod}
+    build:
+      context: ./apps/lynxgeo
+      dockerfile: Dockerfile
+      additional_contexts:
+        packages: ./packages
+      args:
+        APP_URL: ${APP_URL:?APP_URL is required}
+        NEXT_PUBLIC_GEO_URL: ${NEXT_PUBLIC_GEO_URL:?NEXT_PUBLIC_GEO_URL is required}
+        NEXT_PUBLIC_LYNXSCAN_URL: ${NEXT_PUBLIC_LYNXSCAN_URL:?NEXT_PUBLIC_LYNXSCAN_URL is required}
+    ports:
+      - "${LYNXGEO_HOST_PORT:-3010}:3010"
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+      - HOSTNAME=0.0.0.0
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - POSTGRES_HOST=db
+      - POSTGRES_USER=${POSTGRES_USER:-lynx_scan}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-lynx_scan}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - APP_URL=${APP_URL}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-${APP_URL}}
+      - NEXT_PUBLIC_GEO_URL=${NEXT_PUBLIC_GEO_URL}
+      - NEXT_PUBLIC_LYNXSCAN_URL=${NEXT_PUBLIC_LYNXSCAN_URL}
+      - AUTH_COOKIE_DOMAIN=${AUTH_COOKIE_DOMAIN:-}
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-26}
+      - SMTP_SECURE=${SMTP_SECURE:-none}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - MAIL_ADMIN=${MAIL_ADMIN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      flaresolverr:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - internal
+
+  lynxgeo-worker:
+    image: ${DOCKER_IMAGE_GEO_WORKER:-lynxgeo-worker-prod}
+    build:
+      context: .
+      dockerfile: apps/lynxgeo/docker/services/worker.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lynx_scan}
+      - POSTGRES_HOST=db
+      - POSTGRES_USER=${POSTGRES_USER:-lynx_scan}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-lynx_scan}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY_GEO:-2}
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      flaresolverr:
+        condition: service_started
+    tty: true
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  internal:
+    driver: bridge
