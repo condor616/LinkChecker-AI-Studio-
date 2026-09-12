@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Clock, LayoutTemplate, Play, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import { GEO_TEMPLATE_STORAGE_KEY } from '@/lib/geo/template-storage';
 
 type AuditTemplate = {
@@ -118,7 +119,7 @@ export default function TemplatesPage() {
                   </CardTitle>
                   <CardDescription className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    Saved {new Date(template.createdAt).toLocaleDateString()}
+                    Saved {formatAppDateTime(template.createdAt)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1 space-y-4">

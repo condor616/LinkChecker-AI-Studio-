@@ -6,6 +6,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import { CATEGORY_META, type Finding, type FindingCategory, type FindingSeverity } from '@/lib/geo/score';
 
 function formatDelta(delta: number): string {
@@ -318,7 +319,7 @@ export function ComparePanel({ diff }: { diff: any }) {
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">{diff.from?.runLabel}</p>
             <p className="text-sm font-medium truncate">{diff.from?.name}</p>
             <p className="text-xs text-muted-foreground">
-              {diff.from?.createdAt ? new Date(diff.from.createdAt).toLocaleString() : '—'}
+              {diff.from?.createdAt ? formatAppDateTime(diff.from.createdAt) : '—'}
               {' · '}
               {diff.from?.pageCount ?? 0} pages
             </p>
@@ -330,7 +331,7 @@ export function ComparePanel({ diff }: { diff: any }) {
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">{diff.to?.runLabel}</p>
             <p className="text-sm font-medium truncate">{diff.to?.name}</p>
             <p className="text-xs text-muted-foreground">
-              {diff.to?.createdAt ? new Date(diff.to.createdAt).toLocaleString() : '—'}
+              {diff.to?.createdAt ? formatAppDateTime(diff.to.createdAt) : '—'}
               {' · '}
               {diff.to?.pageCount ?? 0} pages
             </p>

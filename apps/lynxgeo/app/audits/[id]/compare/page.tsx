@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, GitCompare, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import { resolveSeriesId, runLabelForIndex } from '@/lib/geo/series';
 import { ComparePanel } from '../compare-panel';
 
@@ -141,7 +142,7 @@ export default function AuditComparePage() {
                   const idx = seriesRuns.findIndex((r: any) => r.id === a.id);
                   return (
                     <option key={a.id} value={a.id}>
-                      {runLabel(a, idx)} — {new Date(a.createdAt).toLocaleString()} — {a.score ?? '—'} ({a.scoreModelVersion})
+                      {runLabel(a, idx)} — {formatAppDateTime(a.createdAt)} — {a.score ?? '—'} ({a.scoreModelVersion})
                     </option>
                   );
                 })}

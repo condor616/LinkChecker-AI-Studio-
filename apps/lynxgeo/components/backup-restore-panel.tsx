@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import type { BackupScope } from '@/lib/backup-types';
 
 interface Backup {
@@ -462,7 +463,7 @@ export function BackupRestorePanel({
                             Date created
                           </span>
                           <span className="text-muted-foreground/80 break-words">
-                            {new Date(bc.createdAt).toLocaleString()}
+                            {formatAppDateTime(bc.createdAt)}
                           </span>
                         </div>
                       </div>
@@ -515,7 +516,7 @@ export function BackupRestorePanel({
                         {formatSize(bc.size)}
                       </td>
                       <td className="px-6 py-5 text-muted-foreground/80">
-                        {new Date(bc.createdAt).toLocaleString()}
+                        {formatAppDateTime(bc.createdAt)}
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="inline-flex justify-end">
