@@ -9,27 +9,36 @@ import express from 'express';
 
 console.log('Starting BullMQ Worker...');
 
-// --- BullBoard Setup with Express ---
-const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath('/admin/queues');
+const enableBullBoard =
+  process.env.ENABLE_BULL_BOARD === 'true' ||
+  (process.env.ENABLE_BULL_BOARD !== 'false' && process.env.NODE_ENV !== 'production');
 
-// Observe GEO's queue by name on the shared Redis — do not import GEO internals.
-const geoQueueForBoard = new Queue(GEO_QUEUE_NAME, { connection });
+if (enableBullBoard) {
+  // --- BullBoard Setup with Express (local/dev only by default) ---
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath('/admin/queues');
 
-createBullBoard({
-  queues: [new BullMQAdapter(scanQueue), new BullMQAdapter(geoQueueForBoard)],
-  serverAdapter,
-});
+  // Observe GEO's queue by name on the shared Redis — do not import GEO internals.
+  const geoQueueForBoard = new Queue(GEO_QUEUE_NAME, { connection });
 
-const app = express();
-app.use('/admin/queues', serverAdapter.getRouter());
+  createBullBoard({
+    queues: [new BullMQAdapter(scanQueue), new BullMQAdapter(geoQueueForBoard)],
+    serverAdapter,
+  });
 
-const boardPort = 3001;
-app.listen(boardPort, () => {
-  console.log(
-    `BullBoard UI running at http://localhost:${boardPort}/admin/queues (queues: ${QUEUE_NAME}, ${GEO_QUEUE_NAME})`,
-  );
-});
+  const app = express();
+  app.use('/admin/queues', serverAdapter.getRouter());
+
+  const boardPort = Number.parseInt(process.env.BULL_BOARD_PORT || '3001', 10);
+  const boardHost = process.env.BULL_BOARD_HOST || '0.0.0.0';
+  app.listen(boardPort, boardHost, () => {
+    console.log(
+      `BullBoard UI running at http://${boardHost}:${boardPort}/admin/queues (queues: ${QUEUE_NAME}, ${GEO_QUEUE_NAME})`,
+    );
+  });
+} else {
+  console.log('BullBoard disabled (set ENABLE_BULL_BOARD=true to enable).');
+}
 
 let idleSweepInFlight = false;
 let sweepAgain = false;

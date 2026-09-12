@@ -5,15 +5,25 @@ type RateLimitEntry = {
 
 const store = new Map<string, RateLimitEntry>();
 
-export function getClientIp(request: Request): string {
-  const xForwardedFor = request.headers.get('x-forwarded-for');
-  if (xForwardedFor) {
-    const firstIp = xForwardedFor.split(',')[0]?.trim();
-    if (firstIp) return firstIp;
-  }
+function trustProxyHeaders(): boolean {
+  const raw = (process.env.TRUST_PROXY || '').trim().toLowerCase();
+  if (raw === 'true' || raw === '1' || raw === 'yes') return true;
+  // Production behind NPM defaults to trusting proxy headers when unset in compose.
+  if (raw === 'false' || raw === '0' || raw === 'no') return false;
+  return process.env.NODE_ENV === 'production';
+}
 
-  const xRealIp = request.headers.get('x-real-ip');
-  if (xRealIp) return xRealIp.trim();
+export function getClientIp(request: Request): string {
+  if (trustProxyHeaders()) {
+    const xForwardedFor = request.headers.get('x-forwarded-for');
+    if (xForwardedFor) {
+      const firstIp = xForwardedFor.split(',')[0]?.trim();
+      if (firstIp) return firstIp;
+    }
+
+    const xRealIp = request.headers.get('x-real-ip');
+    if (xRealIp) return xRealIp.trim();
+  }
 
   return 'unknown';
 }
@@ -41,4 +51,9 @@ export function enforceRateLimit(
   current.count += 1;
   store.set(key, current);
   return { limited: false, retryAfterSeconds: 0 };
+}
+
+/** Test helper */
+export function clearRateLimitStore(): void {
+  store.clear();
 }

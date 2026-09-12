@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { getJwtSecretKey } from '@/lib/security/jwt';
+import { applySecurityHeaders, nextWithSecurityHeaders } from '@/lib/security/headers';
 
 export async function middleware(request: NextRequest) {
   const token = request.cookies.get('session')?.value;
   const { pathname } = request.nextUrl;
+  const requestUrl = request.url;
 
   // Public paths
   const isPublicPath =
@@ -17,14 +19,17 @@ export async function middleware(request: NextRequest) {
     pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|webp)$/);
 
   if (isPublicPath) {
-    return NextResponse.next();
+    return nextWithSecurityHeaders(requestUrl);
   }
 
   if (!token) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return applySecurityHeaders(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+        requestUrl,
+      );
     }
-    return NextResponse.redirect(new URL('/login', request.url));
+    return applySecurityHeaders(NextResponse.redirect(new URL('/login', request.url)), requestUrl);
   }
 
   try {
@@ -35,17 +40,29 @@ export async function middleware(request: NextRequest) {
     if (userRole === 'BLOCKED' && !pathname.startsWith('/api/auth/logout')) {
        // Clear session and redirect to login with error (simplified: just redirect)
        if (pathname.startsWith('/api/')) {
-         return NextResponse.json({ error: 'Account blocked' }, { status: 403 });
+         return applySecurityHeaders(
+           NextResponse.json({ error: 'Account blocked' }, { status: 403 }),
+           requestUrl,
+         );
        }
-       return NextResponse.redirect(new URL('/login?error=account_blocked', request.url));
+       return applySecurityHeaders(
+         NextResponse.redirect(new URL('/login?error=account_blocked', request.url)),
+         requestUrl,
+       );
     }
 
     // Check for PENDING users
     if (userRole === 'PENDING' && !pathname.startsWith('/auth/pending') && !pathname.startsWith('/api/auth/logout')) {
       if (pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'Account pending approval' }, { status: 403 });
+        return applySecurityHeaders(
+          NextResponse.json({ error: 'Account pending approval' }, { status: 403 }),
+          requestUrl,
+        );
       }
-      return NextResponse.redirect(new URL('/auth/pending', request.url));
+      return applySecurityHeaders(
+        NextResponse.redirect(new URL('/auth/pending', request.url)),
+        requestUrl,
+      );
     }
 
     const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
@@ -53,22 +70,28 @@ export async function middleware(request: NextRequest) {
     // Check for ADMIN routes
     if (isAdminRoute && userRole?.toUpperCase() !== 'ADMIN') {
       if (pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        return applySecurityHeaders(
+          NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+          requestUrl,
+        );
       }
-      return NextResponse.redirect(new URL('/', request.url));
+      return applySecurityHeaders(NextResponse.redirect(new URL('/', request.url)), requestUrl);
     }
 
     // Prevent access to pending page if already approved
     if (pathname.startsWith('/auth/pending') && userRole !== 'PENDING') {
-      return NextResponse.redirect(new URL('/', request.url));
+      return applySecurityHeaders(NextResponse.redirect(new URL('/', request.url)), requestUrl);
     }
 
-    return NextResponse.next();
+    return nextWithSecurityHeaders(requestUrl);
   } catch {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return applySecurityHeaders(
+        NextResponse.json({ error: 'Invalid token' }, { status: 401 }),
+        requestUrl,
+      );
     }
-    return NextResponse.redirect(new URL('/login', request.url));
+    return applySecurityHeaders(NextResponse.redirect(new URL('/login', request.url)), requestUrl);
   }
 }
 

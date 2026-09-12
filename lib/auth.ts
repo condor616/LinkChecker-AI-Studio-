@@ -45,12 +45,8 @@ export async function getSession(): Promise<Session | null> {
     };
   } catch (error) {
     console.error('Session DB check failed (DB likely offline):', error);
-    return {
-      id: payload.id,
-      role: payload.role,
-      email: payload.email,
-      productAccess: parseProductAccess(null),
-    };
+    // Fail closed: do not trust JWT role/product claims when the user store is unreachable.
+    return null;
   }
 }
 

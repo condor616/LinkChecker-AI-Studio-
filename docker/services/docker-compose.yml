@@ -43,6 +43,7 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-lynx_scan}:${POSTGRES_PASSWORD:-localpass}@db:5432/${POSTGRES_DB:-lynx_scan}
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
+      - ENABLE_BULL_BOARD=true
       # Always use the Compose service name inside the Docker network.
       - FLARESOLVERR_URL=http://flaresolverr:8191/v1
     depends_on:

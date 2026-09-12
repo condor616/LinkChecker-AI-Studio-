@@ -33,7 +33,8 @@ export async function getSession(): Promise<Session | null> {
       productAccess: parseProductAccess(res[0].productAccess),
     };
   } catch {
-    return { id: payload.id, role: payload.role, email: payload.email, productAccess: parseProductAccess(null) };
+    // Fail closed: do not trust JWT role/product claims when the user store is unreachable.
+    return null;
   }
 }
 

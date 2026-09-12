@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { getLynxGeoDbName } from '@lynx/db';
 import { geoAuthHttpStatus, requireGeoUser } from '@/lib/auth';
-import { getGeoDb, postgresTarget } from '@/lib/db';
-import { audits } from '@/lib/db/schema';
+import { getGeoDb, postgresTarget, db as centralDb } from '@/lib/db';
+import { audits, users } from '@/lib/db/schema';
 import { GEO_QUEUE, enqueueGeoAudit, redisTarget } from '@/lib/geo/queue';
 import { forceGeoSkipExternal } from '@/lib/geo/origin-scope';
 import { AuditStartSchema } from '@/lib/validation';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { enforceRateLimit, getClientIp } from '@/lib/security/rate-limit';
 
 export async function GET() {
   try {
@@ -23,10 +24,43 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const session = await requireGeoUser();
+    const ip = getClientIp(req);
+    const { limited, retryAfterSeconds } = enforceRateLimit(
+      `audit:create:${session.id}:${ip}`,
+      20,
+      15 * 60 * 1000,
+    );
+    if (limited) {
+      return NextResponse.json(
+        { error: 'Too many audit requests. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+      );
+    }
+
     const body = AuditStartSchema.parse(await req.json());
+    const geoDb = getGeoDb(session.id);
+
+    const [userRow] = await centralDb
+      .select({ maxJobs: users.maxJobs })
+      .from(users)
+      .where(eq(users.id, session.id))
+      .limit(1);
+    const maxJobs = userRow?.maxJobs ?? 1;
+    const [{ count: runningCount }] = await geoDb
+      .select({ count: sql<number>`count(*)::int` })
+      .from(audits)
+      .where(and(eq(audits.userId, session.id), eq(audits.status, 'RUNNING')));
+    if (Number(runningCount) >= maxJobs) {
+      return NextResponse.json(
+        {
+          error: `Job limit reached (${maxJobs} concurrent audit${maxJobs === 1 ? '' : 's'}). Wait for an audit to finish or ask an admin to raise your limit.`,
+        },
+        { status: 429 },
+      );
+    }
+
     const id = randomUUID();
     const now = new Date();
-    const geoDb = getGeoDb(session.id);
     const config = forceGeoSkipExternal({
       saveSkippedLinks: true,
       ...body,

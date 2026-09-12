@@ -4,16 +4,48 @@ import { getDb, db as centralDb } from '@/lib/db';
 import { scans, links, users } from '@/lib/db/schema';
 import { scanQueue } from '@/lib/bullmq';
 import { scanLinkJobId } from '@/lib/crawler/scan-queue';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { ScanConfigSchema } from '@/lib/validation/schemas';
+import { enforceRateLimit, getClientIp } from '@/lib/security/rate-limit';
 
 export async function POST(req: Request) {
   try {
     const session = await requireApprovedUser();
 
+    const ip = getClientIp(req);
+    const { limited, retryAfterSeconds } = enforceRateLimit(
+      `scan:create:${session.id}:${ip}`,
+      20,
+      15 * 60 * 1000,
+    );
+    if (limited) {
+      return NextResponse.json(
+        { error: 'Too many scan requests. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+      );
+    }
+
     const config = ScanConfigSchema.parse(await req.json());
-    const id = crypto.randomUUID();
     const userDb = getDb(session.id);
+
+    const [userRow] = await centralDb
+      .select({ maxJobs: users.maxJobs })
+      .from(users)
+      .where(eq(users.id, session.id))
+      .limit(1);
+    const maxJobs = userRow?.maxJobs ?? 1;
+    const [{ count: runningCount }] = await userDb
+      .select({ count: sql<number>`count(*)::int` })
+      .from(scans)
+      .where(and(eq(scans.userId, session.id), eq(scans.status, 'RUNNING')));
+    if (Number(runningCount) >= maxJobs) {
+      return NextResponse.json(
+        { error: `Job limit reached (${maxJobs} concurrent scan${maxJobs === 1 ? '' : 's'}). Wait for a scan to finish or ask an admin to raise your limit.` },
+        { status: 429 },
+      );
+    }
+
+    const id = crypto.randomUUID();
 
     await userDb.insert(scans).values({
       id,
