@@ -29,6 +29,19 @@ const GEO_SQL = 'lynxgeo.sql';
 const LEGACY_SQL = 'database.sql';
 const MANIFEST_FILE = 'manifest.json';
 
+const ALLOWED_BACKUP_FILES = new Set([MANIFEST_FILE, SCAN_SQL, GEO_SQL, LEGACY_SQL, SYSTEM_SETTINGS_FILE]);
+
+function assertAllowedBackupEntry(fileName: string): string {
+  const base = path.basename(fileName);
+  if (base !== fileName || fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+    throw new Error(`Unsafe backup entry path: ${fileName}`);
+  }
+  if (!ALLOWED_BACKUP_FILES.has(base)) {
+    throw new Error(`Unexpected backup entry: ${fileName}`);
+  }
+  return base;
+}
+
 export interface BackupResult {
   path: string;
   filename: string;
@@ -260,7 +273,7 @@ async function restoreProduct(
   cwd: string,
   runCommand?: BackupOptions['runCommand'],
 ): Promise<void> {
-  const sqlPath = path.join(tempDir, entry.file);
+  const sqlPath = path.join(tempDir, assertAllowedBackupEntry(entry.file));
   if (!(await fs.stat(sqlPath).catch(() => false))) {
     console.log(`Skipping ${product} restore: ${entry.file} not found in archive`);
     return;

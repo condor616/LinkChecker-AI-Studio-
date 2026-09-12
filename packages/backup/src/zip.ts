@@ -13,6 +13,28 @@ function openZip(filePath: string): Promise<yauzl.ZipFile> {
   });
 }
 
+/** Reject absolute paths, drive letters, and any `..` traversal in zip entry names. */
+export function resolveSafeZipPath(tempDir: string, entryName: string): string {
+  const trimmed = entryName.replace(/\\/g, '/');
+  if (!trimmed || trimmed.startsWith('/') || /^[a-zA-Z]:/.test(trimmed)) {
+    throw new Error(`Unsafe zip entry path: ${entryName}`);
+  }
+
+  const segments = trimmed.split('/');
+  if (segments.some((segment) => segment === '..')) {
+    throw new Error(`Zip slip blocked: ${entryName}`);
+  }
+
+  const destPath = path.join(tempDir, ...segments);
+  const resolvedTemp = path.resolve(tempDir);
+  const resolvedDest = path.resolve(destPath);
+  const prefix = resolvedTemp.endsWith(path.sep) ? resolvedTemp : resolvedTemp + path.sep;
+  if (resolvedDest !== resolvedTemp && !resolvedDest.startsWith(prefix)) {
+    throw new Error(`Zip slip blocked: ${entryName}`);
+  }
+  return destPath;
+}
+
 export async function listZipEntryNames(zipFilePath: string): Promise<string[]> {
   const zipfile = await openZip(zipFilePath);
   const names: string[] = [];
@@ -71,7 +93,13 @@ export async function extractZip(zipFilePath: string, tempDir: string): Promise<
 
   await new Promise<void>((resolve, reject) => {
     zipfile.on('entry', (entry) => {
-      const destPath = path.join(tempDir, entry.fileName);
+      let destPath: string;
+      try {
+        destPath = resolveSafeZipPath(tempDir, entry.fileName);
+      } catch (err) {
+        reject(err);
+        return;
+      }
 
       if (entry.fileName.endsWith('/')) {
         fs.mkdir(destPath, { recursive: true })
