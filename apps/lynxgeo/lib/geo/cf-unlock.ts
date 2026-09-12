@@ -179,7 +179,7 @@ async function solveUrlViaFlare(
   }
 
   log(`[Cloudflare] Solving via FlareSolverr for ${url}`);
-  const solved = await solveWithFlareSolverr(url);
+  const solved = await solveWithFlareSolverr(url, 60000, { startUrl: liveConfig?.startUrl });
   if (!solved.ok || (solved.cookies.length === 0 && (solved.status == null || solved.status >= 400))) {
     log(`[Cloudflare] Solve failed for ${host}: ${solved.error || 'no cookies'}`);
     hostSolveFailed.set(failKey(auditId, host), true);

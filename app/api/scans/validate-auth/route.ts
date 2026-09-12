@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { assertSafeOutboundUrl } from '@lynx/crawler-core';
 import { requireApprovedUser } from '@/lib/auth';
 import { ScanAuthValidationSchema } from '@/lib/validation/schemas';
 
@@ -7,6 +8,14 @@ export async function POST(req: Request) {
     await requireApprovedUser();
 
     const { startUrl, auth } = ScanAuthValidationSchema.parse(await req.json());
+    const safety = await assertSafeOutboundUrl(startUrl);
+    if (!safety.ok) {
+      return NextResponse.json(
+        { valid: false, message: `Credential check blocked: ${safety.reason}` },
+        { status: 400 },
+      );
+    }
+
     const encoded = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
 
     const response = await fetch(startUrl, {

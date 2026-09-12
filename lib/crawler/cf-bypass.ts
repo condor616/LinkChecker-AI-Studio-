@@ -89,7 +89,7 @@ export async function processCloudflareBypassJob(opts: {
 
       if (!session) {
         console.log(`[Cloudflare bypass] Solving host ${host} via FlareSolverr for ${current.url}`);
-        const solved = await solveWithFlareSolverr(current.url);
+        const solved = await solveWithFlareSolverr(current.url, 60000, { startUrl: config.startUrl });
 
         const stillAfterSolve = await userDb
           .select({ status: scans.status })

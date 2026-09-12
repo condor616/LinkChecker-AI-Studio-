@@ -1,3 +1,5 @@
+import { assertSafeOutboundUrl } from '@lynx/crawler-core';
+
 export type FlareSolverrCookie = {
   name: string;
   value: string;
@@ -51,10 +53,19 @@ export function cookiesToHeader(cookies: FlareSolverrCookie[]): string {
  * Ask FlareSolverr to solve a URL (JS challenge). Returns cookies + UA for reuse on Node fetch.
  * Never throws for solver/HTTP failures — returns { ok: false, error }.
  */
-export async function solveWithFlareSolverr(url: string, maxTimeoutMs = 60000): Promise<FlareSolverrSolveResult> {
+export async function solveWithFlareSolverr(
+  url: string,
+  maxTimeoutMs = 60000,
+  options?: { startUrl?: string },
+): Promise<FlareSolverrSolveResult> {
   const endpoint = getFlareSolverrUrl();
   if (!endpoint) {
     return { ok: false, cookies: [], error: 'FLARESOLVERR_URL is not configured' };
+  }
+
+  const safety = await assertSafeOutboundUrl(url, { startUrl: options?.startUrl });
+  if (!safety.ok) {
+    return { ok: false, cookies: [], error: `FlareSolverr blocked: ${safety.reason}` };
   }
 
   return withSolverLock(async () => {

@@ -1,6 +1,6 @@
 import type { CrawlConfig, FetchedResource } from './types';
-import { getFetchUrl, isSameOrSubdomain, normalizeHostname } from './url';
-import { isSafeHostname } from './ssrf';
+import { getFetchUrl } from './url';
+import { assertSafeOutboundUrl } from './ssrf';
 import { getTraversalSkipReason } from './exclude';
 import { formatChallengeError, isCloudflareChallenge } from './challenge';
 
@@ -79,6 +79,7 @@ export async function fetchWithRedirects(
   headers: Record<string, string>,
   signal: AbortSignal,
   maxRedirects = 5,
+  options?: { startUrl?: string },
 ): Promise<Response> {
   let currentUrl = inputUrl;
   const hopHeaders = { ...headers };
@@ -107,7 +108,12 @@ export async function fetchWithRedirects(
       return response;
     }
 
-    currentUrl = new URL(location, currentUrl).toString();
+    const nextUrl = new URL(location, currentUrl).toString();
+    const safety = await assertSafeOutboundUrl(nextUrl, { startUrl: options?.startUrl });
+    if (!safety.ok) {
+      throw new Error(`Redirect blocked by SSRF protection: ${safety.reason}`);
+    }
+    currentUrl = nextUrl;
   }
 
   throw new Error(`Too many redirects for ${inputUrl}`);
@@ -182,13 +188,9 @@ export async function fetchResource(url: string, config: CrawlConfig, extraHeade
     error: null,
   };
 
-  const currentTarget = new URL(url);
-  const scanRootHost = normalizeHostname(new URL(config.startUrl).hostname);
-  const targetHost = normalizeHostname(currentTarget.hostname);
-  const isWithinStartHostScope = isSameOrSubdomain(targetHost, scanRootHost);
-  const isSafeTarget = await isSafeHostname(currentTarget.hostname);
-  if (!isSafeTarget && !isWithinStartHostScope) {
-    return { ...empty, blockedBySsrf: true, error: 'Blocked by SSRF protection policy' };
+  const outbound = await assertSafeOutboundUrl(url, { startUrl: config.startUrl });
+  if (!outbound.ok) {
+    return { ...empty, blockedBySsrf: true, error: outbound.reason };
   }
 
   if (config.randomDelay && config.randomDelay > 0) {
@@ -201,7 +203,9 @@ export async function fetchResource(url: string, config: CrawlConfig, extraHeade
   const headers = { ...buildBrowserHeaders(config), ...extraHeaders };
 
   try {
-    let response = await fetchWithRedirects(fetchUrl, headers, controller.signal);
+    let response = await fetchWithRedirects(fetchUrl, headers, controller.signal, 5, {
+      startUrl: config.startUrl,
+    });
     let headerMap = headersToMap(response);
     let { bodyText, preview } = await peekBodyPreview(response);
 
@@ -238,7 +242,9 @@ export async function fetchResource(url: string, config: CrawlConfig, extraHeade
       if (headers.Authorization) fallbackHeaders.Authorization = headers.Authorization;
       if (headers.Cookie) fallbackHeaders.Cookie = headers.Cookie;
 
-      const retryResponse = await fetchWithRedirects(fetchUrl, fallbackHeaders, controller.signal);
+      const retryResponse = await fetchWithRedirects(fetchUrl, fallbackHeaders, controller.signal, 5, {
+        startUrl: config.startUrl,
+      });
       const retryHeaders = headersToMap(retryResponse);
       const retryPeek = await peekBodyPreview(retryResponse);
 

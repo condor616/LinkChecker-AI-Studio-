@@ -87,7 +87,7 @@ export async function tryEagerCloudflareUnlock(opts: {
     }
 
     console.log(`[Cloudflare] Solving host ${host} via FlareSolverr for ${url}`);
-    const solved = await solveWithFlareSolverr(url);
+    const solved = await solveWithFlareSolverr(url, 60000, { startUrl: liveConfig?.startUrl });
     if (!solved.ok || (solved.cookies.length === 0 && (solved.status == null || solved.status >= 400))) {
       console.log(`[Cloudflare] Solve failed for ${host}: ${solved.error || 'no cookies'}`);
       hostSolveFailed.set(failKey(scanId, host), true);

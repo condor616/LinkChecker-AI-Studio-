@@ -12,7 +12,8 @@ export {
   extractFragmentId,
   canonicalizeHref,
 } from './url';
-export { isPrivateIpAddress, isSafeHostname } from './ssrf';
+export { isPrivateIpAddress, isSafeHostname, assertSafeOutboundUrl, clearHostSafetyCache } from './ssrf';
+export type { OutboundUrlCheck } from './ssrf';
 export { shouldExclude, getSkipReason, getTraversalSkipReason } from './exclude';
 export { isAuthGatedResponse, fetchWithRedirects, buildBrowserHeaders, fetchResource } from './fetch';
 export {
