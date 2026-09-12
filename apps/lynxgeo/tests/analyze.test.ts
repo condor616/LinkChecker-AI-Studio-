@@ -21,7 +21,8 @@ function resource(over: Partial<FetchedResource> = {}): FetchedResource {
 }
 
 test('date finding names the page and the selectors that were checked', () => {
-  const html = '<html lang="en"><head><title>Story</title></head><body><h1>Story</h1><p>Hello</p></body></html>';
+  const html =
+    '<html lang="en"><head><title>Story</title><meta property="og:type" content="article"></head><body><h1>Story</h1><p>Hello</p></body></html>';
   const findings = analyzePage(resource(), html);
   const date = findings.find((f) => f.id.startsWith('date-'));
   assert.ok(date);
@@ -34,12 +35,80 @@ test('date finding names the page and the selectors that were checked', () => {
 
 test('date finding reports observed markup when present', () => {
   const html =
-    '<html lang="en"><head><title>Story</title><meta property="article:published_time" content="2026-01-02"></head><body><h1>Story</h1><time datetime="2026-01-02">Jan 2</time></body></html>';
+    '<html lang="en"><head><title>Story</title><meta property="og:type" content="article"><meta property="article:published_time" content="2026-01-02"></head><body><h1>Story</h1><time datetime="2026-01-02">Jan 2</time></body></html>';
   const findings = analyzePage(resource(), html);
   const date = findings.find((f) => f.id.startsWith('date-'));
   assert.equal(date?.severity, 'pass');
   assert.match(date?.detail || '', /article:published_time="2026-01-02"/);
   assert.match(date?.detail || '', /<time>/);
+});
+
+test('homepage without article signals emits no date finding', () => {
+  const html =
+    '<html lang="en"><head><title>Home</title><meta property="og:type" content="website"></head><body><h1>Home</h1><p>Welcome</p></body></html>';
+  const findings = analyzePage(
+    resource({ url: 'https://www.example.com/', fetchUrl: 'https://www.example.com/' }),
+    html,
+  );
+  assert.equal(findings.some((f) => f.id.startsWith('date-')), false);
+});
+
+test('blog path without og:type or Article JSON-LD emits no date finding', () => {
+  const html =
+    '<html lang="en"><head><title>Post</title></head><body><h1>Post</h1><p>Hello</p></body></html>';
+  const findings = analyzePage(
+    resource({
+      url: 'https://www.example.com/blog/post',
+      fetchUrl: 'https://www.example.com/blog/post',
+    }),
+    html,
+  );
+  assert.equal(findings.some((f) => f.id.startsWith('date-')), false);
+});
+
+test('BlogPosting JSON-LD without dates warns on date check', () => {
+  const html = `<html lang="en"><head><title>Post</title>
+<script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: 'Post',
+  })}</script>
+</head><body><h1>Post</h1><p>Hello</p></body></html>`;
+  const findings = analyzePage(resource(), html);
+  const date = findings.find((f) => f.id.startsWith('date-'));
+  assert.equal(date?.severity, 'warn');
+});
+
+test('JSON-LD datePublished alone passes the date check on article pages', () => {
+  const html = `<html lang="en"><head><title>Post</title>
+<script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: 'Post',
+    datePublished: '2026-03-01',
+  })}</script>
+</head><body><h1>Post</h1><p>Hello</p></body></html>`;
+  const findings = analyzePage(resource(), html);
+  const date = findings.find((f) => f.id.startsWith('date-'));
+  assert.equal(date?.severity, 'pass');
+  assert.match(date?.detail || '', /JSON-LD datePublished="2026-03-01"/);
+});
+
+test('forceArticleLike emits date warn without og or Article JSON-LD', () => {
+  const html =
+    '<html lang="en"><head><title>Forced</title></head><body><h1>Forced</h1><p>Hello</p></body></html>';
+  const findings = analyzePage(resource(), html, { forceArticleLike: true });
+  const date = findings.find((f) => f.id.startsWith('date-'));
+  assert.equal(date?.severity, 'warn');
+  assert.match(date?.detail || '', /user-supplied article date check/i);
+  assert.doesNotMatch(date?.detail || '', /og:type or Schema\.org Article family/);
+});
+
+test('forceArticleLike passes when date markup is present', () => {
+  const html =
+    '<html lang="en"><head><title>Forced</title><meta property="article:published_time" content="2026-01-02"></head><body><h1>Forced</h1></body></html>';
+  const findings = analyzePage(resource(), html, { forceArticleLike: true });
+  assert.equal(findings.find((f) => f.id.startsWith('date-'))?.severity, 'pass');
 });
 
 test('http failure includes status and content-type', () => {

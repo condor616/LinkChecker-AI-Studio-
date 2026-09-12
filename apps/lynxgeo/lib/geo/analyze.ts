@@ -1,8 +1,9 @@
 import * as cheerio from 'cheerio';
 import type { FetchedResource } from '@lynx/crawler-core';
 import { isGeoHtmlPage, isGeoNonHtmlTarget } from './origin-scope';
+import { isArticleLike, jsonLdDateSignals } from './page-kind';
 import { findGoogleRichGaps, summarizeGoogleRichGaps } from './schemaorg/google-rich';
-import { parseJsonLdBlocksFromHtml } from './schemaorg/parse-jsonld';
+import { parseJsonLdBlocksFromHtml, type ParsedJsonLdBlock } from './schemaorg/parse-jsonld';
 import { summarizeIssues, validateParsedBlocks, worstSeverity } from './schemaorg/validate';
 import { loadVocabIndex } from './schemaorg/vocab';
 import type { Finding } from './score';
@@ -13,9 +14,14 @@ function httpObserved(resource: FetchedResource): string {
   return `HTTP ${status}, Content-Type: ${type}`;
 }
 
-export function analyzePage(resource: FetchedResource, html: string | null): Finding[] {
+export function analyzePage(
+  resource: FetchedResource,
+  html: string | null,
+  options?: { forceArticleLike?: boolean },
+): Finding[] {
   const findings: Finding[] = [];
   const url = resource.url;
+  const forceArticleLike = Boolean(options?.forceArticleLike);
 
   if (resource.blockedBySsrf) {
     findings.push({
@@ -172,11 +178,12 @@ export function analyzePage(resource: FetchedResource, html: string | null): Fin
     url,
   });
 
+  const pageHtml = html || resource.bodyText || '';
+  let jsonLdBlocks: ParsedJsonLdBlock[] = [];
   if (jsonLd > 0) {
-    const pageHtml = html || resource.bodyText || '';
-    const blocks = parseJsonLdBlocksFromHtml(pageHtml);
+    jsonLdBlocks = parseJsonLdBlocksFromHtml(pageHtml);
     const vocab = loadVocabIndex();
-    const issues = validateParsedBlocks(blocks, vocab);
+    const issues = validateParsedBlocks(jsonLdBlocks, vocab);
     const severity = worstSeverity(issues);
     findings.push({
       id: `schemaorg-${url}`,
@@ -197,7 +204,7 @@ export function analyzePage(resource: FetchedResource, html: string | null): Fin
       url,
     });
 
-    const richGaps = findGoogleRichGaps(blocks);
+    const richGaps = findGoogleRichGaps(jsonLdBlocks);
     if (richGaps.length > 0) {
       findings.push({
         id: `schema-rich-${url}`,
@@ -239,30 +246,37 @@ export function analyzePage(resource: FetchedResource, html: string | null): Fin
     });
   }
 
-  const timeCount = $('time').length;
-  const published = $('meta[property="article:published_time"]').attr('content');
-  const modified = $('meta[property="article:modified_time"]').attr('content');
-  const metaDate = $('meta[name="date"]').attr('content');
-  const dateSignals: string[] = [];
-  if (timeCount) dateSignals.push(`<time> (${timeCount})`);
-  if (published) dateSignals.push(`article:published_time="${published}"`);
-  if (modified) dateSignals.push(`article:modified_time="${modified}"`);
-  if (metaDate) dateSignals.push(`meta name="date" content="${metaDate}"`);
-  const hasDate = dateSignals.length > 0;
-  findings.push({
-    id: `date-${url}`,
-    category: 'citeability',
-    title: hasDate ? 'Date markup present' : 'No visible date markup',
-    detail: hasDate
-      ? `Observed ${dateSignals.join(', ')} on ${url}.`
-      : `Checked <time>, meta property="article:published_time", meta property="article:modified_time", and meta name="date" on ${url} — none present.`,
-    severity: hasDate ? 'pass' : 'warn',
-    standard: 'established',
-    suggestion: hasDate
-      ? ''
-      : `On ${url}, add a visible <time datetime="..."> and/or <meta property="article:published_time"> so answers can cite freshness.`,
-    url,
-  });
+  const ogType = $('meta[property="og:type"]').attr('content');
+  const articleLike = forceArticleLike || isArticleLike({ ogType, jsonLdBlocks });
+  if (articleLike) {
+    const timeCount = $('time').length;
+    const published = $('meta[property="article:published_time"]').attr('content');
+    const modified = $('meta[property="article:modified_time"]').attr('content');
+    const metaDate = $('meta[name="date"]').attr('content');
+    const dateSignals: string[] = [];
+    if (timeCount) dateSignals.push(`<time> (${timeCount})`);
+    if (published) dateSignals.push(`article:published_time="${published}"`);
+    if (modified) dateSignals.push(`article:modified_time="${modified}"`);
+    if (metaDate) dateSignals.push(`meta name="date" content="${metaDate}"`);
+    dateSignals.push(...jsonLdDateSignals(jsonLdBlocks));
+    const hasDate = dateSignals.length > 0;
+    findings.push({
+      id: `date-${url}`,
+      category: 'citeability',
+      title: hasDate ? 'Date markup present' : 'No visible date markup',
+      detail: hasDate
+        ? `Observed ${dateSignals.join(', ')} on ${url}.`
+        : forceArticleLike
+          ? `Page included from a user-supplied article date check on ${url}: checked <time>, article:published_time, article:modified_time, meta name="date", and JSON-LD datePublished/dateModified — none present.`
+          : `Article-like page (og:type or Schema.org Article family) on ${url}: checked <time>, article:published_time, article:modified_time, meta name="date", and JSON-LD datePublished/dateModified — none present.`,
+      severity: hasDate ? 'pass' : 'warn',
+      standard: 'established',
+      suggestion: hasDate
+        ? ''
+        : `On ${url}, add a visible <time datetime="...">, Open Graph article:published_time / article:modified_time, and/or Schema.org datePublished / dateModified so answers can cite freshness.`,
+      url,
+    });
+  }
 
   findings.push({
     id: `https-${url}`,

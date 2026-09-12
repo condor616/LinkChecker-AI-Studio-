@@ -400,6 +400,49 @@ test('date-warn rate is independent of crawl size when every page warns', () => 
   assert.equal(large.categories.citeability, small.categories.citeability);
 });
 
+test('date findings on a subset of pages still group; origin freshness criteria are site-scoped', () => {
+  const findings: Finding[] = [
+    pageFinding('date', 'https://www.example.com/news/a', 'warn', { title: 'No visible date markup' }),
+    pageFinding('date', 'https://www.example.com/news/b', 'pass', { title: 'Date markup present' }),
+    pageFinding('title', 'https://www.example.com/', 'pass', { title: 'Title is present' }),
+    pageFinding('title', 'https://www.example.com/news/a', 'pass', { title: 'Title is present' }),
+    pageFinding('title', 'https://www.example.com/news/b', 'pass', { title: 'Title is present' }),
+    pageFinding('https', 'https://www.example.com/', 'pass'),
+    pageFinding('https', 'https://www.example.com/news/a', 'pass'),
+    pageFinding('https', 'https://www.example.com/news/b', 'pass'),
+    {
+      id: 'sitemap-lastmod',
+      category: 'citeability',
+      title: 'Sitemap lastmod present',
+      detail: 'urlset: 10/10',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+      url: 'https://www.example.com/sitemap.xml',
+    },
+    {
+      id: 'http-last-modified',
+      category: 'citeability',
+      title: 'HTTP Last-Modified missing',
+      detail: 'no Last-Modified',
+      severity: 'warn',
+      standard: 'established',
+      suggestion: 'Consider Last-Modified',
+      url: 'https://www.example.com/',
+    },
+  ];
+  const grouped = groupCriteria(findings);
+  const date = grouped.find((c) => c.key === 'date');
+  assert.ok(date);
+  assert.equal(date.counts.pass, 1);
+  assert.equal(date.counts.warn, 1);
+  assert.equal(date.urls.pass.length + date.urls.warn.length, 2);
+  assert.ok(grouped.find((c) => c.key === 'sitemap-lastmod'));
+  assert.ok(grouped.find((c) => c.key === 'http-last-modified'));
+  const { categories } = aggregateScore(findings);
+  assert.ok(categories.citeability > 70);
+});
+
 test('missing llms.txt convention does not zero discovery, and mcp.json cannot dominate', () => {
   const llmsWarn: Finding = {
     id: 'llms-txt',
@@ -532,6 +575,10 @@ test('catalog lists every scored check', () => {
     'train-Applebot-Extended',
     'train-Diffbot',
     'sitemap',
+    'sitemap-lastmod',
+    'http-last-modified',
+    'date-unidentified',
+    'date-check-listing',
     'llms-txt',
     'llms-full',
     'mcp-json',

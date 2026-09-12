@@ -120,6 +120,60 @@ export function looksLikeSitemap(resource: {
   return /^<\?xml/i.test(body) || /<(urlset|sitemapindex)\b/i.test(body);
 }
 
+export type SitemapLastmodStats = {
+  kind: 'urlset' | 'sitemapindex' | 'unknown';
+  entryCount: number;
+  withLastmod: number;
+  /** Child sitemap locs from a sitemapindex (declaration order). */
+  childLocs: string[];
+};
+
+/**
+ * Parse <lastmod> coverage from a sitemap urlset or sitemapindex body.
+ * Namespace-agnostic: matches local element names only.
+ */
+export function parseSitemapLastmod(body: string): SitemapLastmodStats {
+  const text = body || '';
+  const isIndex = /<sitemapindex\b/i.test(text);
+  const isUrlset = /<urlset\b/i.test(text);
+  if (isIndex) {
+    const entries = [...text.matchAll(/<sitemap\b[\s\S]*?<\/sitemap>/gi)];
+    let withLastmod = 0;
+    const childLocs: string[] = [];
+    for (const match of entries) {
+      const chunk = match[0];
+      if (/<lastmod\b[^>]*>\s*[^<\s][\s\S]*?<\/lastmod>/i.test(chunk)) withLastmod += 1;
+      const loc = chunk.match(/<loc\b[^>]*>\s*([^<\s][^<]*)\s*<\/loc>/i)?.[1]?.trim();
+      if (loc) childLocs.push(loc);
+    }
+    return { kind: 'sitemapindex', entryCount: entries.length, withLastmod, childLocs };
+  }
+  if (isUrlset) {
+    const entries = [...text.matchAll(/<url\b[\s\S]*?<\/url>/gi)];
+    let withLastmod = 0;
+    for (const match of entries) {
+      if (/<lastmod\b[^>]*>\s*[^<\s][\s\S]*?<\/lastmod>/i.test(match[0])) withLastmod += 1;
+    }
+    return { kind: 'urlset', entryCount: entries.length, withLastmod, childLocs: [] };
+  }
+  return { kind: 'unknown', entryCount: 0, withLastmod: 0, childLocs: [] };
+}
+
+/** Pass when at least half of entries carry <lastmod> (or all when there are few). */
+export function sitemapLastmodCoverageOk(withLastmod: number, entryCount: number): boolean {
+  if (entryCount <= 0) return false;
+  if (entryCount <= 2) return withLastmod === entryCount;
+  return withLastmod / entryCount >= 0.5;
+}
+
+/** True when an HTTP-date header value parses as a valid date. */
+export function isParseableHttpDate(value: string | undefined | null): boolean {
+  const raw = (value || '').trim();
+  if (!raw) return false;
+  const ms = Date.parse(raw);
+  return !Number.isNaN(ms);
+}
+
 export async function runSiteProbes(
   origin: string,
   config: CrawlConfig,
@@ -249,6 +303,69 @@ export async function runSiteProbes(
     url: resolvedSitemapUrl,
   });
 
+  if (sitemapOk) {
+    let lastmodStats = parseSitemapLastmod(sitemap.bodyText || '');
+    let lastmodSourceUrl = resolvedSitemapUrl;
+    let sampledChild = false;
+
+    if (
+      lastmodStats.kind === 'sitemapindex' &&
+      !sitemapLastmodCoverageOk(lastmodStats.withLastmod, lastmodStats.entryCount) &&
+      lastmodStats.childLocs.length > 0
+    ) {
+      const childUrl = lastmodStats.childLocs[0];
+      try {
+        const childOrigin = new URL(childUrl).origin;
+        const siteOrigin = new URL(origin).origin;
+        if (childOrigin === siteOrigin) {
+          await shouldContinue?.();
+          log(`probe GET ${childUrl} (sitemapindex lastmod sample, at most one)`);
+          const unlocked = await fetchGeoResource(childUrl, liveConfig, auditId, log);
+          liveConfig = unlocked.config;
+          onConfigUpdate?.(liveConfig);
+          sampledChild = true;
+          if (looksLikeSitemap(unlocked.resource)) {
+            const childStats = parseSitemapLastmod(unlocked.resource.bodyText || '');
+            if (childStats.kind === 'urlset') {
+              lastmodStats = childStats;
+              lastmodSourceUrl = childUrl;
+            }
+          }
+        }
+      } catch {
+        // invalid child URL — fall through with index stats
+      }
+    }
+
+    if (lastmodStats.kind === 'unknown' || lastmodStats.entryCount === 0) {
+      findings.push({
+        id: 'sitemap-lastmod',
+        category: 'citeability',
+        title: 'Sitemap lastmod could not be verified',
+        detail: `Sitemap at ${lastmodSourceUrl} did not expose countable <url> or <sitemap> entries with <lastmod>${sampledChild ? ' (after sampling one child)' : ''}.`,
+        severity: 'warn',
+        standard: 'established',
+        suggestion: `Add <lastmod> timestamps to sitemap entries at ${resolvedSitemapUrl} so crawlers can assess freshness without article dates on living pages.`,
+        url: lastmodSourceUrl,
+      });
+    } else {
+      const ok = sitemapLastmodCoverageOk(lastmodStats.withLastmod, lastmodStats.entryCount);
+      const kindLabel = lastmodStats.kind === 'urlset' ? 'urlset' : 'sitemapindex';
+      findings.push({
+        id: 'sitemap-lastmod',
+        category: 'citeability',
+        title: ok ? 'Sitemap lastmod present' : 'Sitemap lastmod sparse or missing',
+        detail: `${kindLabel} at ${lastmodSourceUrl}: ${lastmodStats.withLastmod}/${lastmodStats.entryCount} entries have <lastmod>${sampledChild && lastmodSourceUrl !== resolvedSitemapUrl ? ` (sampled child of ${resolvedSitemapUrl})` : ''}.`,
+        severity: ok ? 'pass' : 'warn',
+        standard: 'established',
+        suggestion: ok
+          ? ''
+          : `Add <lastmod> on most <url> (or <sitemap>) entries in ${resolvedSitemapUrl} so agents can use sitemap freshness for living pages.`,
+        url: lastmodSourceUrl,
+      });
+    }
+  }
+
   const llmsUrl = new URL('/llms.txt', origin).toString();
   const llms = await probe('/llms.txt');
   const llmsIssues = llms.ok ? llmsTxtStructureIssues(llms.bodyText || '') : [];
@@ -352,6 +469,28 @@ export async function runSiteProbes(
     severity: isMarkdown && !varyAccept ? 'fail' : varyAccept ? 'pass' : 'warn',
     standard: 'established',
     suggestion: varyAccept ? '' : `Add Vary: Accept on ${homeUrl} so CDNs do not mix HTML and Markdown caches.`,
+    url: homeUrl,
+  });
+
+  const lastModifiedHeader = md.headers['last-modified'] || '';
+  const lastModifiedOk = isParseableHttpDate(lastModifiedHeader);
+  const etag = (md.headers['etag'] || '').trim();
+  const cacheControl = (md.headers['cache-control'] || '').trim();
+  const altHints: string[] = [];
+  if (etag) altHints.push(`ETag: ${etag}`);
+  if (cacheControl) altHints.push(`Cache-Control: ${cacheControl}`);
+  findings.push({
+    id: 'http-last-modified',
+    category: 'citeability',
+    title: lastModifiedOk ? 'HTTP Last-Modified present' : 'HTTP Last-Modified missing',
+    detail: lastModifiedOk
+      ? `GET ${homeUrl} → Last-Modified: ${lastModifiedHeader}. ${probeObserved(md)}.${altHints.length ? ` Also ${altHints.join('; ')}.` : ''}`
+      : `GET ${homeUrl} → no parseable Last-Modified header. ${probeObserved(md)}.${altHints.length ? ` Observed ${altHints.join('; ')} (caching validators; not a substitute for Last-Modified in this check).` : ''}`,
+    severity: lastModifiedOk ? 'pass' : 'warn',
+    standard: 'established',
+    suggestion: lastModifiedOk
+      ? ''
+      : `Consider sending a Last-Modified header on ${homeUrl} so crawlers can assess homepage freshness. Many CDNs omit it in favor of ETag/Cache-Control — that is common, but Last-Modified remains a useful freshness signal.`,
     url: homeUrl,
   });
 

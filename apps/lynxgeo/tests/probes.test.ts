@@ -4,9 +4,12 @@ import {
   AI_SEARCH_BOTS,
   TRAINING_BOTS,
   hasTdmRepSignal,
+  isParseableHttpDate,
   llmsTxtStructureIssues,
   looksLikeSitemap,
   parseRobotsSitemapUrls,
+  parseSitemapLastmod,
+  sitemapLastmodCoverageOk,
 } from '../lib/geo/probes';
 
 test('AI search and training bot lists include 2026 crawlers', () => {
@@ -116,4 +119,46 @@ test('looksLikeSitemap accepts XML content-type or urlset/sitemapindex body', ()
     false,
   );
   assert.equal(looksLikeSitemap({ ok: false, contentType: 'application/xml', bodyText: '<urlset/>' }), false);
+});
+
+test('parseSitemapLastmod counts urlset lastmod coverage', () => {
+  const body = `<?xml version="1.0"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/a</loc><lastmod>2026-01-01</lastmod></url>
+  <url><loc>https://example.com/b</loc></url>
+  <url><loc>https://example.com/c</loc><lastmod>2026-02-01</lastmod></url>
+  <url><loc>https://example.com/d</loc><lastmod>2026-03-01</lastmod></url>
+</urlset>`;
+  const stats = parseSitemapLastmod(body);
+  assert.equal(stats.kind, 'urlset');
+  assert.equal(stats.entryCount, 4);
+  assert.equal(stats.withLastmod, 3);
+  assert.equal(sitemapLastmodCoverageOk(stats.withLastmod, stats.entryCount), true);
+  assert.equal(sitemapLastmodCoverageOk(1, 4), false);
+  assert.equal(sitemapLastmodCoverageOk(1, 2), false);
+  assert.equal(sitemapLastmodCoverageOk(2, 2), true);
+});
+
+test('parseSitemapLastmod extracts sitemapindex child locs and lastmod', () => {
+  const body = `<?xml version="1.0"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://example.com/sitemap-a.xml</loc></sitemap>
+  <sitemap><loc>https://example.com/sitemap-b.xml</loc><lastmod>2026-01-01</lastmod></sitemap>
+</sitemapindex>`;
+  const stats = parseSitemapLastmod(body);
+  assert.equal(stats.kind, 'sitemapindex');
+  assert.equal(stats.entryCount, 2);
+  assert.equal(stats.withLastmod, 1);
+  assert.deepEqual(stats.childLocs, [
+    'https://example.com/sitemap-a.xml',
+    'https://example.com/sitemap-b.xml',
+  ]);
+  assert.equal(sitemapLastmodCoverageOk(stats.withLastmod, stats.entryCount), false);
+});
+
+test('isParseableHttpDate accepts HTTP-date values', () => {
+  assert.equal(isParseableHttpDate('Wed, 21 Oct 2015 07:28:00 GMT'), true);
+  assert.equal(isParseableHttpDate(''), false);
+  assert.equal(isParseableHttpDate('not-a-date'), false);
+  assert.equal(isParseableHttpDate(undefined), false);
 });

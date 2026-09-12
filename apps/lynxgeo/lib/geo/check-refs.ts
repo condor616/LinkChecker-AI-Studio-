@@ -59,6 +59,13 @@ const JSON_LD: CheckRef = {
   kind: 'spec',
 };
 
+const SCHEMA_ORG_ARTICLE: CheckRef = {
+  title: 'Schema.org — Article',
+  href: 'https://schema.org/Article',
+  publisher: 'Schema.org',
+  kind: 'spec',
+};
+
 const SCHEMA_ORG_VOCAB: CheckRef = {
   title: 'Schema.org — vocabulary for developers',
   href: 'https://schema.org/docs/developers.html',
@@ -183,6 +190,8 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   'train-Applebot-Extended': APPLEBOT_EXTENDED,
   'train-Diffbot': RFC_9309,
   sitemap: SITEMAP_PROTOCOL,
+  'sitemap-lastmod': SITEMAP_PROTOCOL,
+  'http-last-modified': RFC_9110,
   noindex: GOOGLE_ROBOTS,
   noai: NOAI_CONVENTION,
   wall: HTML_NOSCRIPT,
@@ -206,6 +215,8 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   'https-origin': RFC_9110,
   title: HTML_TITLE,
   date: HTML_TIME,
+  'date-unidentified': SCHEMA_ORG_ARTICLE,
+  'date-check-listing': SCHEMA_ORG_ARTICLE,
   https: RFC_9110,
   size: HTML_DOCUMENT,
 };

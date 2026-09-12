@@ -51,6 +51,16 @@ test('page finding ids carrying a URL suffix resolve to their criterion', () => 
   for (const [id, href] of cases) {
     assert.equal(checkRefForFindingId(id)?.href, href, `unexpected ref for ${id}`);
   }
+  assert.equal(
+    checkRefForKey('sitemap-lastmod')?.href,
+    'https://www.sitemaps.org/protocol.html',
+  );
+  assert.equal(
+    checkRefForKey('http-last-modified')?.href,
+    'https://www.rfc-editor.org/rfc/rfc9110.html',
+  );
+  assert.equal(checkRefForKey('date-unidentified')?.href, 'https://schema.org/Article');
+  assert.equal(checkRefForKey('date-check-listing')?.href, 'https://schema.org/Article');
 });
 
 test('HTML Living Standard refs point at a specific section, not the spec homepage', () => {
