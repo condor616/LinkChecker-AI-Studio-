@@ -157,7 +157,7 @@ export async function runAudit(
   const handleControl = async (control: 'PAUSED' | 'CANCELLED'): Promise<AuditRunOutcome> => {
     if (control === 'PAUSED') {
       await persistFrontier(probesDone ? 'crawl' : 'probes');
-      await persistProgress(probesDone ? 'crawl' : 'robots.txt', queue[0]?.url ?? null);
+      await persistProgress(probesDone ? 'crawl' : 'probes', queue[0]?.url ?? null);
       log(`audit ${auditId} PAUSED pages=${pagesFetched} queued=${queue.length}`);
       return 'paused';
     }
@@ -506,12 +506,13 @@ export async function runAudit(
 
     pagesFetched = pageRows.length;
     await persistProgress('scoring', null);
-    const { overall, categories } = aggregateScore(findings);
+    const { overall, categories, agentReadiness } = aggregateScore(findings);
     const suggestions = playbook(findings);
     await persistProgress('snapshot', null);
     const snapshot = freezeSnapshot({
       score: overall,
       categories,
+      agentReadiness,
       findings,
       playbook: suggestions,
       pages: pageRows,
@@ -523,8 +524,8 @@ export async function runAudit(
       htmlPagesAnalyzed > 0 &&
       articleLikePages === 0;
     const categoryBlob = needsNewsListing
-      ? withNewsListingPending({ ...categories, playbook: suggestions })
-      : { ...categories, playbook: suggestions };
+      ? withNewsListingPending({ ...categories, playbook: suggestions, agentReadiness })
+      : { ...categories, playbook: suggestions, agentReadiness };
 
     const doneProgress = buildAuditProgress({
       phase: 'done',

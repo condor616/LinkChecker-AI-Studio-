@@ -79,7 +79,7 @@ export function buildMergedArticleDateCheck(input: {
     pageFindings: input.pageFindings,
     articleUrl: articleKey,
   });
-  const { overall, categories } = aggregateScore(findings);
+  const { overall, categories, agentReadiness } = aggregateScore(findings);
   const suggestions = playbook(findings);
   const pages = [...(input.snapshot.pages || [])];
   if (!pages.some((p) => geoPageUrlKey(p.url) === articleKey)) {
@@ -95,13 +95,14 @@ export function buildMergedArticleDateCheck(input: {
   const snapshot = freezeSnapshot({
     score: overall,
     categories,
+    agentReadiness,
     findings,
     playbook: suggestions,
     pages,
   });
 
   const categoryBlob = withNewsListingChecked(
-    { ...input.previousCategoryBlob, ...categories, playbook: suggestions },
+    { ...input.previousCategoryBlob, ...categories, playbook: suggestions, agentReadiness },
     articleKey,
   );
 

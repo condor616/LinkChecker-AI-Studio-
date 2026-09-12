@@ -3,10 +3,14 @@ import { test } from 'node:test';
 import {
   AI_SEARCH_BOTS,
   TRAINING_BOTS,
+  countRobotsUserAgentGroups,
+  explicitAiBotUserAgents,
   hasTdmRepSignal,
   isParseableHttpDate,
   llmsTxtStructureIssues,
   looksLikeSitemap,
+  parseContentSignals,
+  parseLinkHeader,
   parseRobotsSitemapUrls,
   parseSitemapLastmod,
   sitemapLastmodCoverageOk,
@@ -161,4 +165,40 @@ test('isParseableHttpDate accepts HTTP-date values', () => {
   assert.equal(isParseableHttpDate(''), false);
   assert.equal(isParseableHttpDate('not-a-date'), false);
   assert.equal(isParseableHttpDate(undefined), false);
+});
+
+test('countRobotsUserAgentGroups and explicitAiBotUserAgents', () => {
+  const body = `User-agent: *
+Disallow:
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Allow: /
+`;
+  assert.equal(countRobotsUserAgentGroups(body), 3);
+  assert.deepEqual(explicitAiBotUserAgents(body), ['GPTBot', 'ClaudeBot']);
+  assert.deepEqual(explicitAiBotUserAgents('User-agent: *\nDisallow:\n'), []);
+});
+
+test('parseContentSignals reads Content-Signal lines', () => {
+  const body = `User-agent: *
+Content-Signal: search=yes, ai-train=no, ai-input=yes
+Disallow:
+`;
+  assert.deepEqual(parseContentSignals(body), ['search=yes, ai-train=no, ai-input=yes']);
+  assert.deepEqual(parseContentSignals('User-agent: *\nDisallow:\n'), []);
+});
+
+test('parseLinkHeader extracts href and rel', () => {
+  const entries = parseLinkHeader(
+    '</.well-known/api-catalog>; rel="api-catalog", </page.md>; rel="alternate"; type="text/markdown"',
+  );
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].href, '/.well-known/api-catalog');
+  assert.equal(entries[0].rel, 'api-catalog');
+  assert.equal(entries[1].rel, 'alternate');
+  assert.deepEqual(parseLinkHeader(''), []);
+  assert.deepEqual(parseLinkHeader(undefined), []);
 });

@@ -16,6 +16,9 @@ export type CategoryScoresBlob = {
   negotiation?: number;
   discovery?: number;
   citeability?: number;
+  capabilities?: number | null;
+  /** Cloudflare-aligned Agent Readiness (0–100). */
+  agentReadiness?: number;
   playbook?: unknown;
   needsNewsListing?: boolean;
   newsListingPrompt?: NewsListingPrompt;

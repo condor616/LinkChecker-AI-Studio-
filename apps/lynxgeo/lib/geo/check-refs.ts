@@ -171,6 +171,69 @@ const TDMREP: CheckRef = {
   kind: 'convention',
 };
 
+const RFC_8288: CheckRef = {
+  title: 'RFC 8288 — Web Linking',
+  href: 'https://www.rfc-editor.org/rfc/rfc8288.html',
+  publisher: 'IETF',
+  kind: 'rfc',
+};
+
+const RFC_9727: CheckRef = {
+  title: 'RFC 9727 — API Catalog',
+  href: 'https://www.rfc-editor.org/rfc/rfc9727.html',
+  publisher: 'IETF',
+  kind: 'rfc',
+};
+
+const RFC_8414: CheckRef = {
+  title: 'RFC 8414 — OAuth 2.0 Authorization Server Metadata',
+  href: 'https://www.rfc-editor.org/rfc/rfc8414.html',
+  publisher: 'IETF',
+  kind: 'rfc',
+};
+
+const RFC_9728: CheckRef = {
+  title: 'RFC 9728 — OAuth 2.0 Protected Resource Metadata',
+  href: 'https://www.rfc-editor.org/rfc/rfc9728.html',
+  publisher: 'IETF',
+  kind: 'rfc',
+};
+
+const CONTENT_SIGNALS: CheckRef = {
+  title: 'Content Signals',
+  href: 'https://contentsignals.org/',
+  publisher: 'Content Signals',
+  kind: 'convention',
+};
+
+const WEB_BOT_AUTH: CheckRef = {
+  title: 'HTTP Message Signatures / Web Bot Auth',
+  href: 'https://datatracker.ietf.org/doc/draft-meunier-http-message-signatures-directory/',
+  publisher: 'IETF',
+  kind: 'docs',
+};
+
+const DNS_AID: CheckRef = {
+  title: 'Agent Identity & Discovery (AID)',
+  href: 'https://aid.agentcommunity.org/docs/specification',
+  publisher: 'Agent Community',
+  kind: 'spec',
+};
+
+const A2A: CheckRef = {
+  title: 'Agent2Agent Protocol',
+  href: 'https://a2a-protocol.org/',
+  publisher: 'A2A',
+  kind: 'spec',
+};
+
+const AGENT_SKILLS: CheckRef = {
+  title: 'Agent Skills',
+  href: 'https://agentskills.io/',
+  publisher: 'Agent Skills',
+  kind: 'convention',
+};
+
 /** Criterion key (see CRITERION_CATALOG) → official document behind the check. */
 export const CHECK_REFS: Record<string, CheckRef> = {
   robots: RFC_9309,
@@ -192,6 +255,9 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   sitemap: SITEMAP_PROTOCOL,
   'sitemap-lastmod': SITEMAP_PROTOCOL,
   'http-last-modified': RFC_9110,
+  'ai-bot-rules': RFC_9309,
+  'content-signals': CONTENT_SIGNALS,
+  'web-bot-auth': WEB_BOT_AUTH,
   noindex: GOOGLE_ROBOTS,
   noai: NOAI_CONVENTION,
   wall: HTML_NOSCRIPT,
@@ -212,6 +278,16 @@ export const CHECK_REFS: Record<string, CheckRef> = {
   'llms-full': LLMS_TXT,
   'mcp-json': MCP_SPEC,
   tdmrep: TDMREP,
+  'link-headers': RFC_8288,
+  'dns-aid': DNS_AID,
+  'api-catalog': RFC_9727,
+  'oauth-as': RFC_8414,
+  'oauth-protected-resource': RFC_9728,
+  'auth-md': RFC_8414,
+  'a2a-agent-card': A2A,
+  'agent-skills': AGENT_SKILLS,
+  webmcp: MCP_SPEC,
+  ard: AGENT_SKILLS,
   'https-origin': RFC_9110,
   title: HTML_TITLE,
   date: HTML_TIME,

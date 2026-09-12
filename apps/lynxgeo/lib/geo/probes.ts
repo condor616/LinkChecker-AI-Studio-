@@ -1,3 +1,4 @@
+import dns from 'node:dns/promises';
 import type { CrawlConfig } from '@lynx/crawler-core';
 import { fetchGeoResource, type GeoCfConfig } from './cf-unlock';
 import { geoStartPathPrefix } from './origin-scope';
@@ -17,6 +18,13 @@ export const AI_SEARCH_BOTS = [
 const GOOGLE_SEARCH_BOTS = ['Googlebot'];
 export const TRAINING_BOTS = ['Google-Extended', 'CCBot', 'Bytespider', 'Applebot-Extended', 'Diffbot'];
 
+/** Named AI crawlers Cloudflare expects explicit User-agent groups for. */
+export const NAMED_AI_BOTS_FOR_RULES = [
+  ...AI_SEARCH_BOTS,
+  ...GOOGLE_SEARCH_BOTS,
+  ...TRAINING_BOTS,
+];
+
 function blockedByRobots(robotsTxt: string, bot: string): boolean {
   const escaped = bot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const blocks = robotsTxt.match(new RegExp(`User-agent:\\s*${escaped}[\\s\\S]*?(?=User-agent:|$)`, 'i'));
@@ -25,6 +33,66 @@ function blockedByRobots(robotsTxt: string, bot: string): boolean {
     return !!star && /Disallow:\s*\//i.test(star[0]) && !/Allow:\s*\//i.test(star[0].split('Disallow')[0]);
   }
   return /Disallow:\s*\/\s*$/m.test(blocks[0]) || /Disallow:\s*\/\s*\n/i.test(blocks[0]);
+}
+
+/** Count User-agent rule groups in robots.txt. */
+export function countRobotsUserAgentGroups(robotsTxt: string): number {
+  const matches = robotsTxt.match(/^\s*User-agent:\s*\S+/gim);
+  return matches?.length ?? 0;
+}
+
+/** Named AI bots that have an explicit User-agent group (not inherited from *). */
+export function explicitAiBotUserAgents(robotsTxt: string, bots: string[] = NAMED_AI_BOTS_FOR_RULES): string[] {
+  const found: string[] = [];
+  for (const bot of bots) {
+    const escaped = bot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`^\\s*User-agent:\\s*${escaped}\\s*$`, 'im').test(robotsTxt)) {
+      found.push(bot);
+    }
+  }
+  return found;
+}
+
+/** Parse Content-Signal directives from robots.txt. */
+export function parseContentSignals(robotsTxt: string): string[] {
+  const signals: string[] = [];
+  for (const line of robotsTxt.split(/\r?\n/)) {
+    const match = line.match(/^\s*Content-Signal:\s*(.+)$/i);
+    if (match?.[1]?.trim()) signals.push(match[1].trim());
+  }
+  return signals;
+}
+
+/** Parse RFC 8288 Link header value(s) into { href, rel } entries. */
+export function parseLinkHeader(raw: string | undefined | null): Array<{ href: string; rel: string }> {
+  const text = (raw || '').trim();
+  if (!text) return [];
+  const out: Array<{ href: string; rel: string }> = [];
+  // Split on commas that separate link-values (not inside <> or quotes) — simple split is OK for common cases.
+  const parts = text.split(/,(?=\s*<)/);
+  for (const part of parts.length > 1 ? parts : text.split(',')) {
+    const hrefMatch = part.match(/<([^>]+)>/);
+    if (!hrefMatch) continue;
+    const relMatch = part.match(/\brel\s*=\s*"([^"]+)"/i) || part.match(/\brel\s*=\s*'([^']+)'/i) || part.match(/\brel\s*=\s*([^\s;,]+)/i);
+    out.push({ href: hrefMatch[1].trim(), rel: (relMatch?.[1] || '').trim() });
+  }
+  return out;
+}
+
+/** Resolve AID / DNS-AID TXT at _agent.<hostname>. */
+export async function resolveDnsAid(hostname: string): Promise<{ ok: boolean; records: string[]; error?: string }> {
+  const name = `_agent.${hostname.replace(/\.$/, '')}`;
+  try {
+    const chunks = await dns.resolveTxt(name);
+    const records = chunks.map((parts) => parts.join('')).filter(Boolean);
+    return { ok: records.length > 0, records };
+  } catch (err: unknown) {
+    const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : '';
+    if (code === 'ENOTFOUND' || code === 'ENODATA' || code === 'NXDOMAIN') {
+      return { ok: false, records: [], error: code || 'NXDOMAIN' };
+    }
+    return { ok: false, records: [], error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Returns human-readable gaps when llms.txt is reachable but does not match llmstxt.org structure. */
@@ -178,7 +246,7 @@ export async function runSiteProbes(
   origin: string,
   config: CrawlConfig,
   log: (line: string) => void = () => {},
-  onPhase?: (phase: 'robots.txt' | 'sitemap', url: string) => void | Promise<void>,
+  onPhase?: (phase: 'probes', url: string) => void | Promise<void>,
   shouldContinue?: () => Promise<void>,
   auditId = 'probes',
   onConfigUpdate?: (next: GeoCfConfig) => void,
@@ -188,6 +256,7 @@ export async function runSiteProbes(
   const probe = async (path: string, extra?: Record<string, string>) => {
     await shouldContinue?.();
     const url = new URL(path, origin).toString();
+    await onPhase?.('probes', url);
     log(`probe GET ${url}`);
     const unlocked = await fetchGeoResource(url, liveConfig, auditId, log, extra);
     liveConfig = unlocked.config;
@@ -196,7 +265,6 @@ export async function runSiteProbes(
   };
 
   const robotsUrl = new URL('/robots.txt', origin).toString();
-  await onPhase?.('robots.txt', robotsUrl);
   const robots = await probe('/robots.txt');
   const robotsBody = robots.bodyText || '';
   if (!robots.ok || !robotsBody.trim()) {
@@ -204,23 +272,80 @@ export async function runSiteProbes(
       id: 'robots-missing',
       category: 'crawlAccess',
       title: 'robots.txt missing or unreachable',
-      detail: `${probeObserved(robots)} for ${robotsUrl}.`,
+      detail: `We requested ${robotsUrl} and could not load a robots.txt file (${probeObserved(robots)}).`,
       severity: 'fail',
       standard: 'established',
       suggestion: `Publish a valid robots.txt at ${robotsUrl}. Keep public medical content crawlable for search bots.`,
       url: robotsUrl,
     });
+    findings.push({
+      id: 'ai-bot-rules',
+      category: 'crawlAccess',
+      title: 'No AI bot rules (robots.txt missing)',
+      detail: `Cannot evaluate explicit AI User-agent groups because robots.txt was missing at ${robotsUrl}.`,
+      severity: 'warn',
+      standard: 'convention',
+      suggestion: `Publish robots.txt with explicit User-agent blocks for AI crawlers (GPTBot, ClaudeBot, Google-Extended, …).`,
+      url: robotsUrl,
+    });
+    findings.push({
+      id: 'content-signals',
+      category: 'crawlAccess',
+      title: 'No Content Signals (robots.txt missing)',
+      detail: `Cannot evaluate Content-Signal directives because robots.txt was missing at ${robotsUrl}.`,
+      severity: 'warn',
+      standard: 'convention',
+      suggestion: `After publishing robots.txt, add Content-Signal: search=yes, ai-input=yes, ai-train=no (or your policy).`,
+      url: robotsUrl,
+    });
   } else {
+    const uaGroups = countRobotsUserAgentGroups(robotsBody);
+    const sitemapRefs = parseRobotsSitemapUrls(robotsBody, origin);
     findings.push({
       id: 'robots-present',
       category: 'crawlAccess',
       title: 'robots.txt is reachable',
-      detail: `${probeObserved(robots)} for ${robotsUrl}.`,
+      detail: `We found robots.txt at ${robotsUrl} (${probeObserved(robots)}). ${uaGroups} User-agent group${uaGroups === 1 ? '' : 's'}; ${sitemapRefs.length} Sitemap: directive${sitemapRefs.length === 1 ? '' : 's'}${sitemapRefs.length ? ` (${sitemapRefs.slice(0, 2).join(', ')}${sitemapRefs.length > 2 ? ', …' : ''})` : ''}.`,
       severity: 'pass',
       standard: 'established',
       suggestion: '',
       url: robotsUrl,
     });
+
+    const explicitBots = explicitAiBotUserAgents(robotsBody);
+    findings.push({
+      id: 'ai-bot-rules',
+      category: 'crawlAccess',
+      title: explicitBots.length
+        ? `Explicit AI bot rules (${explicitBots.length})`
+        : 'No explicit AI bot User-agent groups',
+      detail: explicitBots.length
+        ? `robots.txt declares explicit User-agent groups for: ${explicitBots.join(', ')}.`
+        : `We parsed ${robotsUrl} and found no explicit User-agent lines for named AI crawlers (GPTBot, ClaudeBot, Google-Extended, …). Only User-agent: * (or other non-AI agents) was present.`,
+      severity: explicitBots.length ? 'pass' : 'warn',
+      standard: 'convention',
+      suggestion: explicitBots.length
+        ? ''
+        : `Add explicit User-agent blocks for AI crawlers you care about in ${robotsUrl} (Allow or Disallow). Do not rely only on User-agent: *.`,
+      url: robotsUrl,
+    });
+
+    const contentSignals = parseContentSignals(robotsBody);
+    findings.push({
+      id: 'content-signals',
+      category: 'crawlAccess',
+      title: contentSignals.length ? 'Content Signals present' : 'No Content Signals',
+      detail: contentSignals.length
+        ? `Found Content-Signal in robots.txt: ${contentSignals.join(' | ')}.`
+        : `We checked ${robotsUrl} for Content-Signal directives (search / ai-train / ai-input) and found none.`,
+      severity: contentSignals.length ? 'pass' : 'warn',
+      standard: 'convention',
+      suggestion: contentSignals.length
+        ? ''
+        : `Add Content-Signal: search=yes, ai-input=yes, ai-train=no (adjust to policy) in ${robotsUrl}.`,
+      url: robotsUrl,
+    });
+
     for (const bot of AI_SEARCH_BOTS) {
       const blocked = blockedByRobots(robotsBody, bot);
       findings.push({
@@ -267,7 +392,6 @@ export async function runSiteProbes(
   }
 
   const sitemapUrl = new URL('/sitemap.xml', origin).toString();
-  await onPhase?.('sitemap', sitemapUrl);
   let sitemap = await probe('/sitemap.xml');
   let resolvedSitemapUrl = sitemapUrl;
 
@@ -276,7 +400,7 @@ export async function runSiteProbes(
       .filter((url) => url !== sitemapUrl)
       .slice(0, 3);
     for (const candidate of candidates) {
-      await onPhase?.('sitemap', candidate);
+      await onPhase?.('probes', candidate);
       log(`probe GET ${candidate} (robots.txt Sitemap:)`);
       const unlocked = await fetchGeoResource(candidate, liveConfig, auditId, log);
       liveConfig = unlocked.config;
@@ -290,16 +414,19 @@ export async function runSiteProbes(
   }
 
   const sitemapOk = looksLikeSitemap(sitemap);
+  const robotsSitemapUrls = robots.ok && robotsBody.trim() ? parseRobotsSitemapUrls(robotsBody, origin) : [];
   findings.push({
     id: 'sitemap',
     category: 'crawlAccess',
-    title: sitemapOk ? 'sitemap.xml found' : 'sitemap.xml missing',
-    detail: `${probeObserved(sitemap)} for ${resolvedSitemapUrl}.`,
-    severity: sitemapOk ? 'pass' : 'warn',
+    title: sitemapOk ? 'Sitemap found' : 'No sitemap found',
+    detail: sitemapOk
+      ? `We found a sitemap at ${resolvedSitemapUrl} (${probeObserved(sitemap)})${resolvedSitemapUrl !== sitemapUrl ? ' via a Sitemap: directive in robots.txt' : ''}.`
+      : `We checked ${sitemapUrl} and for Sitemap: directives in robots.txt${robotsSitemapUrls.length ? ` (tried ${robotsSitemapUrls.slice(0, 3).join(', ')})` : ''}, but could not find a sitemap.`,
+    severity: sitemapOk ? 'pass' : 'fail',
     standard: 'established',
     suggestion: sitemapOk
       ? ''
-      : `Publish sitemap.xml (or a sitemap index) at ${sitemapUrl} so agents and search engines can discover URLs.`,
+      : `Publish sitemap.xml (or a sitemap index) at ${sitemapUrl}, or add a Sitemap: line in robots.txt, so agents and search engines can discover URLs.`,
     url: resolvedSitemapUrl,
   });
 
@@ -407,18 +534,31 @@ export async function runSiteProbes(
   });
 
   const mcpUrl = new URL('/.well-known/mcp.json', origin).toString();
+  const mcpCardUrl = new URL('/.well-known/mcp/server-card.json', origin).toString();
   const mcp = await probe('/.well-known/mcp.json');
+  let mcpCard = { ok: false, statusCode: null as number | null, contentType: undefined as string | undefined, error: null as string | null };
+  if (!mcp.ok) {
+    const card = await probe('/.well-known/mcp/server-card.json');
+    mcpCard = card;
+  }
+  const mcpOk = mcp.ok || mcpCard.ok;
+  const mcpResolved = mcp.ok ? mcpUrl : mcpCard.ok ? mcpCardUrl : mcpUrl;
+  const mcpObserved = mcp.ok
+    ? `${probeObserved(mcp)} for ${mcpUrl}`
+    : mcpCard.ok
+      ? `${probeObserved(mcpCard)} for ${mcpCardUrl}`
+      : `No /.well-known/mcp.json (${probeObserved(mcp)}) and no /.well-known/mcp/server-card.json (${probeObserved(mcpCard)})`;
   findings.push({
     id: 'mcp-json',
     category: 'discovery',
-    title: mcp.ok ? 'mcp.json found' : 'No /.well-known/mcp.json',
-    detail: `${probeObserved(mcp)} for ${mcpUrl}. Emerging agent discovery file.`,
-    severity: mcp.ok ? 'pass' : 'warn',
+    title: mcpOk ? 'MCP discovery file found' : 'No MCP discovery file',
+    detail: `${mcpObserved}. Emerging agent discovery (mcp.json or MCP server-card).`,
+    severity: mcpOk ? 'pass' : 'warn',
     standard: 'emerging',
-    suggestion: mcp.ok
+    suggestion: mcpOk
       ? ''
-      : `Optional: publish ${mcpUrl} so agents can discover MCP endpoints for this origin. Emerging convention, not a ranking factor.`,
-    url: mcpUrl,
+      : `Optional: publish ${mcpUrl} or ${mcpCardUrl} so agents can discover MCP endpoints for this origin. Emerging convention, not a ranking factor.`,
+    url: mcpResolved,
   });
 
   const tdmrepUrl = new URL('/.well-known/tdmrep.json', origin).toString();
@@ -493,6 +633,170 @@ export async function runSiteProbes(
       : `Consider sending a Last-Modified header on ${homeUrl} so crawlers can assess homepage freshness. Many CDNs omit it in favor of ETag/Cache-Control — that is common, but Last-Modified remains a useful freshness signal.`,
     url: homeUrl,
   });
+
+  const linkRaw = md.headers['link'] || '';
+  const linkEntries = parseLinkHeader(linkRaw);
+  const usefulRels = linkEntries
+    .map((e) => e.rel)
+    .filter((r) => /api-catalog|alternate|describedby|type|service-desc|service-doc/i.test(r));
+  findings.push({
+    id: 'link-headers',
+    category: 'discovery',
+    title: linkEntries.length ? 'Link headers present' : 'No Link headers',
+    detail: linkEntries.length
+      ? `GET ${homeUrl} returned Link header(s) with ${linkEntries.length} entr${linkEntries.length === 1 ? 'y' : 'ies'}${usefulRels.length ? ` (rel: ${[...new Set(usefulRels)].slice(0, 5).join(', ')})` : ''}.`
+      : `We checked the Link response header on ${homeUrl} (RFC 8288) and found none.`,
+    severity: linkEntries.length ? 'pass' : 'warn',
+    standard: 'convention',
+    suggestion: linkEntries.length
+      ? ''
+      : `Add Link headers on ${homeUrl}, e.g. Link: </.well-known/api-catalog>; rel="api-catalog".`,
+    url: homeUrl,
+  });
+
+  const signatureAgent = (md.headers['signature-agent'] || '').trim();
+  const sigDirUrl = new URL('/.well-known/http-message-signatures-directory', origin).toString();
+  const sigDir = await probe('/.well-known/http-message-signatures-directory');
+  const webBotAuthOk = Boolean(signatureAgent) || sigDir.ok;
+  findings.push({
+    id: 'web-bot-auth',
+    category: 'crawlAccess',
+    title: webBotAuthOk ? 'Web Bot Auth signal present' : 'No Web Bot Auth signal',
+    detail: webBotAuthOk
+      ? [
+          signatureAgent ? `Signature-Agent header on homepage: ${signatureAgent.slice(0, 120)}` : null,
+          sigDir.ok ? `Keys directory at ${sigDirUrl} (${probeObserved(sigDir)})` : null,
+        ]
+          .filter(Boolean)
+          .join('; ')
+      : `No Signature-Agent header on ${homeUrl} and no ${sigDirUrl} (${probeObserved(sigDir)}).`,
+    severity: webBotAuthOk ? 'pass' : 'warn',
+    standard: 'emerging',
+    suggestion: webBotAuthOk
+      ? ''
+      : `Optional: publish ${sigDirUrl} if this origin runs bots that authenticate to other sites (Web Bot Auth). Content-only sites can ignore this.`,
+    url: sigDirUrl,
+  });
+
+  let hostname = '';
+  try {
+    hostname = new URL(origin).hostname;
+  } catch {
+    hostname = '';
+  }
+  if (hostname) {
+    await onPhase?.('probes', `_agent.${hostname} (DNS TXT)`);
+  }
+  const dnsAid = hostname
+    ? await resolveDnsAid(hostname)
+    : { ok: false, records: [] as string[], error: 'invalid origin' };
+  findings.push({
+    id: 'dns-aid',
+    category: 'discovery',
+    title: dnsAid.ok ? 'DNS AID record present' : 'No DNS AID record',
+    detail: dnsAid.ok
+      ? `TXT at _agent.${hostname}: ${dnsAid.records[0]?.slice(0, 200)}${(dnsAid.records[0]?.length || 0) > 200 ? '…' : ''}`
+      : `We queried TXT _agent.${hostname || '(host)'} and found no AID / DNS-AID record${dnsAid.error ? ` (${dnsAid.error})` : ''}.`,
+    severity: dnsAid.ok ? 'pass' : 'warn',
+    standard: 'emerging',
+    suggestion: dnsAid.ok
+      ? ''
+      : `Optional: publish DNS TXT at _agent.${hostname || 'example.com'} with AID fields (v=aid2;p=mcp;u=https://…).`,
+    url: origin,
+  });
+
+  const capabilityProbes: Array<{
+    id: string;
+    paths: string[];
+    titleOk: string;
+    titleMissing: string;
+    suggestion: string;
+  }> = [
+    {
+      id: 'api-catalog',
+      paths: ['/.well-known/api-catalog'],
+      titleOk: 'API Catalog found',
+      titleMissing: 'No API Catalog',
+      suggestion: 'Publish /.well-known/api-catalog (RFC 9727) listing public APIs.',
+    },
+    {
+      id: 'oauth-as',
+      paths: ['/.well-known/oauth-authorization-server'],
+      titleOk: 'OAuth AS metadata found',
+      titleMissing: 'No OAuth authorization server metadata',
+      suggestion: 'Publish /.well-known/oauth-authorization-server (RFC 8414) if agents need to sign in.',
+    },
+    {
+      id: 'oauth-protected-resource',
+      paths: ['/.well-known/oauth-protected-resource'],
+      titleOk: 'OAuth protected resource metadata found',
+      titleMissing: 'No OAuth protected resource metadata',
+      suggestion: 'Publish /.well-known/oauth-protected-resource (RFC 9728).',
+    },
+    {
+      id: 'auth-md',
+      paths: ['/auth.md'],
+      titleOk: 'Auth.md found',
+      titleMissing: 'No Auth.md',
+      suggestion: 'Publish /auth.md with agent authentication instructions.',
+    },
+    {
+      id: 'a2a-agent-card',
+      paths: ['/.well-known/agent-card.json', '/.well-known/agent.json'],
+      titleOk: 'A2A agent card found',
+      titleMissing: 'No A2A agent card',
+      suggestion: 'Publish /.well-known/agent-card.json (or /.well-known/agent.json) for Agent2Agent discovery.',
+    },
+    {
+      id: 'agent-skills',
+      paths: ['/.well-known/agent-skills/index.json', '/.well-known/skills/index.json'],
+      titleOk: 'Agent Skills index found',
+      titleMissing: 'No Agent Skills index',
+      suggestion: 'Publish /.well-known/agent-skills/index.json listing skill documents.',
+    },
+    {
+      id: 'webmcp',
+      paths: ['/mcp-widget.js'],
+      titleOk: 'WebMCP widget found',
+      titleMissing: 'No WebMCP widget',
+      suggestion: 'If you expose WebMCP, serve /mcp-widget.js (or document the widget URL).',
+    },
+    {
+      id: 'ard',
+      paths: ['/.well-known/agent-resources.json'],
+      titleOk: 'ARD manifest found',
+      titleMissing: 'No ARD manifest',
+      suggestion: 'Publish /.well-known/agent-resources.json listing agent-facing resources.',
+    },
+  ];
+
+  for (const cap of capabilityProbes) {
+    let foundPath = '';
+    let foundResource: Awaited<ReturnType<typeof probe>> | null = null;
+    const attempts: string[] = [];
+    for (const path of cap.paths) {
+      const resource = await probe(path);
+      const url = new URL(path, origin).toString();
+      attempts.push(`${url} (${probeObserved(resource)})`);
+      if (resource.ok) {
+        foundPath = url;
+        foundResource = resource;
+        break;
+      }
+    }
+    findings.push({
+      id: cap.id,
+      category: 'capabilities',
+      title: foundResource ? cap.titleOk : cap.titleMissing,
+      detail: foundResource
+        ? `${probeObserved(foundResource)} for ${foundPath}.`
+        : `Checked ${attempts.join('; ')} — not found.`,
+      severity: foundResource ? 'pass' : 'warn',
+      standard: 'emerging',
+      suggestion: foundResource ? '' : cap.suggestion,
+      url: foundPath || new URL(cap.paths[0], origin).toString(),
+    });
+  }
 
   findings.push({
     id: 'https-origin',

@@ -10,12 +10,20 @@ const baseCategories = {
   negotiation: 70,
   discovery: 70,
   citeability: 70,
+  capabilities: null as number | null,
 };
 
 test('freezeSnapshot stores the current score model version', () => {
   const snap = freezeSnapshot({
     score: 81,
-    categories: { crawlAccess: 80, extractability: 80, negotiation: 80, discovery: 80, citeability: 90 },
+    categories: {
+      crawlAccess: 80,
+      extractability: 80,
+      negotiation: 80,
+      discovery: 80,
+      citeability: 90,
+      capabilities: null,
+    },
     findings: [],
     playbook: [],
     pages: [],

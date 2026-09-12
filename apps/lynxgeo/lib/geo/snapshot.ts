@@ -6,6 +6,8 @@ export type FrozenSnapshot = {
   score: number;
   scoreModelVersion: string;
   categories: CategoryScores;
+  /** Cloudflare-aligned Agent Readiness (0–100). Absent on pre-geo-1.4.0 snapshots. */
+  agentReadiness?: number;
   findings: Finding[];
   playbook: PlaybookItem[];
   pages: { url: string; status: string; statusCode: number | null }[];
@@ -18,11 +20,13 @@ export function freezeSnapshot(input: {
   findings: Finding[];
   playbook: PlaybookItem[];
   pages: FrozenSnapshot['pages'];
+  agentReadiness?: number;
 }): FrozenSnapshot {
   return {
     score: input.score,
     scoreModelVersion: SCORE_MODEL_VERSION,
     categories: input.categories,
+    agentReadiness: input.agentReadiness,
     findings: input.findings,
     playbook: input.playbook,
     pages: input.pages,
@@ -92,6 +96,7 @@ const CATEGORY_KEYS: (keyof CategoryScores)[] = [
   'negotiation',
   'discovery',
   'citeability',
+  'capabilities',
 ];
 
 function snapshotPageKeys(snapshot: FrozenSnapshot): Set<string> {
@@ -129,12 +134,18 @@ function issueAppliesToSharedPages(f: Finding, sharedPages: Set<string>): boolea
 }
 
 function categoryDeltas(from: FrozenSnapshot, to: FrozenSnapshot): CategoryDelta[] {
-  return CATEGORY_KEYS.map((key) => ({
-    key,
-    from: from.categories[key] ?? 0,
-    to: to.categories[key] ?? 0,
-    delta: (to.categories[key] ?? 0) - (from.categories[key] ?? 0),
-  }));
+  return CATEGORY_KEYS.map((key) => {
+    const fromVal = from.categories[key];
+    const toVal = to.categories[key];
+    const fromNum = typeof fromVal === 'number' ? fromVal : 0;
+    const toNum = typeof toVal === 'number' ? toVal : 0;
+    return {
+      key,
+      from: fromNum,
+      to: toNum,
+      delta: toNum - fromNum,
+    };
+  });
 }
 
 function severityCounts(issues: Finding[]): SeverityCounts {

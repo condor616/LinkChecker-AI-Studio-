@@ -1,10 +1,16 @@
 import { isGeoNonHtmlTarget } from './document-url';
 
-export const SCORE_MODEL_VERSION = 'geo-1.2.0';
+export const SCORE_MODEL_VERSION = 'geo-1.4.0';
 
 export type FindingSeverity = 'pass' | 'warn' | 'fail';
 export type FindingStandard = 'established' | 'convention' | 'emerging';
-export type FindingCategory = 'crawlAccess' | 'extractability' | 'negotiation' | 'discovery' | 'citeability';
+export type FindingCategory =
+  | 'crawlAccess'
+  | 'extractability'
+  | 'negotiation'
+  | 'discovery'
+  | 'citeability'
+  | 'capabilities';
 export type CriterionScope = 'site' | 'page';
 
 export type Finding = {
@@ -30,15 +36,56 @@ export type CategoryScores = {
   negotiation: number;
   discovery: number;
   citeability: number;
+  /** null when informational (origin did not advertise API/MCP); number when promoted into the score. */
+  capabilities: number | null;
 };
 
+/** Base GEO mix (sums to 1). Capabilities is 0 until promoted. geo-1.4.0 shifts weight toward discovery. */
 export const CATEGORY_WEIGHTS: Record<FindingCategory, number> = {
-  crawlAccess: 0.28,
-  extractability: 0.28,
+  crawlAccess: 0.26,
+  extractability: 0.24,
   negotiation: 0.18,
-  discovery: 0.16,
+  discovery: 0.22,
   citeability: 0.1,
+  capabilities: 0,
 };
+
+/** When any capabilities check passes, blend this share into overall. */
+export const CAPABILITIES_PROMOTED_WEIGHT = 0.05;
+
+export const SCORED_CATEGORY_KEYS: Array<Exclude<FindingCategory, 'capabilities'>> = [
+  'crawlAccess',
+  'extractability',
+  'negotiation',
+  'discovery',
+  'citeability',
+];
+
+/**
+ * Cloudflare-aligned Agent Readiness keys (site-level). Equal weight; pass = credit, warn/fail/missing = 0.
+ * Capabilities keys always count here even when informational for GEO overall.
+ */
+export const AGENT_READINESS_KEYS = [
+  'robots',
+  'sitemap',
+  'link-headers',
+  'dns-aid',
+  'accept-markdown',
+  'vary-accept',
+  'ai-bot-rules',
+  'content-signals',
+  'web-bot-auth',
+  'api-catalog',
+  'oauth-as',
+  'oauth-protected-resource',
+  'auth-md',
+  'a2a-agent-card',
+  'agent-skills',
+  'webmcp',
+  'ard',
+] as const;
+
+export type AgentReadinessKey = (typeof AGENT_READINESS_KEYS)[number];
 
 /** Points one observation (or one page in a rate) contributes before category averaging. */
 export const SEVERITY_POINTS: Record<FindingSeverity, number> = {
@@ -71,9 +118,14 @@ export type CriterionDefinition = {
   /** Shown on the report, excluded from the numeric score. */
   informational?: boolean;
   why: string;
+  /** Playbook text for "Copy agent prompt" (Cloudflare-style). */
+  agentPrompt?: string;
 };
 
-export const CATEGORY_META: Record<FindingCategory, { label: string; weight: number; summary: string }> = {
+export const CATEGORY_META: Record<
+  FindingCategory,
+  { label: string; weight: number; summary: string; informationalByDefault?: boolean }
+> = {
   crawlAccess: {
     label: 'Crawl access',
     weight: CATEGORY_WEIGHTS.crawlAccess,
@@ -93,12 +145,19 @@ export const CATEGORY_META: Record<FindingCategory, { label: string; weight: num
   discovery: {
     label: 'Discovery',
     weight: CATEGORY_WEIGHTS.discovery,
-    summary: 'Optional agent maps (llms.txt, mcp.json, TDMRep). These are not Google ranking factors.',
+    summary: 'Agent maps and discovery signals (llms.txt, Link headers, DNS-AID, TDMRep). Not Google ranking factors.',
   },
   citeability: {
     label: 'Citeability',
     weight: CATEGORY_WEIGHTS.citeability,
     summary: 'Signals that make a page quotable: HTTPS, titles, dates, lean HTML. 10% of the overall score.',
+  },
+  capabilities: {
+    label: 'API / Auth / MCP',
+    weight: CATEGORY_WEIGHTS.capabilities,
+    informationalByDefault: true,
+    summary:
+      'Agent protocol discovery (API catalog, OAuth, MCP, skills). Informational unless the origin advertises at least one; then scored lightly.',
   },
 };
 
@@ -274,9 +333,47 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     category: 'crawlAccess',
     standard: 'established',
     scope: 'site',
-    issueSeverity: 'warn',
+    issueSeverity: 'fail',
     scoreGroup: 'sitemap',
-    why: 'A sitemap helps search engines and agents discover URLs. Missing is a warning, not a hard fail — many sites list URLs only via links.',
+    why: 'A sitemap (or Sitemap: in robots.txt) is how agents and search engines discover URLs without walking every link. Missing both locations is a fail.',
+    agentPrompt:
+      'Publish an XML sitemap (urlset or sitemapindex) at /sitemap.xml, or declare Sitemap: https://example.com/sitemap.xml in robots.txt. Follow https://www.sitemaps.org/protocol.html.',
+  },
+  {
+    key: 'ai-bot-rules',
+    title: 'AI bot rules in robots.txt',
+    category: 'crawlAccess',
+    standard: 'convention',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'ai-bot-rules',
+    why: 'Cloudflare Agent Readiness expects explicit User-agent groups for named AI crawlers (not only User-agent: *). Convention weight so it cannot dominate robots.txt presence.',
+    agentPrompt:
+      'In robots.txt, add explicit User-agent blocks for AI crawlers you care about (e.g. GPTBot, ClaudeBot, Google-Extended, PerplexityBot) with Allow or Disallow rules. Do not rely only on User-agent: *.',
+  },
+  {
+    key: 'content-signals',
+    title: 'Content Signals',
+    category: 'crawlAccess',
+    standard: 'convention',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'content-signals',
+    why: 'Content-Signal in robots.txt declares search / ai-train / ai-input preferences for AI use of content.',
+    agentPrompt:
+      'Add a Content-Signal directive to robots.txt, for example: Content-Signal: search=yes, ai-input=yes, ai-train=no',
+  },
+  {
+    key: 'web-bot-auth',
+    title: 'Web Bot Auth',
+    category: 'crawlAccess',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'web-bot-auth',
+    why: 'Web Bot Auth lets sites publish keys so signed bots can be verified (Signature-Agent and/or /.well-known/http-message-signatures-directory).',
+    agentPrompt:
+      'If this origin runs bots that call other sites, publish HTTP Message Signatures keys at /.well-known/http-message-signatures-directory (IETF Web Bot Auth). Content-only sites may skip this.',
   },
   {
     key: 'noindex',
@@ -471,13 +568,15 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
   },
   {
     key: 'mcp-json',
-    title: 'mcp.json',
+    title: 'MCP discovery',
     category: 'discovery',
     standard: 'emerging',
     scope: 'site',
     issueSeverity: 'warn',
     scoreGroup: 'mcp-json',
-    why: 'Emerging /.well-known/mcp.json discovery file for MCP endpoints. Weighted 20% so an experimental file cannot dominate discovery.',
+    why: 'Emerging MCP discovery via /.well-known/mcp.json or /.well-known/mcp/server-card.json. Weighted 20% so an experimental file cannot dominate discovery.',
+    agentPrompt:
+      'Publish either /.well-known/mcp.json or /.well-known/mcp/server-card.json describing your MCP server (tools, transport, auth). See the Model Context Protocol specification.',
   },
   {
     key: 'tdmrep',
@@ -488,6 +587,134 @@ export const CRITERION_CATALOG: CriterionDefinition[] = [
     issueSeverity: 'warn',
     scoreGroup: 'tdmrep',
     why: 'Emerging TDM Reservation Protocol: /.well-known/tdmrep.json and/or tdm-reservation HTTP header. Weighted 20% so an experimental signal cannot dominate discovery.',
+  },
+  {
+    key: 'link-headers',
+    title: 'Link headers',
+    category: 'discovery',
+    standard: 'convention',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'link-headers',
+    why: 'RFC 8288 Link response headers let agents discover resources (api-catalog, alternate, describedby) without parsing HTML.',
+    agentPrompt:
+      'On the homepage HTTP response, send Link headers (RFC 8288), e.g. Link: </.well-known/api-catalog>; rel="api-catalog" or Link: </page.md>; rel="alternate"; type="text/markdown".',
+  },
+  {
+    key: 'dns-aid',
+    title: 'DNS-AID / AID',
+    category: 'discovery',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'dns-aid',
+    why: 'DNS TXT at _agent.<host> (AID / DNS-AID) advertises where agents should start (protocol + URI).',
+    agentPrompt:
+      'Publish a DNS TXT record at _agent.your-domain with AID fields, e.g. v=aid2;p=mcp;u=https://api.example.com/mcp',
+  },
+  {
+    key: 'api-catalog',
+    title: 'API Catalog',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'api-catalog',
+    informational: true,
+    why: 'RFC 9727 API Catalog at /.well-known/api-catalog. Informational unless the origin advertises agent APIs.',
+    agentPrompt:
+      'Publish /.well-known/api-catalog (RFC 9727) listing public APIs with links to OpenAPI/docs.',
+  },
+  {
+    key: 'oauth-as',
+    title: 'OAuth authorization server',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'oauth-as',
+    informational: true,
+    why: 'RFC 8414 OAuth Authorization Server Metadata at /.well-known/oauth-authorization-server.',
+    agentPrompt:
+      'If agents must log in, publish /.well-known/oauth-authorization-server (RFC 8414) so they can discover the authorization endpoint.',
+  },
+  {
+    key: 'oauth-protected-resource',
+    title: 'OAuth protected resource',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'oauth-protected-resource',
+    informational: true,
+    why: 'RFC 9728 OAuth Protected Resource Metadata at /.well-known/oauth-protected-resource.',
+    agentPrompt:
+      'Publish /.well-known/oauth-protected-resource (RFC 9728) pointing at your authorization server(s).',
+  },
+  {
+    key: 'auth-md',
+    title: 'Auth.md',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'auth-md',
+    informational: true,
+    why: 'Agent-oriented auth instructions at /auth.md.',
+    agentPrompt:
+      'Publish /auth.md with concise instructions for how an AI agent should authenticate to this site.',
+  },
+  {
+    key: 'a2a-agent-card',
+    title: 'A2A agent card',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'a2a-agent-card',
+    informational: true,
+    why: 'Agent2Agent card at /.well-known/agent.json or /.well-known/agent-card.json.',
+    agentPrompt:
+      'Publish an A2A agent card at /.well-known/agent-card.json (or /.well-known/agent.json) describing skills and endpoints.',
+  },
+  {
+    key: 'agent-skills',
+    title: 'Agent Skills',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'agent-skills',
+    informational: true,
+    why: 'Skills index at /.well-known/agent-skills/index.json or /.well-known/skills/index.json.',
+    agentPrompt:
+      'Publish /.well-known/agent-skills/index.json listing skill documents agents can load for this origin.',
+  },
+  {
+    key: 'webmcp',
+    title: 'WebMCP',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'webmcp',
+    informational: true,
+    why: 'WebMCP widget script (e.g. /mcp-widget.js) for in-page agent tools.',
+    agentPrompt:
+      'If you expose WebMCP, serve the widget script (commonly /mcp-widget.js) and document how agents attach.',
+  },
+  {
+    key: 'ard',
+    title: 'ARD manifest',
+    category: 'capabilities',
+    standard: 'emerging',
+    scope: 'site',
+    issueSeverity: 'warn',
+    scoreGroup: 'ard',
+    informational: true,
+    why: 'Agent Resources Directory at /.well-known/agent-resources.json.',
+    agentPrompt:
+      'Publish /.well-known/agent-resources.json listing agent-facing resources for this origin.',
   },
   {
     key: 'https-origin',
@@ -634,9 +861,15 @@ type ScoreBucket = {
   scope: CriterionScope;
 };
 
-function scoreCategory(findings: Finding[], category: FindingCategory, pageCount: number): number {
+function scoreCategory(
+  findings: Finding[],
+  category: FindingCategory,
+  pageCount: number,
+  options?: { scoreInformational?: boolean; emptyScore?: number | null },
+): number | null {
   const items = findings.filter((f) => f.category === category);
-  if (items.length === 0) return 80;
+  const emptyScore = options?.emptyScore === undefined ? 80 : options.emptyScore;
+  if (items.length === 0) return emptyScore;
 
   const buckets = new Map<string, ScoreBucket>();
   for (const criterion of groupCriteria(items)) {
@@ -663,7 +896,7 @@ function scoreCategory(findings: Finding[], category: FindingCategory, pageCount
   let weighted = 0;
   let weightTotal = 0;
   for (const bucket of buckets.values()) {
-    if (bucket.informational) continue;
+    if (bucket.informational && !options?.scoreInformational) continue;
     let { pass, warn, fail } = bucket;
     if (bucket.scope === 'page' && bucket.sparse && pageCount > 0) {
       const observed = pass + warn + fail;
@@ -675,27 +908,80 @@ function scoreCategory(findings: Finding[], category: FindingCategory, pageCount
     weightTotal += weight;
   }
 
-  if (weightTotal === 0) return 80;
+  if (weightTotal === 0) return emptyScore;
   return Math.round(Math.max(0, Math.min(100, weighted / weightTotal)));
 }
 
-export function aggregateScore(findings: Finding[]): { overall: number; categories: CategoryScores } {
+/** Capabilities stays out of the numeric score until any check passes (origin advertised a protocol). */
+export function capabilitiesPromoted(findings: Finding[]): boolean {
+  return findings.some((f) => f.category === 'capabilities' && f.severity === 'pass');
+}
+
+function worseFindingSeverity(a: FindingSeverity, b: FindingSeverity): FindingSeverity {
+  if (a === 'fail' || b === 'fail') return 'fail';
+  if (a === 'warn' || b === 'warn') return 'warn';
+  return 'pass';
+}
+
+/**
+ * Cloudflare-aligned Agent Readiness (0–100): equal-weight binary pass across AGENT_READINESS_KEYS.
+ * Warn, fail, or missing findings count as not passed.
+ */
+export function computeAgentReadiness(findings: Finding[]): number {
+  const byKey = new Map<string, FindingSeverity>();
+  for (const f of findings) {
+    const key = findingCriterionKey(f);
+    const prev = byKey.get(key);
+    byKey.set(key, prev ? worseFindingSeverity(prev, f.severity) : f.severity);
+  }
+  let passed = 0;
+  for (const key of AGENT_READINESS_KEYS) {
+    if (byKey.get(key) === 'pass') passed += 1;
+  }
+  return Math.round((passed / AGENT_READINESS_KEYS.length) * 100);
+}
+
+export type AggregateScoreResult = {
+  overall: number;
+  categories: CategoryScores;
+  /** Cloudflare-aligned protocol subscore; independent of GEO overall. */
+  agentReadiness: number;
+};
+
+export function aggregateScore(findings: Finding[]): AggregateScoreResult {
   const pageCount = countCrawledPages(findings);
   const categories: CategoryScores = {
-    crawlAccess: scoreCategory(findings, 'crawlAccess', pageCount),
-    extractability: scoreCategory(findings, 'extractability', pageCount),
-    negotiation: scoreCategory(findings, 'negotiation', pageCount),
-    discovery: scoreCategory(findings, 'discovery', pageCount),
-    citeability: scoreCategory(findings, 'citeability', pageCount),
+    crawlAccess: scoreCategory(findings, 'crawlAccess', pageCount) ?? 80,
+    extractability: scoreCategory(findings, 'extractability', pageCount) ?? 80,
+    negotiation: scoreCategory(findings, 'negotiation', pageCount) ?? 80,
+    discovery: scoreCategory(findings, 'discovery', pageCount) ?? 80,
+    citeability: scoreCategory(findings, 'citeability', pageCount) ?? 80,
+    capabilities: null,
   };
-  const overall = Math.round(
+
+  const promoted = capabilitiesPromoted(findings);
+  if (promoted) {
+    categories.capabilities = scoreCategory(findings, 'capabilities', pageCount, {
+      scoreInformational: true,
+      emptyScore: null,
+    });
+  }
+
+  let overall = Math.round(
     categories.crawlAccess * CATEGORY_WEIGHTS.crawlAccess +
       categories.extractability * CATEGORY_WEIGHTS.extractability +
       categories.negotiation * CATEGORY_WEIGHTS.negotiation +
       categories.discovery * CATEGORY_WEIGHTS.discovery +
       categories.citeability * CATEGORY_WEIGHTS.citeability,
   );
-  return { overall, categories };
+
+  if (promoted && typeof categories.capabilities === 'number') {
+    overall = Math.round(
+      overall * (1 - CAPABILITIES_PROMOTED_WEIGHT) + categories.capabilities * CAPABILITIES_PROMOTED_WEIGHT,
+    );
+  }
+
+  return { overall, categories, agentReadiness: computeAgentReadiness(findings) };
 }
 
 export function findingUrls(f: Finding & { urls?: string[] }): string[] {
@@ -837,6 +1123,10 @@ export type ReportCriterion = {
   detail: string;
   suggestion: string;
   urls: { pass: CriterionUrl[]; warn: CriterionUrl[]; fail: CriterionUrl[] };
+  scope?: CriterionScope;
+  informational?: boolean;
+  agentPrompt?: string;
+  why?: string;
 };
 
 export function findingCriterionKey(f: Finding): string {
@@ -1018,6 +1308,10 @@ export function groupCriteria(findings: Finding[], options?: { baseUrl?: string 
       detail: summarizeGroupDetail(group, urlList),
       suggestion: strippedSuggestions[0] || '',
       urls,
+      scope: CRITERION_BY_KEY.get(key)?.scope,
+      informational: CRITERION_BY_KEY.get(key)?.informational,
+      agentPrompt: CRITERION_BY_KEY.get(key)?.agentPrompt,
+      why: CRITERION_BY_KEY.get(key)?.why,
     });
   }
 

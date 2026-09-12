@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   aggregateScore,
+  AGENT_READINESS_KEYS,
   CATEGORY_WEIGHTS,
   collectAuditFindings,
+  computeAgentReadiness,
   CRITERION_CATALOG,
   groupCriteria,
   playbook,
@@ -13,15 +15,17 @@ import {
   type Finding,
 } from '../lib/geo/score';
 
-test('geo-1.2.0 keeps category weights that sum to 1.00', () => {
-  const sum = Object.values(CATEGORY_WEIGHTS).reduce((a, b) => a + b, 0);
+test('geo-1.4.0 keeps GEO category weights that sum to 1.00', () => {
+  const scored = ['crawlAccess', 'extractability', 'negotiation', 'discovery', 'citeability'] as const;
+  const sum = scored.reduce((a, k) => a + CATEGORY_WEIGHTS[k], 0);
   assert.equal(Number(sum.toFixed(2)), 1);
-  assert.equal(CATEGORY_WEIGHTS.crawlAccess, 0.28);
-  assert.equal(CATEGORY_WEIGHTS.extractability, 0.28);
+  assert.equal(CATEGORY_WEIGHTS.crawlAccess, 0.26);
+  assert.equal(CATEGORY_WEIGHTS.extractability, 0.24);
   assert.equal(CATEGORY_WEIGHTS.negotiation, 0.18);
-  assert.equal(CATEGORY_WEIGHTS.discovery, 0.16);
+  assert.equal(CATEGORY_WEIGHTS.discovery, 0.22);
   assert.equal(CATEGORY_WEIGHTS.citeability, 0.1);
-  assert.equal(SCORE_MODEL_VERSION, 'geo-1.2.0');
+  assert.equal(CATEGORY_WEIGHTS.capabilities, 0);
+  assert.equal(SCORE_MODEL_VERSION, 'geo-1.4.0');
 });
 
 test('geo-1.0 weights sum to 1.00 via a perfect score', () => {
@@ -575,6 +579,9 @@ test('catalog lists every scored check', () => {
     'train-Applebot-Extended',
     'train-Diffbot',
     'sitemap',
+    'ai-bot-rules',
+    'content-signals',
+    'web-bot-auth',
     'sitemap-lastmod',
     'http-last-modified',
     'date-unidentified',
@@ -583,6 +590,16 @@ test('catalog lists every scored check', () => {
     'llms-full',
     'mcp-json',
     'tdmrep',
+    'link-headers',
+    'dns-aid',
+    'api-catalog',
+    'oauth-as',
+    'oauth-protected-resource',
+    'auth-md',
+    'a2a-agent-card',
+    'agent-skills',
+    'webmcp',
+    'ard',
     'accept-markdown',
     'vary-accept',
     'https-origin',
@@ -607,4 +624,178 @@ test('catalog lists every scored check', () => {
   ]) {
     assert.ok(keys.includes(key), `missing catalog key ${key}`);
   }
+});
+
+test('capabilities stay informational until any check passes, then blend into overall', () => {
+  const base: Finding[] = [
+    {
+      id: 'robots',
+      category: 'crawlAccess',
+      title: 'ok',
+      detail: '',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+    },
+    {
+      id: 'h1',
+      category: 'extractability',
+      title: 'ok',
+      detail: '',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+    },
+    {
+      id: 'accept-markdown',
+      category: 'negotiation',
+      title: 'ok',
+      detail: '',
+      severity: 'pass',
+      standard: 'convention',
+      suggestion: '',
+    },
+    {
+      id: 'llms-txt',
+      category: 'discovery',
+      title: 'ok',
+      detail: '',
+      severity: 'pass',
+      standard: 'convention',
+      suggestion: '',
+    },
+    {
+      id: 'title',
+      category: 'citeability',
+      title: 'ok',
+      detail: '',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+    },
+  ];
+  const capsWarn: Finding = {
+    id: 'api-catalog',
+    category: 'capabilities',
+    title: 'No API Catalog',
+    detail: '',
+    severity: 'warn',
+    standard: 'emerging',
+    suggestion: 'add',
+  };
+  const capsPass: Finding = {
+    id: 'api-catalog',
+    category: 'capabilities',
+    title: 'API Catalog found',
+    detail: '',
+    severity: 'pass',
+    standard: 'emerging',
+    suggestion: '',
+  };
+  const without = aggregateScore([...base, capsWarn]);
+  assert.equal(without.categories.capabilities, null);
+  assert.equal(without.overall, 100);
+
+  const withPass = aggregateScore([...base, capsPass]);
+  assert.equal(typeof withPass.categories.capabilities, 'number');
+  assert.ok(withPass.categories.capabilities! >= 90);
+  assert.ok(withPass.overall <= 100);
+});
+
+test('sitemap catalog issue severity is fail', () => {
+  const sitemap = CRITERION_CATALOG.find((c) => c.key === 'sitemap');
+  assert.equal(sitemap?.issueSeverity, 'fail');
+});
+
+test('Agent Readiness is binary equal-weight and independent of GEO overall', () => {
+  assert.equal(AGENT_READINESS_KEYS.length, 17);
+  const empty = computeAgentReadiness([]);
+  assert.equal(empty, 0);
+
+  const allPass: Finding[] = AGENT_READINESS_KEYS.map((key) => ({
+    id: key,
+    category: key.startsWith('api-') || key.startsWith('oauth') || key === 'auth-md' || key === 'a2a-agent-card' || key === 'agent-skills' || key === 'webmcp' || key === 'ard'
+      ? 'capabilities'
+      : key === 'accept-markdown' || key === 'vary-accept'
+        ? 'negotiation'
+        : key === 'link-headers' || key === 'dns-aid'
+          ? 'discovery'
+          : 'crawlAccess',
+    title: key,
+    detail: '',
+    severity: 'pass' as const,
+    standard: 'emerging' as const,
+    suggestion: '',
+  }));
+  assert.equal(computeAgentReadiness(allPass), 100);
+  assert.equal(aggregateScore(allPass).agentReadiness, 100);
+
+  const half = allPass.map((f, i) =>
+    i < 8 ? f : { ...f, severity: 'warn' as const },
+  );
+  // 8/17 ≈ 47
+  assert.equal(computeAgentReadiness(half), Math.round((8 / 17) * 100));
+
+  const geoStrong: Finding[] = [
+    {
+      id: 'robots-present',
+      category: 'crawlAccess',
+      title: 'robots',
+      detail: '',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+    },
+    {
+      id: 'sitemap',
+      category: 'crawlAccess',
+      title: 'sitemap',
+      detail: '',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+    },
+    {
+      id: 'accept-markdown',
+      category: 'negotiation',
+      title: 'md',
+      detail: '',
+      severity: 'pass',
+      standard: 'convention',
+      suggestion: '',
+    },
+    {
+      id: 'h1',
+      category: 'extractability',
+      title: 'h1',
+      detail: '',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+      url: 'https://example.com/',
+    },
+    {
+      id: 'title',
+      category: 'citeability',
+      title: 'title',
+      detail: '',
+      severity: 'pass',
+      standard: 'established',
+      suggestion: '',
+      url: 'https://example.com/',
+    },
+    {
+      id: 'content-signals',
+      category: 'crawlAccess',
+      title: 'no signals',
+      detail: '',
+      severity: 'warn',
+      standard: 'convention',
+      suggestion: 'add',
+    },
+  ];
+  const scored = aggregateScore(geoStrong);
+  assert.ok(scored.overall >= 80, `GEO overall was ${scored.overall}`);
+  // Only robots + sitemap + accept-markdown pass among Agent keys → 3/17
+  assert.equal(scored.agentReadiness, Math.round((3 / 17) * 100));
 });
