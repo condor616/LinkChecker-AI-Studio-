@@ -32,10 +32,35 @@ export function runLabelForIndex(
 }
 
 export function countRerunsForMain(
-  allAudits: Array<{ id: string; baselineAuditId?: string | null }>,
+  allAudits: Array<{ id: string; baselineAuditId?: string | null; config?: string | null; name?: string | null }>,
   mainAuditId: string,
 ): number {
-  return allAudits.filter((a) => a.baselineAuditId === mainAuditId && a.id !== mainAuditId).length;
+  return allAudits.filter(
+    (a) => a.baselineAuditId === mainAuditId && a.id !== mainAuditId && !isDateCheckAudit(a),
+  ).length;
+}
+
+/** Date-check follow-ups must not appear as series re-runs in history. */
+export function isDateCheckAudit(audit: { config?: string | null; name?: string | null }): boolean {
+  if (typeof audit.name === 'string' && /\(date check\)\s*$/i.test(audit.name)) return true;
+  if (!audit.config?.trim()) return false;
+  try {
+    const parsed = JSON.parse(audit.config) as Record<string, unknown>;
+    return Boolean(parsed.dateCheckSingleArticle || parsed.dateCheckFromListing);
+  } catch {
+    return false;
+  }
+}
+
+/** Runs that belong on a discovery's history sparkline / series chips. */
+export function isHistorySeriesRun(audit: {
+  id: string;
+  baselineAuditId?: string | null;
+  config?: string | null;
+  name?: string | null;
+}): boolean {
+  if (isDateCheckAudit(audit)) return false;
+  return isMainScan(audit) || isRerun(audit);
 }
 
 const CONFIG_COMPARE_OMIT = new Set(['isTargeted', 'targetUrls', 'name']);

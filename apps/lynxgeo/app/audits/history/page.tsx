@@ -5,8 +5,11 @@ import Link from 'next/link';
 import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatAppDateTime, formatAppDateTimeCompact } from '@/lib/format-datetime';
 import {
   countRerunsForMain,
+  isDateCheckAudit,
+  isHistorySeriesRun,
   isMainScan,
   resolveSeriesId,
 } from '@/lib/geo/series';
@@ -23,14 +26,16 @@ export default function HistoryPage() {
       .then((d) => setAudits(d.audits || []));
   }, []);
 
+  /** One history row per discovery scan — never list re-runs or date-checks as top-level entries. */
   const mainScans = useMemo(
-    () => audits.filter((audit) => isMainScan(audit)),
+    () => audits.filter((audit) => isMainScan(audit) && !isDateCheckAudit(audit)),
     [audits],
   );
 
   const seriesRunsById = useMemo(() => {
     const groups = new Map<string, any[]>();
     for (const audit of audits) {
+      if (!isHistorySeriesRun(audit)) continue;
       const key = resolveSeriesId(audit);
       const list = groups.get(key) || [];
       list.push(audit);
@@ -65,7 +70,10 @@ export default function HistoryPage() {
       const res = await fetch(`/api/audits/${pendingDelete.id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to delete audit');
-      setAudits((prev) => prev.filter((a) => a.id !== pendingDelete.id));
+      const seriesId = resolveSeriesId(pendingDelete);
+      setAudits((prev) =>
+        prev.filter((a) => a.id !== pendingDelete.id && resolveSeriesId(a) !== seriesId),
+      );
       setPendingDelete(null);
     } catch (err: any) {
       setDeleteError(err.message || 'Failed to delete audit');
@@ -78,83 +86,72 @@ export default function HistoryPage() {
     <div className="w-full max-w-[1600px] mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 space-y-4">
       <h1 className="text-2xl sm:text-3xl font-bold">Audit history</h1>
       <p className="text-sm text-muted-foreground">
-        Each entry is a discovery scan — the first full crawl of a site. Re-runs of the same pages
-        appear on that scan&apos;s report page so you can track progress over time without cluttering
-        this list.
+        Each entry is a discovery scan — the first full crawl of a site. Re-checks of the same pages are counted on
+        that row and open from the report&apos;s series list. Starting a new audit (not a re-check) adds another
+        entry here.
       </p>
 
-      {sortedMainScans
-        .filter((main) => {
-          const runs = seriesRunsById.get(resolveSeriesId(main)) || [main];
-          return runs.filter((a) => a.score != null).length > 1;
-        })
-        .map((main) => {
-          const runs = seriesRunsById.get(resolveSeriesId(main)) || [main];
-          const completed = runs.filter((a) => a.score != null);
-          const maxScore = Math.max(100, ...completed.map((a) => a.score || 0));
-          const rerunCount = countRerunsForMain(audits, main.id);
-          return (
-            <Card key={main.id}>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-                  <Link href={`/audits/${main.id}`} className="hover:text-primary">
-                    {main.name}
-                  </Link>
-                  {rerunCount > 0 && (
-                    <span className="text-xs font-normal rounded-full border border-border px-2 py-0.5 text-muted-foreground">
-                      {rerunCount} re-run{rerunCount === 1 ? '' : 's'}
-                    </span>
-                  )}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    ({completed.length} scored runs)
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex items-end gap-2 h-32">
-                {completed.map((a, index) => (
-                  <Link key={a.id} href={`/audits/${a.id}`} className="flex-1 min-w-0 flex flex-col items-center gap-1">
-                    <div
-                      className="w-full rounded-t bg-primary/80"
-                      style={{ height: `${Math.max(8, ((a.score || 0) / maxScore) * 96)}px` }}
-                      title={`${index === 0 ? 'Discovery' : `Re-run ${index}`}: ${a.score} (${a.scoreModelVersion})`}
-                    />
-                    <span className="text-[10px] text-muted-foreground truncate w-full text-center">
-                      {index === 0 ? 'D' : `R${index}`}: {a.score}
-                    </span>
-                  </Link>
-                ))}
-              </CardContent>
-            </Card>
-          );
-        })}
-
       {sortedMainScans.map((main) => {
+        const runs = seriesRunsById.get(resolveSeriesId(main)) || [main];
+        const scored = runs.filter((a) => a.score != null);
         const rerunCount = countRerunsForMain(audits, main.id);
+        const latestScored = [...scored].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0];
+        const displayScore = latestScored?.score ?? main.score ?? '—';
+
         return (
           <div key={main.id} className="relative mb-3">
-            <Link href={`/audits/${main.id}`} className="block">
-              <Card className="hover:border-primary/40">
-                <CardHeader>
+            <Card className="hover:border-primary/40">
+              <Link href={`/audits/${main.id}`} className="block">
+                <CardHeader className="pb-2">
                   <CardTitle className="text-lg flex justify-between items-start gap-3">
                     <span className="min-w-0 pr-2 flex items-center gap-2 flex-wrap">
                       {main.name}
                       {rerunCount > 0 && (
                         <span className="text-xs font-normal rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-primary">
-                          {rerunCount} re-run{rerunCount === 1 ? '' : 's'}
+                          {rerunCount} re-check{rerunCount === 1 ? '' : 's'}
                         </span>
                       )}
                     </span>
-                    <span className="text-primary pr-10">{main.score ?? '—'}</span>
+                    <span className="text-primary pr-10">{displayScore}</span>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  <span className="break-all">{main.startUrl}</span>
-                  {' · '}
-                  {main.status} · {main.scoreModelVersion || 'pending'} ·{' '}
-                  {new Date(main.createdAt).toLocaleString()}
+                <CardContent className="space-y-3 text-sm text-muted-foreground pb-3">
+                  <div>
+                    <span className="break-all">{main.startUrl}</span>
+                    {' · '}
+                    {main.status} · {main.scoreModelVersion || 'pending'} ·{' '}
+                    {formatAppDateTime(main.createdAt)}
+                  </div>
                 </CardContent>
-              </Card>
-            </Link>
+              </Link>
+              {scored.length > 1 && (
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {scored.map((a, index) => {
+                      const label = index === 0 ? 'Discovery' : `Re-check ${index}`;
+                      return (
+                        <Link
+                          key={a.id}
+                          href={`/audits/${a.id}`}
+                          className="flex min-w-0 flex-col gap-0.5 rounded-md bg-primary/85 px-2.5 py-2 text-primary-foreground shadow-sm transition-colors hover:bg-primary"
+                          title={`${label}: ${a.score ?? '—'} · ${formatAppDateTime(a.createdAt)}`}
+                        >
+                          <span className="text-[10px] font-medium uppercase tracking-wide opacity-90 truncate">
+                            {label}
+                          </span>
+                          <span className="text-base font-bold leading-none">{a.score ?? '—'}</span>
+                          <span className="text-[10px] leading-snug opacity-90 truncate">
+                            {formatAppDateTimeCompact(a.createdAt)}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
             <Button
               type="button"
               variant="ghost"
@@ -183,8 +180,8 @@ export default function HistoryPage() {
               </div>
               <p className="text-sm text-muted-foreground">
                 Are you sure you want to delete{' '}
-                <span className="font-bold text-foreground">{pendingDelete.name}</span>? Pages and snapshots for this
-                audit will be removed. This cannot be undone.
+                <span className="font-bold text-foreground">{pendingDelete.name}</span>? This discovery scan and its
+                re-checks will be removed. This cannot be undone.
               </p>
               {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
               <div className="flex items-center justify-end gap-3 pt-2">

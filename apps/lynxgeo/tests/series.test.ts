@@ -5,6 +5,8 @@ import { AuditStartSchema } from '../lib/validation';
 import {
   configsMatchForCompare,
   countRerunsForMain,
+  isDateCheckAudit,
+  isHistorySeriesRun,
   isMainScan,
   isRerun,
   resolveBaselineAuditId,
@@ -75,4 +77,20 @@ test('countRerunsForMain counts only follow-ups pinned to a discovery run', () =
   assert.equal(countRerunsForMain(all, 'run-1'), 2);
   assert.equal(countRerunsForMain(all, 'other-1'), 1);
   assert.equal(countRerunsForMain(all, 'run-2'), 0);
+});
+
+test('date-check audits are excluded from history series and re-run counts', () => {
+  const discovery = { id: 'run-1', baselineAuditId: null, config: '{}', name: 'BMS' };
+  const rerun = { id: 'run-2', baselineAuditId: 'run-1', config: '{}', name: 'BMS (re-run)' };
+  const dateCheck = {
+    id: 'run-3',
+    baselineAuditId: 'run-1',
+    config: JSON.stringify({ dateCheckSingleArticle: true }),
+    name: 'BMS (date check)',
+  };
+  assert.equal(isDateCheckAudit(dateCheck), true);
+  assert.equal(isDateCheckAudit(rerun), false);
+  assert.equal(isHistorySeriesRun(dateCheck), false);
+  assert.equal(isHistorySeriesRun(rerun), true);
+  assert.equal(countRerunsForMain([discovery, rerun, dateCheck], 'run-1'), 1);
 });

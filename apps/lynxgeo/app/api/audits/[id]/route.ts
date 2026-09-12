@@ -5,7 +5,7 @@ import { getGeoDb } from '@/lib/db';
 import { auditPages, auditSnapshots, audits } from '@/lib/db/schema';
 import { canTransitionAuditStatus } from '@/lib/geo/frontier';
 import { enqueueGeoAudit } from '@/lib/geo/queue';
-import { resolveSeriesId } from '@/lib/geo/series';
+import { resolveSeriesId, isDateCheckAudit, isMainScan } from '@/lib/geo/series';
 import { parseSnapshotPayload } from '@/lib/geo/snapshot';
 import { AuditControlSchema } from '@/lib/validation';
 
@@ -30,7 +30,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .from(audits)
       .where(eq(audits.userId, session.id))
       .orderBy(asc(audits.createdAt));
-    const seriesRuns = allAudits.filter((row) => resolveSeriesId(row) === seriesId);
+    const seriesRuns = allAudits.filter(
+      (row) => resolveSeriesId(row) === seriesId && !isDateCheckAudit(row),
+    );
     return NextResponse.json({ audit, pages, snapshot, seriesRuns });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });
@@ -83,12 +85,28 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const geoDb = getGeoDb(session.id);
     const [audit] = await geoDb
-      .select({ id: audits.id })
+      .select()
       .from(audits)
       .where(and(eq(audits.id, id), eq(audits.userId, session.id)))
       .limit(1);
     if (!audit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    await geoDb.delete(audits).where(eq(audits.id, id));
+
+    // Deleting a discovery scan removes its re-checks / date-checks in the same series.
+    if (isMainScan(audit)) {
+      const seriesId = resolveSeriesId(audit);
+      const seriesRows = await geoDb
+        .select({ id: audits.id, seriesId: audits.seriesId, baselineAuditId: audits.baselineAuditId })
+        .from(audits)
+        .where(eq(audits.userId, session.id));
+      const toDelete = seriesRows
+        .filter((row) => resolveSeriesId(row) === seriesId || row.baselineAuditId === id)
+        .map((row) => row.id);
+      for (const rowId of toDelete) {
+        await geoDb.delete(audits).where(eq(audits.id, rowId));
+      }
+    } else {
+      await geoDb.delete(audits).where(eq(audits.id, id));
+    }
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to delete audit';
